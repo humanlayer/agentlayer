@@ -1,0 +1,9 @@
+Search code documentation and library references using Exa and/or Context7.
+
+Usage:
+- Provide a query describing what you want to know and the packageName of the library
+- The language parameter narrows the search context (default: typescript)
+- When both Exa and Context7 are configured, results are fetched concurrently and merged
+- Use this tool when you need API references, usage examples, or documentation for a specific library
+- More precise than general web search for code-specific questions
+- Results are returned as prose documentation text suitable for direct use as context

@@ -1,0 +1,6 @@
+Reply to an existing comment thread on a file.
+
+- Creates a new comment linked to the parent comment via replyToCommentId.
+- The reply inherits the file path and anchor position from the parent comment.
+- Use this to respond to review feedback, answer questions, or continue a discussion thread.
+- Use read_comments first to see existing comment IDs you can reply to.

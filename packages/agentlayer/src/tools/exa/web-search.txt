@@ -1,0 +1,11 @@
+Search the web for current information using the Exa AI search API.
+
+Usage:
+- Provide a natural language search query
+- numResults controls how many results are returned (default 5, max depends on API plan)
+- Returns a list of results with title, URL, and a text snippet for each
+- Use this tool when you need up-to-date information not in your training data
+- Best for: current events, recent releases, documentation that may have changed, prices, availability
+- Not a substitute for reading the actual page — use webfetch to retrieve full content after finding a URL
+
+The current year is {{year}}. You MUST use this year when searching for recent information or current events.

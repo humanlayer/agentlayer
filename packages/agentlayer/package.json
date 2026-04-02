@@ -1,0 +1,65 @@
+{
+  "name": "@humanlayer/agentlayer",
+  "version": "0.5.0",
+  "description": "Agent SDK for building AI agents",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts",
+    "./core": "./src/core/index.ts",
+    "./tools": "./src/tools/index.ts",
+    "./tools/interfaces": "./src/tools/interfaces/index.ts",
+    "./tools/generic": "./src/tools/generic/index.ts",
+    "./tools/exa": "./src/tools/exa/index.ts",
+    "./tools/context7": "./src/tools/context7/index.ts",
+    "./tools/server": "./src/tools/server/index.ts",
+    "./tools/just-bash": "./src/tools/just-bash/index.ts",
+    "./tools/y-stream-fs": "./src/tools/y-stream-fs/index.ts",
+    "./hooks": "./src/hooks/index.ts",
+    "./prompts": "./src/prompts/index.ts",
+    "./testing": "./src/testing/index.ts",
+    "./providers": "./src/providers/index.ts",
+    "./render": "./src/render/index.ts",
+    "./render/color": "./src/util/color.ts"
+  },
+  "scripts": {
+    "test": "bun test --concurrent",
+    "typecheck": "tsc --noEmit",
+    "banana": "bun run src/bin/banana-code.ts",
+    "docs": "vitepress dev docs",
+    "docs:build": "vitepress build docs",
+    "docs:preview": "vitepress preview docs"
+  },
+  "bin": {
+    "agent-sdk": "./src/bin/cli.ts"
+  },
+  "private": true,
+  "dependencies": {
+    "@ai-sdk/google": "^3.0.43",
+    "@ai-sdk/openai": "^3.0.41",
+    "@ai-sdk/openai-compatible": "^2.0.37",
+    "@ai-sdk/provider": "^3.0.8",
+    "@ai-sdk/provider-utils": "^4.0.21",
+    "@humanlayer/agentlayer-stream-fs": "workspace:*",
+    "@humanlayer/agentlayer-stream-fs-yjs": "workspace:*",
+    "@types/turndown": "^5.0.6",
+    "@vscode/ripgrep": "^1.17.1",
+    "ai": "^6.0.14",
+    "commander": "^14.0.3",
+    "dedent": "^1.7.2",
+    "turndown": "^7.2.2",
+    "y-protocols": "^1.0.7",
+    "zod": "^4.3.5"
+  },
+  "devDependencies": {
+    "@ai-sdk/anthropic": "^3.0.58",
+    "@types/bun": "^1.3.11",
+    "@types/node": "^25.5.0",
+    "just-bash": "^2.11.15",
+    "vitepress": "^1.6.4",
+    "yjs": "^13.6.30"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  }
+}

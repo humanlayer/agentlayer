@@ -1,0 +1,8 @@
+Use this tool to return your final response in a structured JSON format matching the required schema.
+
+IMPORTANT:
+- You MUST call this tool exactly once at the end of your response
+- The input must be valid JSON matching the required schema
+- Complete all necessary research and tool calls BEFORE calling this tool
+- This tool provides your final answer - no further actions are taken after calling it
+- Do NOT respond with plain text when structured output is requested - you MUST call this tool

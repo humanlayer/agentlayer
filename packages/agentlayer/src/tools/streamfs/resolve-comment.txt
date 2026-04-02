@@ -1,0 +1,5 @@
+Mark a comment as resolved.
+
+- Sets the isResolved flag on the comment so it appears as resolved in the UI.
+- Use this after addressing the feedback or issue raised in a comment.
+- Use read_comments first to find the comment ID to resolve.

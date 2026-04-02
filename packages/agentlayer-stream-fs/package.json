@@ -1,0 +1,22 @@
+{
+  "name": "@humanlayer/agentlayer-stream-fs",
+  "module": "src/index.ts",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@durable-streams/client": "^0.2.2",
+    "@durable-streams/state": "^0.2.2",
+    "diff-match-patch": "^1.0.5",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/diff-match-patch": "^1.0.36",
+    "typescript": "^5.9.2"
+  }
+}

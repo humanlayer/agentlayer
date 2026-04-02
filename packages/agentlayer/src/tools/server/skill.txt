@@ -1,0 +1,8 @@
+Load a specialized skill that provides domain-specific instructions and workflows.
+
+When you recognize that a task matches one of the available skills, use this tool to load the full skill instructions. The skill will inject detailed instructions, workflows, and access to bundled resources into the conversation context.
+
+Usage:
+- Provide the skill name to activate
+- Optionally provide arguments for the skill
+- After activation, follow the injected instructions

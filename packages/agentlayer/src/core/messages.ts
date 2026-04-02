@@ -1,0 +1,89 @@
+import type { ModelMessage, ToolModelMessage } from 'ai'
+import type { RunResult } from './agent'
+
+/**
+ * Build a tool-result ModelMessage from execution output.
+ * Internal helper used by the agent loop.
+ */
+export function buildToolResultMessage(
+	toolCallId: string,
+	toolName: string,
+	output: string,
+	isError: boolean,
+): ModelMessage {
+	return {
+		role: 'tool',
+		content: [
+			{
+				type: 'tool-result',
+				toolCallId,
+				toolName,
+				output: { type: 'text', value: output },
+				...(isError ? { isError: true } : {}),
+			},
+		],
+	}
+}
+
+/**
+ * Build a tool-result message — public API for use in tests and approval flows.
+ *
+ * Use this to inject synthetic tool results when resuming a stopped run:
+ * - After `toolCalled` stop condition: inject the outcome the agent would have produced
+ * - After `approvalRequired`: inject the approved result or a denial message
+ *
+ * @example
+ * ```ts
+ * const toolCallId = extractToolCallId(result.messages, 'deploy')
+ * const syntheticResult = toolResultMessage(toolCallId, 'deploy', 'Deployment approved.')
+ * const result2 = await agent.run({ messages: [...result.messages, syntheticResult] }).result
+ * ```
+ */
+export function toolResultMessage(
+	toolCallId: string,
+	toolName: string,
+	output: string,
+	isError?: boolean,
+): ToolModelMessage {
+	return {
+		role: 'tool',
+		content: [
+			{
+				type: 'tool-result',
+				toolCallId,
+				toolName,
+				output: { type: 'text', value: output },
+				...(isError ? { isError: true } : {}),
+			},
+		],
+	}
+}
+
+/**
+ * Extract the last assistant text message from a run result.
+ * Falls back to a summary of the finish reason if no text found.
+ *
+ * @example
+ * ```ts
+ * const result = await agent.run({ state: startState([userMessage('hello')]) }).result
+ * const text = extractLastAssistantText(result)
+ * console.log(text)
+ * ```
+ */
+export function extractLastAssistantText(result: RunResult): string {
+	for (let i = result.state.messages.length - 1; i >= 0; i--) {
+		const msg = result.state.messages[i]!
+		if (msg.role !== 'assistant') continue
+
+		if (typeof msg.content === 'string') return msg.content
+
+		if (Array.isArray(msg.content)) {
+			const textParts = msg.content.filter((p) => p.type === 'text')
+			if (textParts.length > 0) {
+				return textParts.map((p) => p.text).join('\n')
+			}
+		}
+	}
+
+	return `Agent finished with reason: ${result.finishReason}`
+}

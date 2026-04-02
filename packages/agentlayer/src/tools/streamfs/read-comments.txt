@@ -1,0 +1,7 @@
+Read all comments for a file.
+
+- Returns each comment with its ID in brackets (e.g., [abc123]) for use with reply_comment, resolve_comment, and delete_comment.
+- Returns each comment with surrounding context: the line before, the commented line, and the line after.
+- Comments are re-anchored to their current position by searching for the highlighted text in the file.
+- Shows threaded replies and resolved status.
+- Use this to review existing feedback before making changes.

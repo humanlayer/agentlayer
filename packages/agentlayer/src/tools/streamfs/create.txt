@@ -1,0 +1,6 @@
+Create a new file on the shared StreamFS filesystem.
+
+- Creates a new file at the specified path with the given content.
+- The file's parent directory must already exist. Use the list or tree tool to verify.
+- Fails if a file or directory already exists at the path — use the edit tool to modify existing files.
+- MIME type is auto-detected from the file extension if not provided.
