@@ -8,7 +8,10 @@
 	"files": {
 		"ignoreUnknown": true,
 		"includes": [
-			"packages/**/*"
+			"packages/**/*",
+			"!packages/docs/.vitepress/**/*",
+			"!**/node_modules/**/*",
+			"!packages/agentlayer-core/models.json"
 		]
 	},
 	"formatter": {
