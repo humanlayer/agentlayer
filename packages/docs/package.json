@@ -1,0 +1,19 @@
+{
+  "name": "@humanlayer/agentlayer-docs",
+  "module": "index.ts",
+  "type": "module",
+  "private": false,
+  "devDependencies": {
+    "@types/bun": "latest",
+    "vitepress": "2.0.0-alpha.17",
+    "vue": "3.5.32"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "scripts": {
+    "docs:dev": "vitepress dev",
+    "docs:build": "vitepress build",
+    "docs:preview": "vitepress preview"
+  }
+}

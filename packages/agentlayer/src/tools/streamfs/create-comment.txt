@@ -1,6 +1,0 @@
-Create a comment on a specific line or text selection in a file.
-
-- Anchors the comment to the highlighted text so it follows the text as the file is edited.
-- If highlighted_text is omitted, the full content of the specified line is used as the anchor.
-- The line parameter is 1-based.
-- Use this to leave review feedback, ask questions, or flag issues on specific code.

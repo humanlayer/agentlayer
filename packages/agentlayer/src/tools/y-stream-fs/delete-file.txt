@@ -1,7 +1,0 @@
-Deletes a file at the specified path.
-
-Usage:
-- The filePath parameter should be an absolute path.
-- This tool will FAIL if the file does not exist at the specified path.
-- Use the Read tool first to verify the file exists and review its contents before deleting.
-- Be cautious when deleting files — this operation cannot be undone.

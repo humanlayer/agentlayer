@@ -1,5 +1,0 @@
-Soft-delete a comment.
-
-- Marks the comment as deleted so it is hidden from view.
-- The comment is not permanently removed; it can still be seen in the stream history.
-- Use read_comments first to find the comment ID to delete.

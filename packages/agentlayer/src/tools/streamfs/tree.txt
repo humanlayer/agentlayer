@@ -1,6 +1,0 @@
-Show the full directory tree of the shared StreamFS filesystem.
-
-- Returns an indented listing of all files and directories from the given root.
-- Use the depth parameter to limit how many levels deep to traverse.
-- Defaults to "/" (the entire filesystem) with no depth limit.
-- Useful for getting an overview of the project structure before reading or editing files.

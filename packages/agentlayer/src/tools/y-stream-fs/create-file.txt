@@ -1,8 +1,0 @@
-Creates a new file at the specified path with the given content.
-
-Usage:
-- The filePath parameter should be an absolute path.
-- This tool will FAIL if a file already exists at the specified path. Use the Edit tool to modify existing files.
-- ALWAYS prefer editing existing files in the codebase. NEVER create new files unless explicitly required.
-- Only use emojis if the user explicitly requests it. Avoid adding emojis to files unless asked.
-- Call the Read tool first to verify the file does not already exist before creating.

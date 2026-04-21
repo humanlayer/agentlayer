@@ -1,23 +1,27 @@
 {
-  "name": "agentlayer",
-  "private": true,
-  "packageManager": "bun@1.3.0",
-  "engines": {
-    "node": ">=18"
-  },
-  "workspaces": [
-    "packages/*"
-  ],
-  "scripts": {
-    "prebuild": "bun install",
-    "build": "turbo run build",
-    "test": "turbo run test",
-    "typecheck": "turbo run typecheck"
-  },
-  "devDependencies": {
-    "@types/bun": "^1.3.11",
-    "@types/node": "^25.5.0",
-    "turbo": "^2.8.1",
-    "typescript": "^5.9.2"
-  }
+    "name": "agentlayer",
+    "module": "index.ts",
+    "type": "module",
+    "scripts": {
+        "biome": "biome check . --write --unsafe",
+        "typecheck": "bun --filter '*' --parallel typecheck"
+    },
+    "devDependencies": {
+        "@biomejs/biome": "2.2.5",
+        "@types/bun": "latest",
+        "@typescript/native-preview": "7.0.0-dev.20260414.1"
+    },
+    "peerDependencies": {
+        "typescript": "^5"
+    },
+    "workspaces": [
+        "packages/*"
+    ],
+    "catalog": {
+        "@ai-sdk/anthropic": "3.0.69",
+        "@ai-sdk/provider": "3.0.8",
+        "ai": "6.0.159",
+        "zod": "4.3.6"
+    },
+    "dependencies": {}
 }

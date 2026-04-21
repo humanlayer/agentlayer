@@ -1,4 +1,4 @@
-# agentlayer
+# agentlayer-core
 
 To install dependencies:
 

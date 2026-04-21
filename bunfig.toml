@@ -1,0 +1,24 @@
+[install]
+exact = true
+linker = "isolated"
+linkWorkspacePackages = true
+minimumReleaseAge = 604800 # 7 days in seconds
+minimumReleaseAgeExcludes = [
+  "@types/bun",
+  "typescript",
+  "bun-types"
+]
+
+[install.security]
+#scanner = "@socketsecurity/bun-security-scanner"
+
+[console]
+depth=4
+
+[test]
+onlyFailures = true
+
+[loader]
+".wasm" = "file"
+".data" = "file"
+".node" = "file"

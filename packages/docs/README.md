@@ -1,4 +1,4 @@
-# agentlayer
+# docs
 
 To install dependencies:
 

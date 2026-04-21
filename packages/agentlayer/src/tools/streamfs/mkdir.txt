@@ -1,6 +1,0 @@
-Create a new directory on the shared StreamFS filesystem.
-
-- Creates a single directory at the specified path.
-- The parent directory must already exist.
-- Fails if a file or directory already exists at the path.
-- Use the tree or list tool to verify the current structure before creating directories.

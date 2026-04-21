@@ -1,0 +1,42 @@
+{
+    "editor.codeActionsOnSave": {
+        "source.biome": "explicit",
+        "source.organizeImports.biome": "explicit",
+        "source.fixAll.biome": "explicit",
+        "source.removeUnusedImports": "explicit",
+        "source.addMissingImports.ts": "explicit"
+    },
+    "editor.defaultFormatter": "biomejs.biome",
+    "editor.formatOnSave": true,
+    "editor.formatOnPaste": true,
+    "editor.tabSize": 4,
+    "js/ts.referencesCodeLens.enabled": true,
+    "html.format.indentInnerHtml": true,
+    "html.format.wrapAttributes": "auto",
+    "js/ts.preferences.importModuleSpecifier": "non-relative",
+    "js/ts.updateImportsOnFileMove.enabled": "always",
+    "[json]": {
+        "editor.defaultFormatter": "vscode.json-language-features"
+    },
+    "[typescriptreact]": {
+        "editor.defaultFormatter": "biomejs.biome"
+    },
+    "[typescript]": {
+        "editor.defaultFormatter": "biomejs.biome"
+    },
+    "biome.lsp.bin": "./node_modules/@biomejs/biome/bin/biome",
+    "files.associations": {
+        "*.mdx": "markdown",
+        "unistd.h": "c"
+    },
+    "files.watcherExclude": {
+        "**/routeTree.gen.ts": true
+    },
+    "search.exclude": {
+        "**/routeTree.gen.ts": true
+    },
+    "files.readonlyInclude": {
+        "**/routeTree.gen.ts": true
+    },
+    "js/ts.tsdk": "node_modules/typescript/lib"
+}

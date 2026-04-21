@@ -1,0 +1,19 @@
+{
+  "name": "@humanlayer/agentlayer-core",
+  "module": "index.ts",
+  "type": "module",
+  "private": false,
+  "scripts": {
+    "typecheck": "tsgo --noEmit"
+  },
+  "devDependencies": {
+    "@ai-sdk/anthropic": "catalog:",
+    "@ai-sdk/provider": "catalog:",
+    "@types/bun": "latest",
+    "ai": "catalog:",
+    "zod": "catalog:"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  }
+}
