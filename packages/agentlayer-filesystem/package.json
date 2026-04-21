@@ -1,16 +1,19 @@
 {
-	"name": "@humanlayer/agentlayer-core",
+	"name": "@humanlayer/agentlayer-filesystem",
 	"module": "src/index.ts",
 	"type": "module",
 	"private": false,
 	"scripts": {
 		"typecheck": "tsgo --noEmit"
 	},
+	"dependencies": {
+		"ripgrep": "0.3.1"
+	},
 	"devDependencies": {
 		"@ai-sdk/anthropic": "catalog:",
 		"@ai-sdk/provider": "catalog:",
+		"@humanlayer/agentlayer-core": "workspace:*",
 		"@types/bun": "latest",
-		"@types/turndown": "5.0.6",
 		"ai": "catalog:",
 		"zod": "catalog:"
 	},
@@ -19,11 +22,8 @@
 	},
 	"exports": {
 		".": "./src/index.ts",
-		"./hooks": "./src/hooks/index.ts",
 		"./utils": "./src/utils/index.ts",
-		"./interfaces": "./src/interfaces/index.ts"
-	},
-	"dependencies": {
-		"turndown": "7.2.4"
+		"./tools": "./src/tools/index.ts",
+		"./hooks": "./src/hooks/index.ts"
 	}
 }

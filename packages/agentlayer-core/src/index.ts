@@ -27,6 +27,7 @@ export {
 	type ToolCallRef,
 	type ToolCallResult,
 } from './execute-tool-call'
+export * from './hooks'
 export {
 	type ApprovalHook,
 	type ApprovalHookContext,
@@ -75,6 +76,7 @@ export {
 	type TypedPostToolUseHookContext,
 	type TypedPreToolUseHookContext,
 } from './hooks'
+export * from './interfaces'
 export { buildToolResultMessage, extractLastAssistantText, toolResultMessage } from './messages'
 export { getPendingToolCalls } from './pending'
 export {
@@ -114,3 +116,5 @@ export {
 	TokenUsageAccumulator,
 	type TokenUsageEvent,
 } from './token-usage'
+export * from './tools'
+export * from './utils'
