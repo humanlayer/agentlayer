@@ -1,33 +1,8 @@
 import type { ModelMessage } from 'ai'
-import { z } from 'zod'
+import z from 'zod'
 import type { RunResult } from '../agent'
 import { defineTool } from '../define-tool'
 import DESCRIPTION from './structured-output.txt'
-
-/**
- * Input for the generic structured output tool.
- * The `data` field holds the structured response as a free-form object.
- */
-export const structuredOutputInput = z.object({
-	data: z.record(z.string(), z.unknown()).describe('The structured output data matching the required schema'),
-})
-
-export type StructuredOutputInput = z.infer<typeof structuredOutputInput>
-
-/**
- * A pre-built StructuredOutput tool that accepts any JSON object.
- *
- * For schema-validated structured output, use `structuredOutput(schema)`
- * or `createStructuredOutputTool(schema)` instead.
- */
-export const StructuredOutputTool = defineTool({
-	name: 'structured_output',
-	description: DESCRIPTION,
-	input: structuredOutputInput,
-	execute: async (input) => {
-		return JSON.stringify(input.data)
-	},
-})
 
 /**
  * Create a typed StructuredOutput tool validated against a Zod schema.

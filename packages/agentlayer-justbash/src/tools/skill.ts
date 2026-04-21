@@ -1,5 +1,5 @@
+import { createSkillTool } from '@humanlayer/agentlayer-core'
 import type { Skill } from '@humanlayer/agentlayer-core/interfaces'
-import { createSkillTool } from '@humanlayer/agentlayer-core/interfaces'
 import type { Bash } from 'just-bash'
 
 function parseFrontmatterDescription(content: string): string | null {

@@ -64,6 +64,22 @@
         "typescript": "^5",
       },
     },
+    "packages/agentlayer-yjs": {
+      "name": "@humanlayer/agentlayer-yjs",
+      "devDependencies": {
+        "@ai-sdk/anthropic": "catalog:",
+        "@ai-sdk/provider": "catalog:",
+        "@humanlayer/agentlayer-core": "workspace:*",
+        "@types/bun": "latest",
+        "@types/turndown": "5.0.6",
+        "ai": "catalog:",
+        "zod": "catalog:",
+      },
+      "peerDependencies": {
+        "just-bash": "^2.0.0",
+        "typescript": "^5",
+      },
+    },
     "packages/docs": {
       "name": "@humanlayer/agentlayer-docs",
       "devDependencies": {
@@ -184,6 +200,8 @@
     "@humanlayer/agentlayer-filesystem": ["@humanlayer/agentlayer-filesystem@workspace:packages/agentlayer-filesystem"],
 
     "@humanlayer/agentlayer-justbash": ["@humanlayer/agentlayer-justbash@workspace:packages/agentlayer-justbash"],
+
+    "@humanlayer/agentlayer-yjs": ["@humanlayer/agentlayer-yjs@workspace:packages/agentlayer-yjs"],
 
     "@iconify-json/simple-icons": ["@iconify-json/simple-icons@1.2.78", "", { "dependencies": { "@iconify/types": "*" } }, "sha512-I3lkNp0Qu7q2iZWkdcf/I2hqGhzK6qxdILh9T7XqowQrnpmG/BayDsiCf6PktDoWlW0U971xA5g+panm+NFrfQ=="],
 

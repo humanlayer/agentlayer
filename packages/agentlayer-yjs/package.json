@@ -1,0 +1,27 @@
+{
+	"name": "@humanlayer/agentlayer-yjs",
+	"module": "src/index.ts",
+	"type": "module",
+	"private": false,
+	"scripts": {
+		"typecheck": "tsgo --noEmit"
+	},
+	"devDependencies": {
+		"@ai-sdk/anthropic": "catalog:",
+		"@ai-sdk/provider": "catalog:",
+		"@humanlayer/agentlayer-core": "workspace:*",
+		"@types/bun": "latest",
+		"@types/turndown": "5.0.6",
+		"ai": "catalog:",
+		"zod": "catalog:"
+	},
+	"peerDependencies": {
+		"typescript": "^5",
+		"just-bash": "^2.0.0"
+	},
+	"exports": {
+		".": "./src/index.ts",
+		"./tools": "./src/tools/index.ts"
+	},
+	"dependencies": {}
+}

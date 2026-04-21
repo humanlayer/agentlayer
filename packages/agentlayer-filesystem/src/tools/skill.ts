@@ -3,8 +3,8 @@ import { existsSync } from 'node:fs'
 import { readdir, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { basename, join } from 'node:path'
+import { createSkillTool } from '@humanlayer/agentlayer-core'
 import type { Skill } from '@humanlayer/agentlayer-core/interfaces'
-import { createSkillTool } from '@humanlayer/agentlayer-core/interfaces'
 
 function expandTilde(p: string): string {
 	if (p === '~') return homedir()

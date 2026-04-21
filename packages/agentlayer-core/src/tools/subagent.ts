@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import type { AgentEvent } from '../'
+import type { AgentEvent } from '..'
 import type { Agent, RunResult } from '../agent'
 import { defineTool } from '../define-tool'
 import { extractLastAssistantText } from '../messages'
