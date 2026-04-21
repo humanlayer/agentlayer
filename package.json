@@ -4,7 +4,8 @@
     "type": "module",
     "scripts": {
         "biome": "biome check . --write --unsafe",
-        "typecheck": "bun --filter '*' --parallel typecheck"
+        "typecheck": "bun --filter '*' --parallel typecheck",
+        "test": "bun test --concurrency 16 **/*"
     },
     "devDependencies": {
         "@biomejs/biome": "2.2.5",

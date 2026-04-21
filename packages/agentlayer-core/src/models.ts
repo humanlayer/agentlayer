@@ -1,4 +1,4 @@
-import modelsDotDevJsonFile from './models.json'
+import modelsDotDevJsonFile from '../models.json'
 import type { ModelPricing } from './token-usage'
 
 // ── Types for models.dev api.json ────────────────────────────────────────────

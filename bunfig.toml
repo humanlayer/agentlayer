@@ -10,15 +10,21 @@ minimumReleaseAgeExcludes = [
 ]
 
 [install.security]
-#scanner = "@socketsecurity/bun-security-scanner"
+scanner = "@socketsecurity/bun-security-scanner"
 
 [console]
 depth=4
 
 [test]
 onlyFailures = true
+concurrentTestGlob = "**/*"
+
 
 [loader]
 ".wasm" = "file"
 ".data" = "file"
 ".node" = "file"
+
+[run]
+# equivalent to `bun --bun` for all `bun run` commands
+bun = true
