@@ -93,7 +93,14 @@ const result = await run.result
 console.log(result.finishReason)
 ```
 
+That example shows the minimal shape of an AgentLayer agent: a model, a few tools, a stop condition, and a serializable starting state.
+
+For a more realistic setup with hooks, delegated specialist agents, and resumable approval flows, the next pages are more useful than the architecture page alone.
+
 ## Read This Next
 
+- **[Hooks](/core/hooks)** -- approval hooks, pre-tool hooks, post-tool hooks, pre-request hooks, typed builders, and hook factories
+- **[Subagents](/core/subagents)** -- how child agents are configured, how nested pause and resume works, and how n-depth delegation is composed
+- **[State](/core/state)** -- how `AgentState` is serialized, sanitized, persisted, and resumed
 - **[Motivation](/introduction/motivation)** -- why the toolkit is built this way
 - **[Architecture](/introduction/architecture)** -- loop lifecycle, tool resolution, and state model
