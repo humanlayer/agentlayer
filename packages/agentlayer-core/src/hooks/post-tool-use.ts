@@ -1,6 +1,6 @@
 import type { ModelMessage } from 'ai'
 import { type DoneResult, hookDone, type PostToolUseResult } from './results'
-import type { HookChainStateResult, HookStateAccess, ToolInfo } from './shared'
+import type { HookChainStateResult, HookStateAccess, HookStateOperation, ToolInfo } from './shared'
 
 export interface PostToolUseHookContext extends HookStateAccess {
 	toolName: string
@@ -32,7 +32,7 @@ export async function runPostToolUseHooks(
 ): Promise<HookChainStateResult<PostToolUseResult>> {
 	let currentOutput = baseCtx.output
 	const localState: Record<string, unknown> = { ...(baseCtx.state ?? {}) }
-	const stateUpdates: Record<string, unknown> = {}
+	const stateUpdates: HookStateOperation[] = []
 
 	for (const hook of hooks) {
 		const ctx: PostToolUseHookContext = {
@@ -49,7 +49,10 @@ export async function runPostToolUseHooks(
 			updateState<T>(key: string, updater: (current: T | undefined) => T): void {
 				const nextValue = updater(localState[key] as T | undefined)
 				localState[key] = nextValue
-				stateUpdates[key] = nextValue
+				stateUpdates.push({
+					key,
+					apply: (current) => updater(current as T | undefined),
+				})
 			},
 			done(mutatedResult?: string): DoneResult {
 				return hookDone(mutatedResult)

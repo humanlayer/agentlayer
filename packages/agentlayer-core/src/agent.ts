@@ -11,6 +11,7 @@ import { type ExecuteToolCallContext, executeToolCall, type ToolCallResult } fro
 import {
 	type ApprovalHook,
 	type ApprovalRequest,
+	type HookStateOperation,
 	type PendingToolCall,
 	type PostToolUseHook,
 	type PreRequestHook,
@@ -109,7 +110,7 @@ type ToolOutcome =
 			pendingUpdates: Array<(messages: ModelMessage[]) => ModelMessage[]>
 			stopRequested?: StopOptions
 			toolStateUpdate?: { key: string; value: unknown }
-			hookStateUpdate?: Record<string, unknown>
+			hookStateUpdate?: HookStateOperation[]
 			subAgentPause?: { agentId: string; childState: AgentState }
 	  }
 	| {
@@ -128,7 +129,7 @@ type ToolOutcome =
 			message: ModelMessage
 			output: string
 			isError: boolean
-			hookStateUpdate?: Record<string, unknown>
+			hookStateUpdate?: HookStateOperation[]
 	  }
 	| {
 			kind: 'ask'
@@ -143,7 +144,7 @@ type ToolOutcome =
 			toolName: string
 			input: Record<string, unknown>
 			stopOptions: StopOptions
-			hookStateUpdate?: Record<string, unknown>
+			hookStateUpdate?: HookStateOperation[]
 	  }
 
 // ── MessageSink: eliminates triple-push pattern ──────────────────────────────
@@ -992,7 +993,7 @@ export class Agent<TTools extends Record<string, Tool<any, any>> = Record<string
 					message,
 					output: hookResult.output,
 					isError: hookResult.isError,
-					...(Object.keys(hookChainResult.stateUpdates).length > 0
+					...(hookChainResult.stateUpdates.length > 0
 						? { hookStateUpdate: hookChainResult.stateUpdates }
 						: {}),
 				}
@@ -1011,7 +1012,7 @@ export class Agent<TTools extends Record<string, Tool<any, any>> = Record<string
 					toolName: tc.toolName,
 					input: tcInput,
 					stopOptions,
-					...(Object.keys(hookChainResult.stateUpdates).length > 0
+					...(hookChainResult.stateUpdates.length > 0
 						? { hookStateUpdate: hookChainResult.stateUpdates }
 						: {}),
 				}
@@ -1041,7 +1042,7 @@ export class Agent<TTools extends Record<string, Tool<any, any>> = Record<string
 				pendingUpdates: execResult.pendingUpdates,
 				...(execResult.stopRequested !== undefined ? { stopRequested: execResult.stopRequested } : {}),
 				...(execResult.toolStateUpdate !== undefined ? { toolStateUpdate: execResult.toolStateUpdate } : {}),
-				...(Object.keys(execResult.hookStateUpdates).length > 0
+				...(execResult.hookStateUpdates.length > 0
 					? { hookStateUpdate: execResult.hookStateUpdates }
 					: {}),
 				...(execResult.subAgentPause !== undefined ? { subAgentPause: execResult.subAgentPause } : {}),
@@ -1061,7 +1062,7 @@ export class Agent<TTools extends Record<string, Tool<any, any>> = Record<string
 			pendingUpdates: execResult.pendingUpdates,
 			...(execResult.stopRequested !== undefined ? { stopRequested: execResult.stopRequested } : {}),
 			...(execResult.toolStateUpdate !== undefined ? { toolStateUpdate: execResult.toolStateUpdate } : {}),
-			...(Object.keys(execResult.hookStateUpdates).length > 0
+			...(execResult.hookStateUpdates.length > 0
 				? { hookStateUpdate: execResult.hookStateUpdates }
 				: {}),
 			...(execResult.subAgentPause !== undefined ? { subAgentPause: execResult.subAgentPause } : {}),
@@ -1076,12 +1077,12 @@ export class Agent<TTools extends Record<string, Tool<any, any>> = Record<string
 		toolCtx: ExecuteToolCallContext,
 		toolInfo: ToolInfo,
 		allMessages: ModelMessage[],
-		initialHookStateUpdates?: Record<string, unknown>,
-	): Promise<ToolCallResult & { hookStateUpdates: Record<string, unknown> }> {
+		initialHookStateUpdates?: HookStateOperation[],
+	): Promise<ToolCallResult & { hookStateUpdates: HookStateOperation[] }> {
 		const postToolUseHooks = this.hooks?.postToolUse
 
 		let execResult = await executeToolCall(tc, toolCtx)
-		let hookStateUpdates: Record<string, unknown> = { ...(initialHookStateUpdates ?? {}) }
+		let hookStateUpdates: HookStateOperation[] = [...(initialHookStateUpdates ?? [])]
 
 		if (!postToolUseHooks || postToolUseHooks.length === 0 || execResult.isError) {
 			return {
@@ -1095,6 +1096,10 @@ export class Agent<TTools extends Record<string, Tool<any, any>> = Record<string
 			unknown
 		>
 		const getContextWindow = () => Object.freeze([...allMessages]) as ReadonlyArray<ModelMessage>
+		const hookVisibleState: Record<string, unknown> = { ...toolCtx.toolState }
+		for (const operation of hookStateUpdates) {
+			hookVisibleState[operation.key] = operation.apply(hookVisibleState[operation.key])
+		}
 
 		const hookChainResult = await runPostToolUseHooks(postToolUseHooks, {
 			toolName: tc.toolName,
@@ -1104,15 +1109,9 @@ export class Agent<TTools extends Record<string, Tool<any, any>> = Record<string
 			rawOutput: execResult.rawOutput,
 			tool: toolInfo,
 			getContextWindow,
-			state: {
-				...toolCtx.toolState,
-				...hookStateUpdates,
-			},
+			state: hookVisibleState,
 		})
-		hookStateUpdates = {
-			...hookStateUpdates,
-			...hookChainResult.stateUpdates,
-		}
+		hookStateUpdates = [...hookStateUpdates, ...hookChainResult.stateUpdates]
 
 		if (hookChainResult.result.mutatedResult !== undefined) {
 			execResult = {
@@ -1137,7 +1136,9 @@ export class Agent<TTools extends Record<string, Tool<any, any>> = Record<string
 	private mergeHookStateUpdates(outcomes: ToolOutcome[], toolState: Record<string, unknown>): void {
 		for (const outcome of outcomes) {
 			if ('hookStateUpdate' in outcome && outcome.hookStateUpdate) {
-				Object.assign(toolState, outcome.hookStateUpdate)
+				for (const operation of outcome.hookStateUpdate) {
+					toolState[operation.key] = operation.apply(toolState[operation.key])
+				}
 			}
 		}
 	}

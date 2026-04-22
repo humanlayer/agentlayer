@@ -97,6 +97,18 @@ export function assistantWithToolCall(
 	return { content: [part], ...(opts?.usage ? { usage: opts.usage } : {}) }
 }
 
+export function assistantWithToolCalls(
+	...calls: Array<{ toolName: string; input: Record<string, unknown> }>
+): MockResponse {
+	const parts: LanguageModelV3ToolCall[] = calls.map((call) => ({
+		type: 'tool-call' as const,
+		toolCallId: crypto.randomUUID(),
+		toolName: call.toolName,
+		input: JSON.stringify(call.input),
+	}))
+	return { content: parts }
+}
+
 export function userMessage(content: string): UserModelMessage {
 	return { role: 'user', content }
 }
