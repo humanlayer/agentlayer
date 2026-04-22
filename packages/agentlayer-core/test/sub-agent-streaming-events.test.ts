@@ -532,7 +532,7 @@ describe('sub-agent streaming events', () => {
 		})
 		expect(approvalEvent?.agentId).toBeDefined()
 
-		const approvalEventIndex = firstEvents.indexOf(approvalEvent)
+		const approvalEventIndex = firstEvents.indexOf(approvalEvent as AgentEvent)
 		const grandchildStepFinishIndex = firstEvents.findIndex(
 			(event) => event.type === 'stepFinish' && event.agentId === approvalEvent?.agentId,
 		)

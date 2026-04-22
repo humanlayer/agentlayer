@@ -3,7 +3,8 @@ import { YjsFilesystem } from '@humanlayer/yjs-fs'
 import { createPerDocumentDurableStreamsClient } from '@humanlayer/yjs-fs/durable-streams/per-doc-client'
 import { Awareness } from 'y-protocols/awareness'
 import * as Y from 'yjs'
-import { withDurableStreamsDevServer } from './support/durable-server'
+import { withDurableStreamsDevServer } from './util/durable-server'
+import { waitFor } from './util/wait-for'
 
 function createReplica() {
 	const doc = new Y.Doc()
@@ -151,13 +152,3 @@ describe('per-document durable transport', () => {
 		})
 	})
 })
-
-async function waitFor(fn: () => boolean, timeout = 15000, interval = 50): Promise<void> {
-	const start = Date.now()
-	while (!fn()) {
-		if (Date.now() - start > timeout) {
-			throw new Error('waitFor timed out')
-		}
-		await new Promise((resolve) => setTimeout(resolve, interval))
-	}
-}

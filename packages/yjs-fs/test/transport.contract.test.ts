@@ -14,7 +14,7 @@ import {
 } from '@humanlayer/yjs-fs/durable-streams/single-stream-client'
 import { Awareness } from 'y-protocols/awareness'
 import * as Y from 'yjs'
-import { snapshotFilesystem } from './support/snapshot'
+import { snapshotFilesystem } from './util/snapshot'
 
 type TransportHarness = {
 	mode: DurableStreamsTransportMode

@@ -1,45 +1,11 @@
 import type { Awareness } from 'y-protocols/awareness'
 import * as Y from 'yjs'
-import {
-	type CatalogState,
-	createCatalogState,
-	createFileInCatalog,
-	deleteEntryInCatalog,
-	listDirectoryEntries,
-	lookupPath,
-	mkdirInCatalog,
-	normalizePath,
-	renameInCatalog,
-	updateFileMetadata,
-} from '../catalog'
-import {
-	addCommentRecord,
-	getCommentRecords,
-	initializeComments,
-	replyToCommentRecord,
-	resolveCommentRecord,
-} from '../comments'
-import {
-	clearLocalSelection as clearAwarenessSelection,
-	getLocalSelection as getAwarenessSelection,
-	getLocalPresenceState,
-	type PresenceState,
-	type ResolvedPresenceSelection,
-	setLocalSelection as setAwarenessSelection,
-	setLocalPresenceState,
-	updateLocalPresenceState,
-} from '../presence'
-import {
-	type CommentAnchor,
-	type EditResult,
-	type EntryDirent,
-	EntryNotFoundError,
-	type EntryStat,
-	type FileComment,
-	type LookupResult,
-	NotDirectoryError,
-	NotFileError,
-} from '../types'
+import type { PresenceState, ResolvedPresenceSelection } from '../presence'
+import type { CommentAnchor, EditResult, EntryDirent, EntryStat, FileComment, LookupResult } from '../types'
+import { CatalogStore } from './catalog-store'
+import { CommentStore } from './comment-store'
+import { ContentStore } from './content-store'
+import { PresenceStore } from './presence-store'
 
 export type YjsFilesystemOptions = {
 	doc?: Y.Doc
@@ -48,74 +14,53 @@ export type YjsFilesystemOptions = {
 
 export class YjsFilesystem {
 	readonly doc: Y.Doc
-	private readonly catalog: CatalogState
-	private readonly contentDocs: Y.Map<Y.Doc>
-	private _awareness: Awareness | null
+	private readonly catalog: CatalogStore
+	private readonly content: ContentStore
+	private readonly comments: CommentStore
+	private readonly presence: PresenceStore
 
 	constructor(options: YjsFilesystemOptions = {}) {
 		this.doc = options.doc ?? new Y.Doc()
-		this.catalog = createCatalogState(this.doc)
-		this.contentDocs = this.doc.getMap<Y.Doc>('contentDocs')
-		this._awareness = options.awareness ?? null
+		this.catalog = new CatalogStore(this.doc)
+		this.content = new ContentStore(this.doc)
+		this.comments = new CommentStore()
+		this.presence = new PresenceStore(options.awareness ?? null)
 	}
 
 	get awareness(): Awareness | null {
-		return this._awareness
+		return this.presence.getAwareness()
 	}
 
 	lookup(path: string): LookupResult | undefined {
-		return lookupPath(this.catalog, path)
+		return this.catalog.lookup(path)
 	}
 
 	exists(path: string): boolean {
-		return this.lookup(path) !== undefined
+		return this.catalog.exists(path)
 	}
 
 	stat(path: string): EntryStat {
-		const result = this.requireLookup(path)
-
-		return {
-			entryId: result.entryId,
-			name: result.path === '/' ? '/' : result.entry.name,
-			path: result.path,
-			parentId: result.entry.parentId,
-			type: result.entry.type,
-			createdAt: result.entry.createdAt,
-			modifiedAt: result.entry.modifiedAt,
-			isDirectory: result.entry.type === 'directory',
-			isFile: result.entry.type === 'file',
-			contentId: result.entry.type === 'file' ? result.entry.contentId : undefined,
-			size: result.entry.type === 'file' ? result.entry.size : undefined,
-		}
+		return this.catalog.stat(path)
 	}
 
 	list(path = '/'): EntryDirent[] {
-		const result = this.requireLookup(path)
-
-		if (result.entry.type !== 'directory') {
-			throw new NotDirectoryError(result.path)
-		}
-
-		return listDirectoryEntries(this.catalog, result.entryId)
+		return this.catalog.list(path)
 	}
 
 	mkdir(path: string): string {
-		return mkdirInCatalog(this.catalog, path)
+		return this.catalog.mkdir(path)
 	}
 
 	createFile(path: string, content = ''): string {
-		const normalizedPath = normalizePath(path)
-		const contentDoc = new Y.Doc({ guid: crypto.randomUUID() })
-		const ytext = contentDoc.getText('content')
-
-		initializeComments(contentDoc)
-		this.contentDocs.set(contentDoc.guid, contentDoc)
-		const entryId = createFileInCatalog(this.catalog, normalizedPath, contentDoc.guid, 0)
+		const normalizedPath = this.catalog.normalizePath(path)
+		const created = this.content.create()
+		this.comments.initialize(created.doc)
+		const entryId = this.catalog.createFileEntry(normalizedPath, created.contentId, 0)
 
 		if (content.length > 0) {
 			this.doc.transact(() => {
-				ytext.insert(0, content)
-				updateFileMetadata(this.catalog, entryId, content.length)
+				created.text.insert(0, content)
+				this.catalog.updateFileSize(entryId, content.length)
 			})
 		}
 
@@ -123,176 +68,84 @@ export class YjsFilesystem {
 	}
 
 	readFile(path: string): string {
-		const { entry, path: normalizedPath } = this.requireFileLookup(path)
-		return this.requireContentDoc(entry.contentId, normalizedPath).getText('content').toString()
+		const { entry, path: normalizedPath } = this.catalog.requireFile(path)
+		return this.content.read(entry.contentId, normalizedPath)
 	}
 
 	writeFile(path: string, content: string): void {
-		const { entry, entryId, path: normalizedPath } = this.requireFileLookup(path)
-		const ytext = this.requireContentDoc(entry.contentId, normalizedPath).getText('content')
-
-		this.doc.transact(() => {
-			ytext.delete(0, ytext.length)
-			if (content.length > 0) {
-				ytext.insert(0, content)
-			}
-			updateFileMetadata(this.catalog, entryId, content.length)
-		})
+		const { entry, entryId, path: normalizedPath } = this.catalog.requireFile(path)
+		this.content.write(entry.contentId, normalizedPath, content)
+		this.catalog.updateFileSize(entryId, content.length)
 	}
 
 	editFile(path: string, oldText: string, newText: string): EditResult {
-		const { entry, entryId, path: normalizedPath } = this.requireFileLookup(path)
-		const ytext = this.requireContentDoc(entry.contentId, normalizedPath).getText('content')
-		const content = ytext.toString()
-		const firstIndex = content.indexOf(oldText)
-
-		if (firstIndex === -1) {
-			throw new Error(`No match found for oldText in ${normalizedPath}`)
-		}
-
-		if (content.indexOf(oldText, firstIndex + 1) !== -1) {
-			throw new Error(
-				'Found multiple matches for oldText. Provide more surrounding context to make the match unique.',
-			)
-		}
-
-		const editLine = content.slice(0, firstIndex).split('\n').length
-		const affectedLines = {
-			start: editLine,
-			end: editLine + newText.split('\n').length - 1,
-		}
-
-		this.doc.transact(() => {
-			ytext.delete(firstIndex, oldText.length)
-			ytext.insert(firstIndex, newText)
-			updateFileMetadata(this.catalog, entryId, ytext.toString().length)
-		})
-
-		return {
-			path: normalizedPath,
-			editIndex: firstIndex,
-			editLine,
-			affectedLines,
-		}
-	}
-
-	addComment(path: string, anchor: CommentAnchor, body: string, author: string): string {
-		const { entry, path: normalizedPath } = this.requireFileLookup(path)
-		return addCommentRecord(this.requireContentDoc(entry.contentId, normalizedPath), anchor, body, author)
-	}
-
-	getComments(path: string): FileComment[] {
-		const { entry, path: normalizedPath } = this.requireFileLookup(path)
-		return getCommentRecords(this.requireContentDoc(entry.contentId, normalizedPath))
-	}
-
-	replyToComment(path: string, commentId: string, body: string, author: string): string {
-		const { entry, path: normalizedPath } = this.requireFileLookup(path)
-		return replyToCommentRecord(this.requireContentDoc(entry.contentId, normalizedPath), commentId, body, author)
-	}
-
-	resolveComment(path: string, commentId: string, author: string): void {
-		const { entry, path: normalizedPath } = this.requireFileLookup(path)
-		resolveCommentRecord(this.requireContentDoc(entry.contentId, normalizedPath), commentId, author)
-	}
-
-	setAwareness(awareness: Awareness | null): void {
-		this._awareness = awareness
-	}
-
-	getLocalPresence(): PresenceState | null {
-		if (!this._awareness) {
-			return null
-		}
-
-		return getLocalPresenceState(this._awareness)
-	}
-
-	setLocalPresence(presence: PresenceState | null): void {
-		if (!this._awareness) {
-			return
-		}
-
-		setLocalPresenceState(this._awareness, presence)
-	}
-
-	updateLocalPresence(patch: Partial<PresenceState>): PresenceState | null {
-		if (!this._awareness) {
-			return null
-		}
-
-		return updateLocalPresenceState(this._awareness, patch)
-	}
-
-	setLocalSelection(path: string, anchorOffset: number, headOffset: number): void {
-		if (!this._awareness) {
-			return
-		}
-
-		const { entry, path: normalizedPath } = this.requireFileLookup(path)
-		const ytext = this.requireContentDoc(entry.contentId, normalizedPath).getText('content')
-		setAwarenessSelection(this._awareness, ytext, anchorOffset, headOffset)
-	}
-
-	clearLocalSelection(): void {
-		if (!this._awareness) {
-			return
-		}
-
-		clearAwarenessSelection(this._awareness)
-	}
-
-	getLocalSelection(path: string): ResolvedPresenceSelection | undefined {
-		if (!this._awareness) {
-			return undefined
-		}
-
-		const { entry, path: normalizedPath } = this.requireFileLookup(path)
-		const ytext = this.requireContentDoc(entry.contentId, normalizedPath).getText('content')
-		return getAwarenessSelection(this._awareness, ytext)
-	}
-
-	rename(fromPath: string, toPath: string): void {
-		renameInCatalog(this.catalog, fromPath, toPath)
-	}
-
-	unlink(path: string): void {
-		const deletedEntry = deleteEntryInCatalog(this.catalog, path)
-
-		if (deletedEntry.type === 'file') {
-			this.contentDocs.delete(deletedEntry.contentId)
-		}
-	}
-
-	private requireLookup(path: string): LookupResult {
-		const result = this.lookup(path)
-
-		if (!result) {
-			throw new EntryNotFoundError(normalizePath(path))
-		}
-
+		const { entry, entryId, path: normalizedPath } = this.catalog.requireFile(path)
+		const result = this.content.edit(entry.contentId, normalizedPath, oldText, newText)
+		this.catalog.updateFileSize(entryId, this.content.size(entry.contentId, normalizedPath))
 		return result
 	}
 
-	private requireFileLookup(
-		path: string,
-	): LookupResult & { entry: Extract<LookupResult['entry'], { type: 'file' }> } {
-		const result = this.requireLookup(path)
-
-		if (result.entry.type !== 'file') {
-			throw new NotFileError(result.path)
-		}
-
-		return result as LookupResult & { entry: Extract<LookupResult['entry'], { type: 'file' }> }
+	addComment(path: string, anchor: CommentAnchor, body: string, author: string): string {
+		const { entry, path: normalizedPath } = this.catalog.requireFile(path)
+		return this.comments.add(this.content.get(entry.contentId, normalizedPath), anchor, body, author)
 	}
 
-	private requireContentDoc(contentId: string, path: string): Y.Doc {
-		const contentDoc = this.contentDocs.get(contentId)
+	getComments(path: string): FileComment[] {
+		const { entry, path: normalizedPath } = this.catalog.requireFile(path)
+		return this.comments.list(this.content.get(entry.contentId, normalizedPath))
+	}
 
-		if (!contentDoc) {
-			throw new EntryNotFoundError(path)
+	replyToComment(path: string, commentId: string, body: string, author: string): string {
+		const { entry, path: normalizedPath } = this.catalog.requireFile(path)
+		return this.comments.reply(this.content.get(entry.contentId, normalizedPath), commentId, body, author)
+	}
+
+	resolveComment(path: string, commentId: string, author: string): void {
+		const { entry, path: normalizedPath } = this.catalog.requireFile(path)
+		this.comments.resolve(this.content.get(entry.contentId, normalizedPath), commentId, author)
+	}
+
+	setAwareness(awareness: Awareness | null): void {
+		this.presence.setAwareness(awareness)
+	}
+
+	getLocalPresence(): PresenceState | null {
+		return this.presence.getLocalPresence()
+	}
+
+	setLocalPresence(presence: PresenceState | null): void {
+		this.presence.setLocalPresence(presence)
+	}
+
+	updateLocalPresence(patch: Partial<PresenceState>): PresenceState | null {
+		return this.presence.updateLocalPresence(patch)
+	}
+
+	setLocalSelection(path: string, anchorOffset: number, headOffset: number): void {
+		const { entry, path: normalizedPath } = this.catalog.requireFile(path)
+		const text = this.content.getText(entry.contentId, normalizedPath)
+		this.presence.setLocalSelection(text, anchorOffset, headOffset)
+	}
+
+	clearLocalSelection(): void {
+		this.presence.clearLocalSelection()
+	}
+
+	getLocalSelection(path: string): ResolvedPresenceSelection | undefined {
+		const { entry, path: normalizedPath } = this.catalog.requireFile(path)
+		const text = this.content.getText(entry.contentId, normalizedPath)
+		return this.presence.getLocalSelection(text)
+	}
+
+	rename(fromPath: string, toPath: string): void {
+		this.catalog.rename(fromPath, toPath)
+	}
+
+	unlink(path: string): void {
+		const deletedEntry = this.catalog.delete(path)
+
+		if (deletedEntry.type === 'file') {
+			this.content.delete(deletedEntry.contentId)
 		}
-
-		return contentDoc
 	}
 }

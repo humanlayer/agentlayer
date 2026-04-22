@@ -9,7 +9,7 @@ export type {
 	DurableStreamsTransportMode,
 } from './durable-streams/shared'
 export type { YjsFilesystemOptions } from './filesystem'
-export { YjsFilesystem } from './filesystem'
+export { CatalogStore, CommentStore, ContentStore, PresenceStore, YjsFilesystem } from './filesystem'
 export type {
 	LocalSelectionState,
 	PresenceCursor,

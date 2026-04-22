@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'bun:test'
 import { EntryNotFoundError, YjsFilesystem } from '@humanlayer/yjs-fs'
 import * as Y from 'yjs'
-import { snapshotFilesystem } from './support/snapshot'
-import { syncBothWays } from './support/sync'
+import { snapshotFilesystem } from './util/snapshot'
+import { syncBothWays } from './util/sync'
 
 describe('YjsFilesystem sync interleavings', () => {
 	test('converges when one replica renames while the other edits', () => {

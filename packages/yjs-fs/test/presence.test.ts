@@ -8,7 +8,7 @@ import {
 } from '@humanlayer/yjs-fs'
 import { Awareness } from 'y-protocols/awareness'
 import * as Y from 'yjs'
-import { snapshotFilesystem } from './support/snapshot'
+import { snapshotFilesystem } from './util/snapshot'
 
 function createAwareness(doc: Y.Doc): Awareness {
 	return new Awareness(doc)

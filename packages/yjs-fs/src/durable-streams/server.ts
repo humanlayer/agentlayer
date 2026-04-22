@@ -44,7 +44,6 @@ export async function startDurableStreamsDevServer(
 			return `${yjsBaseUrl}/v1/yjs/${service}/docs/${normalizeDocId(docId)}`
 		},
 		async stop() {
-			await yjsServer.stop()
 			await durableServer.stop()
 		},
 	}
