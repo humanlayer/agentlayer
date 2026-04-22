@@ -1,6 +1,6 @@
 import { execSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
-import { readdir, stat } from 'node:fs/promises'
+import { readFile, readdir, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { basename, join } from 'node:path'
 import { createSkillTool } from '@humanlayer/agentlayer-core'
@@ -123,7 +123,7 @@ export async function createSkillToolFromDirs(opts: { dirs: string | string[] | 
 			try {
 				const s = await stat(skillMdPath)
 				if (s.isFile()) {
-					const content = await Bun.file(skillMdPath).text()
+					const content = await readFile(skillMdPath, 'utf8')
 					const baseName = entry
 					const name = namespace ? `${namespace}:${baseName}` : baseName
 					const description = parseFrontmatterDescription(content) ?? parseFirstHeading(content) ?? baseName
@@ -135,7 +135,7 @@ export async function createSkillToolFromDirs(opts: { dirs: string | string[] | 
 			}
 
 			if (entry.endsWith('.md')) {
-				const content = await Bun.file(entryPath).text()
+				const content = await readFile(entryPath, 'utf8')
 				const baseName = basename(entry, '.md')
 				const name = namespace ? `${namespace}:${baseName}` : baseName
 				const description = parseFrontmatterDescription(content) ?? parseFirstHeading(content) ?? baseName

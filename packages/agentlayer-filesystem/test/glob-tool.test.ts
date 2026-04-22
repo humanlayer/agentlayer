@@ -162,7 +162,7 @@ describe('createGlobTool', () => {
 })
 
 // ─── createGlobTool — symlink behavior (default: symlinks allowed) ────────────
-// Bun.Glob.scan is called with followSymlinks: true by default.
+// The glob walker follows symlinks by default.
 
 describe('createGlobTool — symlink behavior', () => {
 	test('symlink to a file matching the pattern is included in results', async () => {
@@ -223,8 +223,8 @@ describe('createGlobTool — symlink behavior', () => {
 // ─── createGlobTool — disallowSymlinks: true ─────────────────────────────────
 
 describe('createGlobTool — disallowSymlinks: true', () => {
-	test('symlink to a file is NOT included — Bun.Glob.scan skips all symlinks when disallowed', async () => {
-		// With followSymlinks: false passed to Bun.Glob.scan, symlinks are skipped
+	test('symlink to a file is NOT included when symlinks are disallowed', async () => {
+		// With symlink following disabled, symlinks are skipped
 		// entirely — neither file symlinks nor directory symlinks are included.
 		const dir = await mkdtemp(join(tmpdir(), 'glob-nosymlink-test-'))
 		try {

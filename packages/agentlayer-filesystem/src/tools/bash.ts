@@ -1,28 +1,15 @@
 import { BashTool } from '@humanlayer/agentlayer-core/interfaces'
 import { BASH_DESCRIPTION } from '@humanlayer/agentlayer-core/prompts'
+import { runProcess } from '../utils/process'
 
 export function createBashTool(opts?: { cwd?: string }) {
 	return BashTool.define(
 		async (input) => {
 			const cwd = input.workdir ?? opts?.cwd
-			const proc = Bun.spawn(['bash', '-c', input.command], {
+			const { stdout, stderr, exitCode, timedOut } = await runProcess('bash', ['-c', input.command], {
 				cwd,
-				stdout: 'pipe',
-				stderr: 'pipe',
+				timeoutMs: input.timeout,
 			})
-
-			let timedOut = false
-			const timer = setTimeout(() => {
-				timedOut = true
-				proc.kill()
-			}, input.timeout)
-
-			const [stdout, stderr] = await Promise.all([
-				new Response(proc.stdout).text(),
-				new Response(proc.stderr).text(),
-			])
-			const exitCode = await proc.exited
-			clearTimeout(timer)
 
 			let output = stdout
 			if (stderr) {

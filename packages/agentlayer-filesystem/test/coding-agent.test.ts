@@ -1,7 +1,9 @@
 import { describe, expect, test } from 'bun:test'
+import { execFile } from 'node:child_process'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { promisify } from 'node:util'
 import { defineTool } from '@humanlayer/agentlayer-core'
 import { claudePrompt, codexPrompt } from '@humanlayer/agentlayer-core/prompts'
 import { z } from 'zod'
@@ -18,13 +20,19 @@ function mockModel(modelId: string) {
 	return { modelId } as any
 }
 
+const execFileAsync = promisify(execFile)
+
+async function initGitRepo(cwd: string) {
+	await execFileAsync('git', ['init'], { cwd })
+}
+
 describe('createSkillToolFromRepoDirs', () => {
 	test('uses the provided cwd when resolving repo root', async () => {
 		const repoDir = await mkdtemp(join(tmpdir(), 'agentlayer-skill-repo-'))
 		const originalCwd = process.cwd()
 		const unrelatedDir = await mkdtemp(join(tmpdir(), 'agentlayer-other-cwd-'))
 		try {
-			Bun.spawnSync(['git', 'init'], { cwd: repoDir, stdout: 'ignore', stderr: 'ignore' })
+			await initGitRepo(repoDir)
 			await mkdir(join(repoDir, '.claude', 'skills'), { recursive: true })
 			await writeFile(join(repoDir, '.claude', 'skills', 'plan.md'), '# Plan\n\nDo the plan.')
 			const nestedCwd = join(repoDir, 'packages', 'app')
@@ -45,7 +53,7 @@ describe('createAgentSystemPrompt', () => {
 	test('builds codex prompt with repo instructions and environment', async () => {
 		const repoDir = await mkdtemp(join(tmpdir(), 'agentlayer-system-prompt-'))
 		try {
-			Bun.spawnSync(['git', 'init'], { cwd: repoDir, stdout: 'ignore', stderr: 'ignore' })
+			await initGitRepo(repoDir)
 			await writeFile(join(repoDir, 'CLAUDE.md'), 'Repository rules here.')
 			const nestedCwd = join(repoDir, 'apps', 'demo')
 			await mkdir(nestedCwd, { recursive: true })

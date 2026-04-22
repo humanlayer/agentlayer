@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { access, mkdtemp, readFile, rm, unlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Agent, defineTool, startState } from '@humanlayer/agentlayer-core'
@@ -12,6 +12,19 @@ import {
 	createWastedReadHooks,
 } from '../src/hooks'
 import { assistantText, assistantWithToolCall, getToolResults, mockModel, userMessage } from './mocks'
+
+async function fileText(filePath: string): Promise<string> {
+	return await readFile(filePath, 'utf8')
+}
+
+async function fileExists(filePath: string): Promise<boolean> {
+	try {
+		await access(filePath)
+		return true
+	} catch {
+		return false
+	}
+}
 
 function wastedReadReminder(filePath: string): string {
 	return `<system-reminder>File ${filePath} is already in your context and unchanged. Refer to the previous read result.</system-reminder>`
@@ -36,7 +49,7 @@ describe('file-state hooks', () => {
 				output: z.string(),
 				execute: async (input) => {
 					readExecuted += 1
-					return await Bun.file(input.file_path).text()
+					return await fileText(input.file_path)
 				},
 			})
 
@@ -80,7 +93,7 @@ describe('file-state hooks', () => {
 				output: z.string(),
 				execute: async (input) => {
 					readExecuted += 1
-					return await Bun.file(input.file_path).text()
+					return await fileText(input.file_path)
 				},
 			})
 
@@ -124,7 +137,7 @@ describe('file-state hooks', () => {
 				output: z.string(),
 				execute: async (input) => {
 					readExecuted += 1
-					return await Bun.file(input.file_path).text()
+					return await fileText(input.file_path)
 				},
 			})
 
@@ -169,7 +182,7 @@ describe('file-state hooks', () => {
 				output: z.string(),
 				execute: async (input) => {
 					readExecuted += 1
-					return await Bun.file(input.file_path).text()
+					return await fileText(input.file_path)
 				},
 			})
 
@@ -213,7 +226,7 @@ describe('file-state hooks', () => {
 				output: z.string(),
 				execute: async (input) => {
 					readExecuted += 1
-					return await Bun.file(input.file_path).text()
+					return await fileText(input.file_path)
 				},
 			})
 
@@ -258,7 +271,7 @@ describe('file-state hooks', () => {
 				output: z.string(),
 				execute: async (input) => {
 					readExecuted += 1
-					return await Bun.file(input.file_path).text()
+					return await fileText(input.file_path)
 				},
 			})
 
@@ -306,7 +319,7 @@ describe('file-state hooks', () => {
 				output: z.string(),
 				execute: async (input) => {
 					readExecuted += 1
-					return await Bun.file(input.file_path).text()
+					return await fileText(input.file_path)
 				},
 			})
 
@@ -352,7 +365,7 @@ describe('file-state hooks', () => {
 				output: z.string(),
 				execute: async (input) => {
 					readExecuted += 1
-					return await Bun.file(input.file_path).text()
+					return await fileText(input.file_path)
 				},
 			})
 
@@ -363,7 +376,7 @@ describe('file-state hooks', () => {
 				output: z.string(),
 				execute: async (input) => {
 					mutateExecuted += 1
-					await Bun.write(input.file_path, input.content)
+					await writeFile(input.file_path, input.content)
 					return 'mutated'
 				},
 			})
@@ -420,7 +433,7 @@ describe('file-state hooks', () => {
 				output: z.string(),
 				execute: async (input) => {
 					readExecuted += 1
-					return Bun.file(input.file_path).text()
+					return fileText(input.file_path)
 				},
 			})
 
@@ -431,7 +444,7 @@ describe('file-state hooks', () => {
 				output: z.string(),
 				execute: async (input) => {
 					writeExecuted += 1
-					await Bun.write(input.file_path, input.content)
+					await writeFile(input.file_path, input.content)
 					return 'wrote'
 				},
 			})
@@ -482,10 +495,10 @@ describe('file-state hooks', () => {
 				execute: async (input) => {
 					readExecuted += 1
 					if (readExecuted === 2) {
-						const text = await Bun.file(input.file_path).text()
+						const text = await fileText(input.file_path)
 						return `${text} second-read`
 					}
-					return await Bun.file(input.file_path).text()
+					return await fileText(input.file_path)
 				},
 			})
 
@@ -549,7 +562,7 @@ describe('file-state hooks', () => {
 				output: z.string(),
 				execute: async (input) => {
 					writeExecuted += 1
-					await Bun.write(input.file_path, input.content)
+					await writeFile(input.file_path, input.content)
 					return 'wrote'
 				},
 			})
@@ -613,7 +626,7 @@ describe('file-state hooks', () => {
 				output: z.string(),
 				execute: async (input) => {
 					readExecuted += 1
-					return Bun.file(input.file_path).text()
+					return fileText(input.file_path)
 				},
 			})
 
@@ -624,7 +637,7 @@ describe('file-state hooks', () => {
 				output: z.string(),
 				execute: async (input) => {
 					writeExecuted += 1
-					await Bun.write(input.file_path, input.content)
+					await writeFile(input.file_path, input.content)
 					return 'wrote'
 				},
 			})
@@ -671,7 +684,7 @@ describe('file-state hooks', () => {
 				output: z.string(),
 				execute: async (input) => {
 					readExecuted += 1
-					return Bun.file(input.file_path).text()
+					return fileText(input.file_path)
 				},
 			})
 
@@ -682,8 +695,8 @@ describe('file-state hooks', () => {
 				output: z.string(),
 				execute: async (input) => {
 					editExecuted += 1
-					const text = await Bun.file(input.file_path).text()
-					await Bun.write(input.file_path, text.replace(input.old_string, input.new_string))
+					const text = await fileText(input.file_path)
+					await writeFile(input.file_path, text.replace(input.old_string, input.new_string))
 					return 'edited'
 				},
 			})
@@ -696,7 +709,7 @@ describe('file-state hooks', () => {
 				execute: async (input) => {
 					applyPatchExecuted += 1
 					if (input.patch_text.includes('Update File')) {
-						await Bun.write(patchPath, 'new\n')
+						await writeFile(patchPath, 'new\n')
 					}
 					return 'patched'
 				},
@@ -749,7 +762,7 @@ describe('file-state hooks', () => {
 			}).result
 
 			expect(applyPatchExecuted).toBe(1)
-			expect(await Bun.file(patchPath).text()).toBe('new\n')
+			expect(await fileText(patchPath)).toBe('new\n')
 
 			const patchResults = getToolResults(second.state.messages, { toolName: 'apply_patch' })
 			expect(patchResults[0]!.output).toEqual({ type: 'text', value: 'patched' })
@@ -774,7 +787,7 @@ describe('file-state hooks', () => {
 				output: z.string(),
 				execute: async (input) => {
 					readExecuted += 1
-					return Bun.file(input.file_path).text()
+					return fileText(input.file_path)
 				},
 			})
 
@@ -785,7 +798,7 @@ describe('file-state hooks', () => {
 				output: z.string(),
 				execute: async (input) => {
 					writeExecuted += 1
-					await Bun.write(input.file_path, input.content)
+					await writeFile(input.file_path, input.content)
 					return 'wrote'
 				},
 			})
@@ -820,7 +833,7 @@ describe('file-state hooks', () => {
 			}).result
 
 			expect(writeExecuted).toBe(1)
-			expect(await Bun.file(filePath).text()).toBe('updated\n')
+			expect(await fileText(filePath)).toBe('updated\n')
 		} finally {
 			await rm(dir, { recursive: true })
 		}
@@ -840,7 +853,7 @@ describe('file-state hooks', () => {
 				description: 'Read file',
 				input: z.object({ file_path: z.string() }),
 				output: z.string(),
-				execute: async (input) => Bun.file(input.file_path).text(),
+				execute: async (input) => fileText(input.file_path),
 			})
 
 			const writeTool = defineTool({
@@ -850,7 +863,7 @@ describe('file-state hooks', () => {
 				output: z.string(),
 				execute: async (input) => {
 					writeExecuted += 1
-					await Bun.write(input.file_path, input.content)
+					await writeFile(input.file_path, input.content)
 					return 'wrote'
 				},
 			})
@@ -862,8 +875,8 @@ describe('file-state hooks', () => {
 				output: z.string(),
 				execute: async (input) => {
 					editExecuted += 1
-					const text = await Bun.file(input.file_path).text()
-					await Bun.write(input.file_path, text.replace(input.old_string, input.new_string))
+					const text = await fileText(input.file_path)
+					await writeFile(input.file_path, text.replace(input.old_string, input.new_string))
 					return 'edited'
 				},
 			})
@@ -931,7 +944,7 @@ describe('file-state hooks', () => {
 				output: z.string(),
 				execute: async (input) => {
 					readExecuted += 1
-					return Bun.file(input.file_path).text()
+					return fileText(input.file_path)
 				},
 			})
 
@@ -942,7 +955,7 @@ describe('file-state hooks', () => {
 				output: z.string(),
 				execute: async (input) => {
 					writeExecuted += 1
-					await Bun.write(input.file_path, input.content)
+					await writeFile(input.file_path, input.content)
 					return 'wrote'
 				},
 			})
@@ -954,8 +967,8 @@ describe('file-state hooks', () => {
 				output: z.string(),
 				execute: async (input) => {
 					editExecuted += 1
-					const text = await Bun.file(input.file_path).text()
-					await Bun.write(input.file_path, text.replace(input.old_string, input.new_string))
+					const text = await fileText(input.file_path)
+					await writeFile(input.file_path, text.replace(input.old_string, input.new_string))
 					return 'edited'
 				},
 			})
@@ -968,7 +981,7 @@ describe('file-state hooks', () => {
 				execute: async (input) => {
 					applyPatchExecuted += 1
 					if (input.patch_text.includes(patchFilePath)) {
-						await Bun.write(patchFilePath, 'CHARLIE\n')
+						await writeFile(patchFilePath, 'CHARLIE\n')
 					}
 					return 'patched'
 				},
@@ -1047,9 +1060,9 @@ describe('file-state hooks', () => {
 
 			expect(writeExecuted).toBe(2)
 			expect(editExecuted).toBe(3)
-			expect(await Bun.file(writeFilePath).text()).toBe('alpha-after-write\n')
-			expect(await Bun.file(editFilePath).text()).toBe('bravo-after-edit\n')
-			expect(await Bun.file(patchFilePath).text()).toBe('charlie-after-patch\n')
+			expect(await fileText(writeFilePath)).toBe('alpha-after-write\n')
+			expect(await fileText(editFilePath)).toBe('bravo-after-edit\n')
+			expect(await fileText(patchFilePath)).toBe('charlie-after-patch\n')
 		} finally {
 			await rm(dir, { recursive: true })
 		}
@@ -1073,7 +1086,7 @@ describe('file-state hooks', () => {
 				output: z.string(),
 				execute: async (input) => {
 					readExecuted += 1
-					return Bun.file(input.file_path).text()
+					return fileText(input.file_path)
 				},
 			})
 
@@ -1084,7 +1097,7 @@ describe('file-state hooks', () => {
 				output: z.string(),
 				execute: async (input) => {
 					writeExecuted += 1
-					await Bun.write(input.file_path, input.content)
+					await writeFile(input.file_path, input.content)
 					return 'wrote'
 				},
 			})
@@ -1096,8 +1109,8 @@ describe('file-state hooks', () => {
 				output: z.string(),
 				execute: async (input) => {
 					editExecuted += 1
-					const text = await Bun.file(input.file_path).text()
-					await Bun.write(input.file_path, text.replace(input.old_string, input.new_string))
+					const text = await fileText(input.file_path)
+					await writeFile(input.file_path, text.replace(input.old_string, input.new_string))
 					return 'edited'
 				},
 			})
@@ -1159,7 +1172,7 @@ describe('file-state hooks', () => {
 				output: z.string(),
 				execute: async (input) => {
 					readExecuted += 1
-					return Bun.file(input.file_path).text()
+					return fileText(input.file_path)
 				},
 			})
 
@@ -1170,7 +1183,7 @@ describe('file-state hooks', () => {
 				output: z.string(),
 				execute: async (input) => {
 					writeExecuted += 1
-					await Bun.write(input.file_path, input.content)
+					await writeFile(input.file_path, input.content)
 					return 'wrote'
 				},
 			})
@@ -1182,8 +1195,8 @@ describe('file-state hooks', () => {
 				output: z.string(),
 				execute: async (input) => {
 					editExecuted += 1
-					const text = await Bun.file(input.file_path).text()
-					await Bun.write(input.file_path, text.replace(input.old_string, input.new_string))
+					const text = await fileText(input.file_path)
+					await writeFile(input.file_path, text.replace(input.old_string, input.new_string))
 					return 'edited'
 				},
 			})
@@ -1243,7 +1256,7 @@ describe('file-state hooks', () => {
 				execute: async (input) => {
 					applyPatchExecuted += 1
 					if (input.patch_text.includes('Add File')) {
-						await Bun.write(newPath, 'new\n')
+						await writeFile(newPath, 'new\n')
 					}
 					return 'patched'
 				},
@@ -1298,7 +1311,7 @@ describe('file-state hooks', () => {
 				),
 			}).result
 			expect(applyPatchExecuted).toBe(1)
-			expect(await Bun.file(newPath).exists()).toBe(true)
+			expect(await fileExists(newPath)).toBe(true)
 		} finally {
 			await rm(dir, { recursive: true })
 		}
@@ -1318,7 +1331,7 @@ describe('file-state hooks', () => {
 				output: z.string(),
 				execute: async (input) => {
 					readExecuted += 1
-					return Bun.file(input.file_path).text()
+					return fileText(input.file_path)
 				},
 			})
 
@@ -1373,8 +1386,8 @@ describe('file-state hooks', () => {
 				execute: async (input) => {
 					applyPatchExecuted += 1
 					if (input.patch_text.includes('Move to')) {
-						await Bun.write(destinationPath, await Bun.file(sourcePath).text())
-						await Bun.file(sourcePath).delete()
+						await writeFile(destinationPath, await fileText(sourcePath))
+						await unlink(sourcePath)
 					}
 					return 'patched'
 				},
@@ -1385,7 +1398,7 @@ describe('file-state hooks', () => {
 				description: 'Read file',
 				input: z.object({ file_path: z.string() }),
 				output: z.string(),
-				execute: async (input) => Bun.file(input.file_path).text(),
+				execute: async (input) => fileText(input.file_path),
 			})
 
 			const hooks = {
@@ -1422,7 +1435,7 @@ describe('file-state hooks', () => {
 				output: z.string(),
 				execute: async (input) => {
 					writeExecuted += 1
-					await Bun.write(input.file_path, input.content)
+					await writeFile(input.file_path, input.content)
 					return 'wrote'
 				},
 			})
@@ -1442,7 +1455,7 @@ describe('file-state hooks', () => {
 			}).result
 
 			expect(writeExecuted).toBe(1)
-			expect(await Bun.file(destinationPath).text()).toBe('moved-and-updated\n')
+			expect(await fileText(destinationPath)).toBe('moved-and-updated\n')
 		} finally {
 			await rm(dir, { recursive: true })
 		}
@@ -1463,7 +1476,7 @@ describe('file-state hooks', () => {
 				execute: async (input) => {
 					applyPatchExecuted += 1
 					if (input.patch_text.includes('Delete File')) {
-						await Bun.file(deletePath).delete()
+						await unlink(deletePath)
 					}
 					return 'patched'
 				},
@@ -1474,7 +1487,7 @@ describe('file-state hooks', () => {
 				description: 'Read file',
 				input: z.object({ file_path: z.string() }),
 				output: z.string(),
-				execute: async (input) => Bun.file(input.file_path).text(),
+				execute: async (input) => fileText(input.file_path),
 			})
 
 			const hooks = {
@@ -1495,7 +1508,7 @@ describe('file-state hooks', () => {
 			}).run({ state: startState([userMessage('read and delete')]) }).result
 
 			expect(applyPatchExecuted).toBe(1)
-			expect(await Bun.file(deletePath).exists()).toBe(false)
+			expect(await fileExists(deletePath)).toBe(false)
 
 			const recreatedContent = 'recreated\n'
 			const writeTool = defineTool({
@@ -1504,7 +1517,7 @@ describe('file-state hooks', () => {
 				input: z.object({ file_path: z.string(), content: z.string() }),
 				output: z.string(),
 				execute: async (input) => {
-					await Bun.write(input.file_path, input.content)
+					await writeFile(input.file_path, input.content)
 					return 'wrote'
 				},
 			})
@@ -1520,7 +1533,7 @@ describe('file-state hooks', () => {
 				state: startState([...first.state.messages, userMessage('recreate file')], first.state.toolState),
 			}).result
 
-			expect(await Bun.file(deletePath).text()).toBe(recreatedContent)
+			expect(await fileText(deletePath)).toBe(recreatedContent)
 		} finally {
 			await rm(dir, { recursive: true })
 		}

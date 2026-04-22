@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { ModelMessage } from 'ai'
@@ -51,7 +51,7 @@ function createLocalReadTool(cwd: string) {
 		input: z.object({ file_path: z.string(), limit: z.number().optional() }),
 		execute: async (input) => {
 			const filePath = join(cwd, input.file_path)
-			return await Bun.file(filePath).text()
+			return await readFile(filePath, 'utf8')
 		},
 	})
 }
@@ -156,7 +156,7 @@ describe('createSubagentsTool', () => {
 	test('child can use tools configured with its own cwd', async () => {
 		const dir = await mkdtemp(join(tmpdir(), 'subagent-tool-test-'))
 		try {
-			await Bun.write(join(dir, 'relative.txt'), 'hello from child cwd\n')
+			await writeFile(join(dir, 'relative.txt'), 'hello from child cwd\n')
 
 			const childAgent = new Agent({
 				model: mockModel([

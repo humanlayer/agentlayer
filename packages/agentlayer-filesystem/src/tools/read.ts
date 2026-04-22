@@ -1,3 +1,4 @@
+import { readFile, stat } from 'node:fs/promises'
 import { ReadTool } from '@humanlayer/agentlayer-core/interfaces'
 import { READ_DESCRIPTION } from '@humanlayer/agentlayer-core/prompts'
 import { isBinaryFile } from '@humanlayer/agentlayer-core/utils'
@@ -13,12 +14,14 @@ export function createReadTool(opts: ReadToolOptions = {}) {
 	return ReadTool.define(
 		async (input) => {
 			const filePath = expandPath(input.file_path, cwd)
-			const file = Bun.file(filePath)
-			const size = file.size
-			if (await isBinaryFile(filePath, size)) {
+			const fileStat = await stat(filePath)
+			if (!fileStat.isFile()) {
+				throw new Error(`Cannot read non-file path: ${filePath}`)
+			}
+			if (await isBinaryFile(filePath, fileStat.size)) {
 				throw new Error(`Cannot read binary file: ${filePath}`)
 			}
-			return await file.text()
+			return await readFile(filePath, 'utf8')
 		},
 		{ description: READ_DESCRIPTION },
 	)

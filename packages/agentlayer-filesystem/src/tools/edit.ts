@@ -1,5 +1,4 @@
-import { mkdir } from 'node:fs/promises'
-import { dirname } from 'node:path'
+import { readFile, stat, writeFile } from 'node:fs/promises'
 import { EditTool } from '@humanlayer/agentlayer-core/interfaces'
 import { EDIT_DESCRIPTION } from '@humanlayer/agentlayer-core/prompts'
 import { expandPath } from '../utils/expand-path'
@@ -15,23 +14,18 @@ export function createEditTool(opts: EditToolOptions = {}) {
 		async (input) => {
 			const filePath = expandPath(input.file_path, cwd)
 
-			let file: ReturnType<typeof Bun.file>
+			let fileStat: Awaited<ReturnType<typeof stat>>
 			try {
-				file = Bun.file(filePath)
+				fileStat = await stat(filePath)
 			} catch {
 				throw new Error(`File ${input.file_path} not found`)
 			}
 
-			if (!(await file.exists())) {
-				throw new Error(`File ${input.file_path} not found`)
-			}
-
-			const stat = await file.stat()
-			if (stat.isDirectory()) {
+			if (fileStat.isDirectory()) {
 				throw new Error(`Path is a directory, not a file: ${input.file_path}`)
 			}
 
-			const content = await file.text()
+			const content = await readFile(filePath, 'utf8')
 
 			if (!content.includes(input.old_string)) {
 				return { content, matchCount: 0 }
@@ -41,7 +35,6 @@ export function createEditTool(opts: EditToolOptions = {}) {
 			let matchCount: number
 
 			if (input.replace_all) {
-				// Count occurrences
 				let count = 0
 				let pos = 0
 				while (true) {
@@ -53,7 +46,6 @@ export function createEditTool(opts: EditToolOptions = {}) {
 				updated = content.split(input.old_string).join(input.new_string)
 				matchCount = count
 			} else {
-				// Single replacement — check for multiple matches
 				const firstIdx = content.indexOf(input.old_string)
 				const lastIdx = content.lastIndexOf(input.old_string)
 				if (firstIdx !== lastIdx) {
@@ -65,9 +57,7 @@ export function createEditTool(opts: EditToolOptions = {}) {
 				matchCount = 1
 			}
 
-			await mkdir(dirname(filePath), { recursive: true })
-			await Bun.write(filePath, updated)
-
+			await writeFile(filePath, updated)
 			return { content: updated, matchCount }
 		},
 		{ description: EDIT_DESCRIPTION },

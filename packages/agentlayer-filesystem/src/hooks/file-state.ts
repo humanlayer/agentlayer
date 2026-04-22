@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { readFile, stat } from 'node:fs/promises'
 import type { PostToolUseHook, PreToolUseHook } from '@humanlayer/agentlayer-core'
 import { createPostToolUseHook, createPreToolUseHook } from '@humanlayer/agentlayer-core'
 import { ApplyPatchTool, EditTool, ReadTool, WriteTool } from '@humanlayer/agentlayer-core/interfaces'
@@ -97,6 +98,31 @@ function resolveTrackedPath(filePath: string, cwd?: string): string {
 	return expandPath(filePath, cwd)
 }
 
+function isMissingPathError(error: unknown): boolean {
+	const err = error as NodeJS.ErrnoException
+	return err.code === 'ENOENT' || err.code === 'ENOTDIR'
+}
+
+async function statIfExists(resolvedPath: string) {
+	try {
+		return await stat(resolvedPath)
+	} catch (error) {
+		if (isMissingPathError(error)) {
+			return undefined
+		}
+		throw error
+	}
+}
+
+async function readRegularFile(resolvedPath: string): Promise<string | undefined> {
+	const fileStat = await statIfExists(resolvedPath)
+	if (!fileStat?.isFile()) {
+		return undefined
+	}
+
+	return await readFile(resolvedPath, 'utf8')
+}
+
 function extractFilePath(input: Record<string, unknown>): string | undefined {
 	const path = input.file_path ?? input.filePath
 	return typeof path === 'string' ? path : undefined
@@ -159,31 +185,20 @@ function isRangeCovered(ranges: LineRange[], requestedRange: LineRange): boolean
 }
 
 async function computeFileHash(resolvedPath: string): Promise<string | undefined> {
-	const file = Bun.file(resolvedPath)
-	if (!(await file.exists())) {
+	const text = await readRegularFile(resolvedPath)
+	if (text === undefined) {
 		return undefined
 	}
 
-	const stat = await file.stat()
-	if (stat.isDirectory()) {
-		return undefined
-	}
-
-	return hashContent(await file.text())
+	return hashContent(text)
 }
 
 async function computeFileSnapshot(resolvedPath: string): Promise<{ hash: string; totalLines: number } | undefined> {
-	const file = Bun.file(resolvedPath)
-	if (!(await file.exists())) {
+	const text = await readRegularFile(resolvedPath)
+	if (text === undefined) {
 		return undefined
 	}
 
-	const stat = await file.stat()
-	if (stat.isDirectory()) {
-		return undefined
-	}
-
-	const text = await file.text()
 	return {
 		hash: hashContent(text),
 		totalLines: getTotalLines(text),
@@ -277,8 +292,8 @@ async function resolveWriteTargets(
 	const resolvedTargets: ResolvedWriteTarget[] = []
 
 	for (const target of targets) {
-		const file = Bun.file(target.resolvedPath)
-		const exists = await file.exists()
+		const fileStat = await statIfExists(target.resolvedPath)
+		const exists = fileStat !== undefined
 		const currentHash = exists ? await computeFileHash(target.resolvedPath) : undefined
 		resolvedTargets.push({
 			...target,
