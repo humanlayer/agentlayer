@@ -15,4 +15,5 @@ export const yellow = (text: string) => chalk.hex('#eab308')(text)
 
 export const dim = (text: string) => chalk.dim(text)
 export const bold = (text: string) => chalk.bold(text)
+export const italic = (text: string) => chalk.italic(text)
 export const reset_ = chalk.reset('')

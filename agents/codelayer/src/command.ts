@@ -1,5 +1,5 @@
 import { Command } from 'commander'
-import { CodingRenderer, extractLastAssistantText, renderFinish, startState } from '@humanlayer/agentlayer-core'
+import { createOutputRenderer, extractLastAssistantText, renderFinish, startState } from '@humanlayer/agentlayer-core'
 import { createSkillToolFromRepoDirs } from '@humanlayer/agentlayer-filesystem/tools'
 import { createCodelayerAgent } from './agent'
 import { DEFAULT_MODELS, type ProviderType, resolveExaApiKey, resolveModel } from './providers'
@@ -22,10 +22,9 @@ export function createCodelayerCommand(): Command {
 		.option('--prompt <prompt>', 'Run non-interactively with this prompt')
 		.option('--verbose', 'Show full tool results in CLI output')
 		.action(async (opts: CodelayerCliOptions) => {
-			const renderer = new CodingRenderer({
-				showResponse: opts.verbose,
-				toolLabelStyle: 'compact',
-				verboseToolResults: opts.verbose,
+			const renderer = createOutputRenderer({
+				writeLine: (line) => console.log(line),
+				includeTokenUsage: opts.verbose,
 			})
 			const provider = opts.provider as ProviderType
 			const modelId = opts.model ?? DEFAULT_MODELS[provider]
@@ -38,6 +37,7 @@ export function createCodelayerCommand(): Command {
 				rlm: opts.rlm,
 				exaApiKey,
 				skillTool,
+				onToolProgress: renderer.onToolProgress,
 			})
 
 			console.log(`codelayer - provider: ${provider}, model: ${modelId}${opts.rlm ? ' (RLM mode)' : ''}`)
@@ -46,15 +46,16 @@ export function createCodelayerCommand(): Command {
 			if (opts.prompt) {
 				const run = agent.run({ state: startState([{ role: 'user', content: opts.prompt }]) })
 				for await (const event of run) {
-					renderer.handleEvent(event)
+					renderer.onEvent(event)
 				}
 				const result = await run.result
+				renderer.flush()
 				const finalText = extractLastAssistantText(result).trim()
 				console.log(`__CODELAYER_FINAL_MESSAGE_START__${finalText}__CODELAYER_FINAL_MESSAGE_END__`)
 				renderFinish(result)
 				process.exit(result.finishReason === 'error' ? 1 : 0)
 			}
 
-			runInteractive(agent, undefined, renderer)
+			void runInteractive(agent, undefined, renderer)
 		})
 }

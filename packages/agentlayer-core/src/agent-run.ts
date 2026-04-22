@@ -48,6 +48,23 @@ export type AgentEvent =
 			stepIndex: number
 	  } & AgentEventMeta)
 	| ({
+			type: 'toolInputStart'
+			id: string
+			toolName: string
+			stepIndex: number
+	  } & AgentEventMeta)
+	| ({
+			type: 'toolInputDelta'
+			id: string
+			delta: string
+			stepIndex: number
+	  } & AgentEventMeta)
+	| ({
+			type: 'toolInputEnd'
+			id: string
+			stepIndex: number
+	  } & AgentEventMeta)
+	| ({
 			type: 'reasoningDelta'
 			id: string
 			text: string

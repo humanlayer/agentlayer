@@ -83,7 +83,12 @@ function toStreamParts(part: LanguageModelV3Content): LanguageModelV3StreamPart[
 			]
 		}
 		case 'tool-call':
-			return [part]
+			return [
+				{ type: 'tool-input-start', id: part.toolCallId, toolName: part.toolName },
+				{ type: 'tool-input-delta', id: part.toolCallId, delta: part.input },
+				{ type: 'tool-input-end', id: part.toolCallId },
+				part,
+			]
 		default:
 			return []
 	}

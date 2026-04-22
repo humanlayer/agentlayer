@@ -1,21 +1,63 @@
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+export type WorkspaceReleaseEntry = {
+    name: string;
+    dir: string;
+};
+
 export const publishablePackages = [
-    "packages/agentlayer-core",
-    "packages/agentlayer-filesystem",
-    "packages/agentlayer-justbash",
-    "packages/yjs-fs",
-] as const;
+    {
+        name: "@humanlayer/agentlayer-core",
+        dir: "packages/agentlayer-core",
+    },
+    {
+        name: "@humanlayer/agentlayer-filesystem",
+        dir: "packages/agentlayer-filesystem",
+    },
+    {
+        name: "@humanlayer/agentlayer-justbash",
+        dir: "packages/agentlayer-justbash",
+    },
+    {
+        name: "@humanlayer/yjs-fs",
+        dir: "packages/yjs-fs",
+    },
+] as const satisfies ReadonlyArray<WorkspaceReleaseEntry>;
 
 export const internalPackages = [
-    "packages/docs",
-    "agents/yjs-fs-agents",
-    "agents/docs-agent",
-] as const;
+    {
+        name: "@humanlayer/agentlayer-docs",
+        dir: "packages/docs",
+    },
+    {
+        name: "@humanlayer/docs-agent",
+        dir: "agents/docs-agent",
+    },
+    {
+        name: "@humanlayer/yjs-fs-agents",
+        dir: "agents/yjs-fs-agents",
+    },
+] as const satisfies ReadonlyArray<WorkspaceReleaseEntry>;
 
 export const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 export const releaseStageDir = join(repoRoot, ".release");
 export const manifestName = "package.json";
 
-export type PublishablePackageDir = (typeof publishablePackages)[number];
+export type PublishablePackage = (typeof publishablePackages)[number];
+export type PublishablePackageName = PublishablePackage["name"];
+export type PublishablePackageDir = PublishablePackage["dir"];
+
+const workspacePackages = [...publishablePackages, ...internalPackages] as const;
+
+export function getPublishablePackageByDir(packageDir: string) {
+    return publishablePackages.find((pkg) => pkg.dir === packageDir) ?? null;
+}
+
+export function getWorkspacePackageByName(packageName: string) {
+    return workspacePackages.find((pkg) => pkg.name === packageName) ?? null;
+}
+
+export function getStagedPackageDir(packageDir: string) {
+    return join(releaseStageDir, packageDir);
+}

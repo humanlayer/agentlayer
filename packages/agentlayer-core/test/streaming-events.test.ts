@@ -4,12 +4,19 @@ import { z } from 'zod'
 import { Agent, type AgentEvent, defineTool, startState } from '../src'
 import { assistantText, assistantWithToolCalls, mockResponse, mockStreamingModel, userMessage } from './mocks'
 
-const echoTool = defineTool({
-	name: 'echo',
-	description: 'Echo input',
-	input: z.object({ text: z.string() }),
-	execute: async (input) => input.text,
-})
+	const echoTool = defineTool({
+		name: 'echo',
+		description: 'Echo input',
+		input: z.object({ text: z.string() }),
+		execute: async (input) => input.text,
+	})
+
+	const bashTool = defineTool({
+		name: 'bash',
+		description: 'Run bash',
+		input: z.object({ command: z.string() }),
+		execute: async () => 'ok',
+	})
 
 describe('streaming events', () => {
 	test('stream=true emits root text events in order and preserves final transcript parity', async () => {
@@ -38,6 +45,9 @@ describe('streaming events', () => {
 		const eventTypes = events.map((event) => event.type)
 		expect(eventTypes).toEqual([
 			'stepStart',
+			'toolInputStart',
+			'toolInputDelta',
+			'toolInputEnd',
 			'stepFinish',
 			'message',
 			'tokenUsage',
@@ -113,5 +123,42 @@ describe('streaming events', () => {
 			content: [{ type: 'reasoning', text: 'Thinking...' }],
 		})
 		expect(result.state.messages).toEqual([userMessage('think'), result.newMessages[0]!])
+	})
+
+	test('stream=true emits tool input start/delta/end events for streamed tool args', async () => {
+		const agent = new Agent({
+			model: mockStreamingModel([
+				mockResponse([
+					{ type: 'tool-call', toolCallId: 'call-bash-1', toolName: 'bash', input: JSON.stringify({ command: 'echo hi' }) },
+				]),
+				assistantText('Done.'),
+			]),
+			tools: { bash: bashTool },
+		})
+
+		const run = agent.run({ state: startState([userMessage('run bash')]), stream: true })
+		const events: AgentEvent[] = []
+		for await (const event of run) {
+			events.push(event)
+		}
+
+		const eventTypes = events.map((event) => event.type)
+		expect(eventTypes).toContain('toolInputStart')
+		expect(eventTypes).toContain('toolInputDelta')
+		expect(eventTypes).toContain('toolInputEnd')
+
+		const toolInputStart = events.find(
+			(event): event is Extract<AgentEvent, { type: 'toolInputStart' }> => event.type === 'toolInputStart',
+		)
+		const toolInputDelta = events.find(
+			(event): event is Extract<AgentEvent, { type: 'toolInputDelta' }> => event.type === 'toolInputDelta',
+		)
+		const toolInputEnd = events.find(
+			(event): event is Extract<AgentEvent, { type: 'toolInputEnd' }> => event.type === 'toolInputEnd',
+		)
+
+		expect(toolInputStart).toMatchObject({ toolName: 'bash', stepIndex: 0 })
+		expect(toolInputDelta?.delta).toContain('echo hi')
+		expect(toolInputEnd?.id).toBe(toolInputStart?.id)
 	})
 })

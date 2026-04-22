@@ -20,7 +20,6 @@ export default withMermaid(
 			],
 		},
 		themeConfig: {
-			appearance: false,
 			search: {
 				provider: 'local',
 			},

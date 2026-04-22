@@ -16,9 +16,9 @@ import {
 } from './types'
 
 const CATALOG_KEY = 'catalog'
-const ENTRIES_KEY = 'entries'
-const CHILDREN_KEY = 'children'
-const PATH_INDEX_KEY = 'pathIndex'
+const ENTRIES_KEY = 'catalog.entries'
+const CHILDREN_KEY = 'catalog.children'
+const PATH_INDEX_KEY = 'catalog.pathIndex'
 const ROOT_ENTRY_ID_KEY = 'rootEntryId'
 const ROOT_ENTRY_ID = 'root'
 
@@ -29,17 +29,22 @@ type EntryRecord = Y.Map<unknown>
 // It keeps all metadata needed to answer namespace questions without loading
 // file content docs:
 // - `entries`: entry metadata keyed by stable entry id
-// - `children`: per-directory name -> entry id maps
+// - `children`: a flattened directoryId/name -> entry id index
 // - `pathIndex`: convenience index for fast absolute-path lookups
 // - `rootEntryId`: stable identity for `/`
 //
 // File content itself lives elsewhere; this file only manages namespace state.
+//
+// The child index is intentionally flattened instead of storing nested Y.Maps per
+// directory. Nested shared types created independently on two replicas can race
+// during sync and cause one side to keep the wrong child map. A flattened index
+// avoids that whole class of replica-initialization bugs.
 
 export type CatalogState = {
 	doc: Y.Doc
 	catalog: Y.Map<unknown>
 	entries: Y.Map<EntryRecord>
-	children: Y.Map<Y.Map<EntryId>>
+	children: Y.Map<EntryId>
 	pathIndex: Y.Map<EntryId>
 	rootEntryId: EntryId
 }
@@ -72,14 +77,14 @@ export function normalizePath(path: string): string {
 export function createCatalogState(doc: Y.Doc): CatalogState {
 	// Create or recover the long-lived catalog collections from the root Y.Doc.
 	const catalog = doc.getMap<unknown>(CATALOG_KEY)
-	const entries = getOrCreateMap<EntryRecord>(catalog, ENTRIES_KEY)
-	const children = getOrCreateMap<Y.Map<EntryId>>(catalog, CHILDREN_KEY)
-	const pathIndex = getOrCreateMap<EntryId>(catalog, PATH_INDEX_KEY)
+	const entries = doc.getMap<EntryRecord>(ENTRIES_KEY)
+	const children = doc.getMap<EntryId>(CHILDREN_KEY)
+	const pathIndex = doc.getMap<EntryId>(PATH_INDEX_KEY)
 
 	const existingRootEntryId = catalog.get(ROOT_ENTRY_ID_KEY)
 	const rootEntryId = typeof existingRootEntryId === 'string' ? existingRootEntryId : ROOT_ENTRY_ID
 
-	doc.transact(() => {
+		doc.transact(() => {
 		// Ensure `/` always exists as a first-class directory entry with a stable id.
 		if (catalog.get(ROOT_ENTRY_ID_KEY) !== rootEntryId) {
 			catalog.set(ROOT_ENTRY_ID_KEY, rootEntryId)
@@ -87,10 +92,6 @@ export function createCatalogState(doc: Y.Doc): CatalogState {
 
 		if (!entries.has(rootEntryId)) {
 			entries.set(rootEntryId, createEntryRecord(createDirectoryEntry(rootEntryId, null, '', Date.now())))
-		}
-
-		if (!children.has(rootEntryId)) {
-			children.set(rootEntryId, new Y.Map<EntryId>())
 		}
 
 		if (pathIndex.get('/') !== rootEntryId) {
@@ -126,8 +127,7 @@ export function resolvePath(state: CatalogState, path: string): EntryId | undefi
 	let currentEntryId = state.rootEntryId
 
 	for (const segment of splitPath(normalizedPath)) {
-		const childEntries = getChildMap(state, currentEntryId)
-		const nextEntryId = childEntries?.get(segment)
+		const nextEntryId = state.children.get(childLookupKey(currentEntryId, segment))
 
 		if (typeof nextEntryId !== 'string') {
 			return undefined
@@ -221,13 +221,8 @@ export function listDirectoryEntries(state: CatalogState, directoryId: EntryId):
 	}
 
 	const directoryPath = getPathForEntryId(state, directoryId) ?? '/'
-	const childEntries = getChildMap(state, directoryId)
 
-	if (!childEntries) {
-		return []
-	}
-
-	return Array.from(childEntries.entries())
+	return getChildrenForDirectory(state, directoryId)
 		.sort(([leftName], [rightName]) => leftName.localeCompare(rightName))
 		.flatMap(([name, childEntryId]) => {
 			const childEntry = getEntry(state, childEntryId)
@@ -286,8 +281,7 @@ export function mkdirInCatalog(state: CatalogState, path: string): EntryId {
 
 	state.doc.transact(() => {
 		state.entries.set(entryId, createEntryRecord(entry))
-		ensureChildMap(state, parentEntryId).set(directoryName, entryId)
-		ensureChildMap(state, entryId)
+		state.children.set(childLookupKey(parentEntryId, directoryName), entryId)
 		state.pathIndex.set(normalizedPath, entryId)
 		setEntryModifiedAt(state, parentEntryId, createdAt)
 	})
@@ -318,7 +312,7 @@ export function createFileInCatalog(state: CatalogState, path: string, contentId
 
 	state.doc.transact(() => {
 		state.entries.set(entryId, createEntryRecord(entry))
-		ensureChildMap(state, parentEntryId).set(fileName, entryId)
+		state.children.set(childLookupKey(parentEntryId, fileName), entryId)
 		state.pathIndex.set(normalizedPath, entryId)
 		setEntryModifiedAt(state, parentEntryId, createdAt)
 	})
@@ -371,9 +365,8 @@ export function renameInCatalog(state: CatalogState, fromPath: string, toPath: s
 		nextRecord.set('name', nextName)
 		nextRecord.set('modifiedAt', nextModifiedAt)
 
-		const previousParentChildren = ensureChildMap(state, previousParentId)
-		previousParentChildren.delete(previousName)
-		ensureChildMap(state, destinationParentId).set(nextName, lookup.entryId)
+		state.children.delete(childLookupKey(previousParentId, previousName))
+		state.children.set(childLookupKey(destinationParentId, nextName), lookup.entryId)
 
 		removePathIndexForEntry(state, lookup.entryId, normalizedFromPath)
 		populatePathIndexForEntry(state, lookup.entryId, normalizedToPath)
@@ -411,9 +404,8 @@ export function deleteEntryInCatalog(state: CatalogState, path: string): EntryMe
 	const deletedAt = Date.now()
 
 	state.doc.transact(() => {
-		ensureChildMap(state, parentId).delete(lookup.entry.name)
+		state.children.delete(childLookupKey(parentId, lookup.entry.name))
 		state.entries.delete(lookup.entryId)
-		state.children.delete(lookup.entryId)
 		removePathIndexForEntry(state, lookup.entryId, normalizedPath)
 		setEntryModifiedAt(state, parentId, deletedAt)
 	})
@@ -454,9 +446,9 @@ function createDirectoryEntry(
 }
 
 function refreshCatalogState(state: CatalogState): void {
-	state.entries = getOrCreateMap<EntryRecord>(state.catalog, ENTRIES_KEY)
-	state.children = getOrCreateMap<Y.Map<EntryId>>(state.catalog, CHILDREN_KEY)
-	state.pathIndex = getOrCreateMap<EntryId>(state.catalog, PATH_INDEX_KEY)
+	state.entries = state.doc.getMap<EntryRecord>(ENTRIES_KEY)
+	state.children = state.doc.getMap<EntryId>(CHILDREN_KEY)
+	state.pathIndex = state.doc.getMap<EntryId>(PATH_INDEX_KEY)
 
 	const rootEntryId = state.catalog.get(ROOT_ENTRY_ID_KEY)
 	if (typeof rootEntryId === 'string') {
@@ -549,24 +541,6 @@ function parseEntryRecord(record: EntryRecord): EntryMetadata | undefined {
 		modifiedAt,
 	}
 }
-
-function getOrCreateMap<Value>(container: Y.Map<unknown>, key: string): Y.Map<Value> {
-	const existingValue = container.get(key)
-
-	if (existingValue instanceof Y.Map) {
-		return existingValue as Y.Map<Value>
-	}
-
-	const map = new Y.Map<Value>()
-	container.set(key, map)
-	return map
-}
-
-function getChildMap(state: CatalogState, directoryId: EntryId): Y.Map<EntryId> | undefined {
-	const childMap = state.children.get(directoryId)
-	return childMap instanceof Y.Map ? childMap : undefined
-}
-
 function getRequiredEntryRecord(state: CatalogState, entryId: EntryId): EntryRecord {
 	const record = state.entries.get(entryId)
 
@@ -576,18 +550,6 @@ function getRequiredEntryRecord(state: CatalogState, entryId: EntryId): EntryRec
 	}
 
 	return record
-}
-
-function ensureChildMap(state: CatalogState, directoryId: EntryId): Y.Map<EntryId> {
-	const existingChildMap = getChildMap(state, directoryId)
-
-	if (existingChildMap) {
-		return existingChildMap
-	}
-
-	const childMap = new Y.Map<EntryId>()
-	state.children.set(directoryId, childMap)
-	return childMap
 }
 
 function setEntryModifiedAt(state: CatalogState, entryId: EntryId, modifiedAt: number): void {
@@ -635,15 +597,28 @@ function removePathIndexForEntry(state: CatalogState, entryId: EntryId, rootPath
 function populatePathIndexForEntry(state: CatalogState, entryId: EntryId, rootPath: string): void {
 	state.pathIndex.set(rootPath, entryId)
 
-	const childEntries = getChildMap(state, entryId)
-
-	if (!childEntries) {
-		return
-	}
-
-	for (const [name, childEntryId] of childEntries.entries()) {
+	for (const [name, childEntryId] of getChildrenForDirectory(state, entryId)) {
 		populatePathIndexForEntry(state, childEntryId, joinPath(rootPath, name))
 	}
+}
+
+function getChildrenForDirectory(state: CatalogState, directoryId: EntryId): Array<[string, EntryId]> {
+	const prefix = `${directoryId}\0`
+	const children: Array<[string, EntryId]> = []
+
+	for (const [key, childEntryId] of state.children.entries()) {
+		if (!key.startsWith(prefix)) {
+			continue
+		}
+
+		children.push([key.slice(prefix.length), childEntryId])
+	}
+
+	return children
+}
+
+function childLookupKey(directoryId: EntryId, name: string): string {
+	return `${directoryId}\0${name}`
 }
 
 function assertNoDescendantMove(

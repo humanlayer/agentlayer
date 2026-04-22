@@ -143,3 +143,4 @@ vite.config.ts.timestamp-*
 
 # Riptide artifacts (cloud-synced)
 .humanlayer/tasks/
+.env

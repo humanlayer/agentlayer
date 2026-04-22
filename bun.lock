@@ -32,6 +32,21 @@
         "typescript": "^5",
       },
     },
+    "agents/docs-agent": {
+      "name": "@humanlayer/docs-agent",
+      "version": "0.0.0",
+      "devDependencies": {
+        "@ai-sdk/anthropic": "catalog:",
+        "@humanlayer/agentlayer-core": "workspace:*",
+        "@humanlayer/agentlayer-filesystem": "workspace:*",
+        "@types/bun": "latest",
+        "commander": "catalog:",
+        "zod": "catalog:",
+      },
+      "peerDependencies": {
+        "typescript": "^5",
+      },
+    },
     "agents/yjs-fs-agents": {
       "name": "@humanlayer/yjs-fs-agents",
       "devDependencies": {
@@ -304,6 +319,8 @@
     "@humanlayer/agentlayer-justbash": ["@humanlayer/agentlayer-justbash@workspace:packages/agentlayer-justbash"],
 
     "@humanlayer/codelayer": ["@humanlayer/codelayer@workspace:agents/codelayer"],
+
+    "@humanlayer/docs-agent": ["@humanlayer/docs-agent@workspace:agents/docs-agent"],
 
     "@humanlayer/yjs-fs": ["@humanlayer/yjs-fs@workspace:packages/yjs-fs"],
 

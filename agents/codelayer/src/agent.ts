@@ -26,6 +26,7 @@ export interface CodelayerAgentOptions {
 	model: LanguageModel
 	cwd: string
 	hooks?: AgentConfig['hooks']
+	onToolProgress?: AgentConfig['onToolProgress']
 	systemPromptAdditions?: string[]
 	rlm?: boolean
 	exaApiKey?: string
@@ -85,6 +86,7 @@ export async function createCodelayerAgent(opts: CodelayerAgentOptions): Promise
 		model,
 		cwd,
 		hooks,
+		onToolProgress,
 		systemPromptAdditions = [],
 		rlm = false,
 		exaApiKey,
@@ -141,6 +143,7 @@ export async function createCodelayerAgent(opts: CodelayerAgentOptions): Promise
 			tools,
 			system,
 			hooks: mergedHooks,
+			onToolProgress,
 			stopWhen: [doomLoop(3)],
 			providerOptions,
 		})
@@ -174,6 +177,7 @@ export async function createCodelayerAgent(opts: CodelayerAgentOptions): Promise
 		tools,
 		system,
 		hooks: mergedHooks,
+		onToolProgress,
 		stopWhen: [doomLoop(3)],
 		providerOptions,
 	})
