@@ -2,6 +2,8 @@
 
 Thanks for your interest in AgentLayer.
 
+Maintainers should see `MAINTAINERS.md` for maintainer-only Vouch commands and moderation workflows.
+
 ## Contribution Policy
 
 - Issues are open to everyone except users who have been explicitly denounced.
