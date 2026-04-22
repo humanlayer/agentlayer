@@ -100,6 +100,9 @@ export class AgentRun implements AsyncIterable<AgentEvent> {
 	// Lifecycle state — set by executeLoop, not the constructor
 	private _running = true
 
+	/** Whether this run should surface live model streaming events. */
+	stream = false
+
 	/** Optional callback fired on every pushEvent — used by executeLoop to process forwarded child events. */
 	onEvent?: (event: AgentEvent) => void
 

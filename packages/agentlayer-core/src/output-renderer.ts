@@ -1,6 +1,5 @@
 import type { ModelMessage } from 'ai'
 import type { AgentEvent } from './agent-run'
-import type { ToolProgressData } from './define-tool'
 import type { TokenUsageEvent } from './token-usage'
 import * as color from './color'
 
@@ -14,14 +13,7 @@ export interface OutputRendererOptions {
 
 export interface OutputRenderer {
 	onEvent(event: AgentEvent): void
-	onToolProgress(toolCallId: string, toolName: string, data: ToolProgressData): void
 	flush(): void
-}
-
-type ToolProgressState = {
-	toolName: string
-	sawLabel: boolean
-	sawOutput: boolean
 }
 
 type LiveToolInputState = {
@@ -125,8 +117,6 @@ function compactInput(rawInput: unknown): string {
 export function createOutputRenderer(options: OutputRendererOptions): OutputRenderer {
 	const textBuffers = new Map<string, string>()
 	const thinkingBuffers = new Map<string, string>()
-	const toolOutputBuffers = new Map<string, string>()
-	const toolProgressState = new Map<string, ToolProgressState>()
 	const liveToolInputs = new Map<string, LiveToolInputState>()
 	const sawLiveAssistantContentByScope = new Set<string>()
 	const sawLiveToolInputByScope = new Set<string>()
@@ -164,27 +154,6 @@ export function createOutputRenderer(options: OutputRendererOptions): OutputRend
 
 	const scopeKey = (parts: { agentId?: string; parentToolCallId?: string }): string => {
 		return [parts.agentId ?? 'root', parts.parentToolCallId ?? 'root'].join(':')
-	}
-
-	const ensureToolProgressState = (toolCallId: string, toolName: string): ToolProgressState => {
-		const existing = toolProgressState.get(toolCallId)
-		if (existing) {
-			existing.toolName = toolName
-			return existing
-		}
-		const created: ToolProgressState = { toolName, sawLabel: false, sawOutput: false }
-		toolProgressState.set(toolCallId, created)
-		return created
-	}
-
-	const ensureToolLabel = (toolCallId: string, toolName: string): ToolProgressState => {
-		const state = ensureToolProgressState(toolCallId, toolName)
-		if (!state.sawLabel) {
-			flushActiveToolLine()
-			write(`${formatToolLabel(toolName)}\n`)
-			state.sawLabel = true
-		}
-		return state
 	}
 
 	const ensureToolInputState = (toolCallId: string, toolName: string): LiveToolInputState => {
@@ -291,14 +260,6 @@ export function createOutputRenderer(options: OutputRendererOptions): OutputRend
 			thinkingBuffers.delete(key)
 		}
 		for (const [toolCallId] of liveToolInputs) flushToolInputLine(toolCallId)
-		for (const [toolCallId, buffer] of toolOutputBuffers) {
-			const toolName = toolProgressState.get(toolCallId)?.toolName ?? 'tool'
-			ensureToolLabel(toolCallId, toolName)
-			if (buffer.length > 0) {
-				writeLine(`  ${buffer.replace(/\r$/, '')}`)
-			}
-			toolOutputBuffers.delete(toolCallId)
-		}
 	}
 
 	const emitMessage = (message: ModelMessage, event: AgentEvent): void => {
@@ -358,9 +319,7 @@ export function createOutputRenderer(options: OutputRendererOptions): OutputRend
 			if (!includeToolResults) return
 			for (const part of message.content) {
 				if (part.type !== 'tool-result') continue
-				const toolState = toolProgressState.get(part.toolCallId)
-				if (toolState?.sawOutput) continue
-				ensureToolLabel(part.toolCallId, part.toolName)
+				writeLine(formatToolLabel(part.toolName))
 
 				const outputText = renderToolResultOutput(part.output)
 				for (const line of outputText.split('\n')) {
@@ -468,25 +427,6 @@ export function createOutputRenderer(options: OutputRendererOptions): OutputRend
 				case 'stepStart':
 					return
 			}
-		},
-		onToolProgress(toolCallId, toolName, data) {
-			if (!includeToolResults) return
-			const current = ensureToolLabel(toolCallId, toolName)
-
-			if (data.type === 'status') {
-				toolProgressState.set(toolCallId, current)
-				writeLine(`  ${data.message}`)
-				return
-			}
-
-			if (data.type === 'output') {
-				current.sawOutput = true
-				toolProgressState.set(toolCallId, current)
-				emitBufferedLines(toolOutputBuffers, toolCallId, data.content, '  ')
-				return
-			}
-
-			toolProgressState.set(toolCallId, current)
 		},
 		flush() {
 			flushAllBuffers()

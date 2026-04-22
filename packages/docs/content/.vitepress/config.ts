@@ -28,8 +28,19 @@ export default withMermaid(
 				{
 					text: 'Introduction',
 					items: [
-						{ text: 'Introduction', link: '/' },
 						{ text: 'Motivation', link: '/introduction/motivation' },
+						{ text: 'Introduction', link: '/' },
+						{ text: 'Getting Started', link: '/introduction/getting-started' },
+						{ text: 'Architecture', link: '/introduction/architecture' },
+					],
+				},
+				{
+					text: 'Core Concepts',
+					items: [
+						{ text: 'Tools', link: '/core/tools' },
+						{ text: 'Hooks', link: '/core/hooks' },
+						{ text: 'State', link: '/core/state' },
+						{ text: 'Run API', link: '/core/run-api' },
 					],
 				},
 				{

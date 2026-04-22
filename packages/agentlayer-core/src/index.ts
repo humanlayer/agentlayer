@@ -17,7 +17,6 @@ export {
 	type ToolContextFor,
 	type ToolInterface,
 	type ToolInterfaceConfig,
-	type ToolProgressData,
 	type ToolStateAccessors,
 } from './define-tool'
 export { AgentError, type AgentErrorType, InvalidMessagesError } from './errors'

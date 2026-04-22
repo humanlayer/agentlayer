@@ -5,7 +5,7 @@ type ProviderOptions = Parameters<typeof streamText>[0]['providerOptions']
 type StreamPart = TextStreamPart<any>
 
 import { type AgentEvent, AgentRun } from './agent-run'
-import type { Tool, ToolProgressData } from './define-tool'
+import type { Tool } from './define-tool'
 import { AgentError, InvalidMessagesError } from './errors'
 import { type ExecuteToolCallContext, executeToolCall, type ToolCallResult } from './execute-tool-call'
 import {
@@ -39,7 +39,6 @@ export interface AgentConfig<TTools extends Record<string, Tool<any, any>> = Rec
 	stopWhen?: StopWhen
 
 	modelProvider?: ModelProvider
-	onToolProgress?: (toolCallId: string, toolName: string, data: ToolProgressData) => void
 	/** Called when the agent run finishes with an error. Observe-only — cannot prevent the error. */
 	onError?: (error: AgentError, result: RunResult) => void | Promise<void>
 	/** Called when the agent run finishes for any reason. Always fires, including on errors. */
@@ -217,7 +216,6 @@ export class Agent<TTools extends Record<string, Tool<any, any>> = Record<string
 	private maxStepsLimit: number | undefined
 	private stopWhen: StopWhen | undefined
 	private aiSdkTools: ReturnType<typeof convertTools>
-	private onToolProgress: AgentConfig['onToolProgress']
 	private toolChoice: ToolChoice<Record<string, unknown>> | undefined
 	private providerOptions: ProviderOptions | undefined
 	private hooks: AgentConfig['hooks']
@@ -237,7 +235,6 @@ export class Agent<TTools extends Record<string, Tool<any, any>> = Record<string
 		this.maxStepsLimit = config.maxSteps
 		this.stopWhen = config.stopWhen
 		this.aiSdkTools = convertTools(config.tools)
-		this.onToolProgress = config.onToolProgress
 		this.onError = config.onError
 		this.onStop = config.onStop
 		this.onApprovalRequested = config.onApprovalRequested
@@ -248,6 +245,7 @@ export class Agent<TTools extends Record<string, Tool<any, any>> = Record<string
 
 	run(options: RunOptions): AgentRun {
 		const agentRun = new AgentRun()
+		agentRun.stream = options.stream === true
 		this.executeLoop(options, agentRun)
 		return agentRun
 	}
@@ -313,7 +311,6 @@ export class Agent<TTools extends Record<string, Tool<any, any>> = Record<string
 				tools: this.tools,
 				messages: allMessages,
 				signal,
-				onToolProgress: this.onToolProgress,
 				toolState,
 				subAgents,
 				agentRun,

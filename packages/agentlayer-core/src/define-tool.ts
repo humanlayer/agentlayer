@@ -4,22 +4,12 @@ import type { HookStopResult, StopOptions } from './hooks'
 import type { AgentState } from './state'
 
 /**
- * Typed payloads for live progress updates during tool execution.
- * Tools call `ctx.progress(data)` to push updates to the caller (UI, WebSocket, logs).
- * If the agent has no `onToolProgress` handler, `ctx.progress` is a no-op.
- */
-export type ToolProgressData =
-	| { type: 'output'; content: string }
-	| { type: 'status'; message: string }
-	| { type: 'custom'; data: Record<string, unknown> }
-
-/**
  * Context provided to every tool during execution.
  *
  * Tools receive a fresh `ToolContext` on each invocation. The context gives
  * tools read access to the conversation so far, a way to queue deferred
  * mutations to that conversation, cooperative cancellation via `signal`,
- * a channel for streaming progress updates, and the ability to stop the loop.
+ * and the ability to stop the loop.
  */
 export interface ToolContext {
 	/**
@@ -71,11 +61,12 @@ export interface ToolContext {
 	signal: AbortSignal
 
 	/**
-	 * Push a live progress update during execution (e.g. streaming output,
-	 * status changes). These are forwarded to the agent's `onToolProgress`
-	 * handler if one was provided; otherwise this is a silent no-op.
+	 * Whether the current run should surface live model streaming events.
+	 *
+	 * Sub-agent tools can propagate this flag to nested `agent.run(...)` calls so
+	 * child model deltas appear on the same iterator surface as the parent run.
 	 */
-	progress: (data: ToolProgressData) => void
+	stream?: boolean
 
 	/**
 	 * Request the agent loop to stop after this tool call completes.
@@ -301,12 +292,11 @@ export function defineToolInterface<TInput, TOutput = string>(
 				serialize: config.serialize
 					? (raw: TOutput, input: TInput) =>
 							config.serialize!(raw, input, {
-								getContextWindow: () => [],
-								updateContextWindow: () => {},
-								signal: new AbortController().signal,
-								progress: () => {},
-								stop: (opts) => ({ type: 'stop', ...opts }),
-								getContextWindowTokens: () => 0,
+							getContextWindow: () => [],
+							updateContextWindow: () => {},
+							signal: new AbortController().signal,
+							stop: (opts) => ({ type: 'stop', ...opts }),
+							getContextWindowTokens: () => 0,
 								getContextWindowLimit: () => undefined,
 							} as ToolContext)
 					: undefined,

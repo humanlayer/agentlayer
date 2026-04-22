@@ -6,7 +6,6 @@ import type {
 	SubAgentRunHandle,
 	Tool,
 	ToolContext,
-	ToolProgressData,
 } from './define-tool'
 import type { HookStopResult, StopOptions } from './hooks'
 import { buildToolResultMessage } from './messages'
@@ -22,7 +21,6 @@ export interface ExecuteToolCallContext {
 	tools: Record<string, Tool<any, any>>
 	messages: ReadonlyArray<ModelMessage>
 	signal: AbortSignal
-	onToolProgress?: (toolCallId: string, toolName: string, data: ToolProgressData) => void
 	/** Current tool state map, keyed by each stateful tool's stateKey. */
 	toolState?: Record<string, unknown>
 	/** Parent's sub-agent states — used by getSubAgentState on ToolContext. */
@@ -82,7 +80,7 @@ export async function executeToolCall(tc: ToolCallRef, ctx: ExecuteToolCallConte
 		getContextWindow: () => Object.freeze([...ctx.messages]) as ReadonlyArray<ModelMessage>,
 		updateContextWindow: (cb) => pendingUpdates.push(cb),
 		signal: ctx.signal,
-		progress: (data) => ctx.onToolProgress?.(tc.toolCallId, tc.toolName, data),
+		stream: ctx.agentRun?.stream,
 		stop: (options?: StopOptions): HookStopResult => {
 			stopRequestedOptions = options ?? {}
 			return { type: 'stop', ...options }

@@ -119,7 +119,7 @@ export function createSubagentsTool(opts: { agents: SubAgentConfig[]; onChildEve
 			}
 
 			// Run the child agent
-			const childRun = config.agent.run({ state: childState, signal: ctx.signal })
+			const childRun = config.agent.run({ state: childState, signal: ctx.signal, stream: ctx.stream })
 			let result: RunResult
 
 			// Use awaitSubAgent for event forwarding if available, otherwise fallback

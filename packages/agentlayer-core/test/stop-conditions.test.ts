@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import { z } from 'zod'
 import {
 	Agent,
+	type AgentEvent,
 	consecutiveToolFailures,
 	defineTool,
 	doomLoop,
@@ -13,7 +14,7 @@ import {
 	toolCompleted,
 	totalToolFailures,
 } from '../src'
-import { assistantText, assistantWithToolCall, getToolResults, mockModel, userMessage } from './mocks'
+import { assistantText, assistantWithToolCall, getToolResults, mockModel, mockStreamingModel, userMessage } from './mocks'
 
 const bashTool = defineTool({
 	name: 'bash',
@@ -125,6 +126,52 @@ describe('toolCalled', () => {
 
 		expect(result.finishReason).toBe('complete')
 		expect(result.stopCondition).toBeUndefined()
+	})
+
+	test('streaming deltas do not satisfy toolCalled stop conditions before finalized tool calls exist', async () => {
+		let toolWasExecuted = false
+		const deployTool = defineTool({
+			name: 'deploy',
+			description: 'Deploy to production',
+			input: z.object({}),
+			execute: async () => {
+				toolWasExecuted = true
+				return 'Deployed.'
+			},
+		})
+
+		const agent = new Agent({
+			model: mockStreamingModel([assistantWithToolCall('deploy', {})]),
+			tools: { deploy: deployTool },
+			stopWhen: toolCalled('deploy'),
+		})
+
+		const run = agent.run({ state: startState([userMessage('deploy now')]), stream: true })
+		const events: AgentEvent[] = []
+		for await (const event of run) {
+			events.push(event)
+		}
+
+		const result = await run.result
+		expect(result.finishReason).toBe('stopCondition')
+		expect(result.stopCondition?.name).toBe('toolCalled:deploy')
+		expect(toolWasExecuted).toBe(false)
+
+		const eventTypes = events.map((event) => event.type)
+		expect(eventTypes).toContain('toolInputDelta')
+		expect(eventTypes).toContain('stepFinish')
+		expect(eventTypes).toContain('message')
+		expect(eventTypes).not.toContain('approvalRequested')
+		expect(eventTypes.indexOf('toolInputDelta')).toBeLessThan(eventTypes.indexOf('stepFinish'))
+		expect(eventTypes.indexOf('stepFinish')).toBeLessThan(eventTypes.indexOf('message'))
+
+		const toolMessages = result.state.messages.filter((message) => message.role === 'tool')
+		expect(toolMessages).toHaveLength(0)
+
+		const lastMessage = result.state.messages[result.state.messages.length - 1]!
+		expect(lastMessage.role).toBe('assistant')
+		const content = lastMessage.content as Array<{ type: string; toolName?: string }>
+		expect(content.some((part) => part.type === 'tool-call' && part.toolName === 'deploy')).toBe(true)
 	})
 })
 

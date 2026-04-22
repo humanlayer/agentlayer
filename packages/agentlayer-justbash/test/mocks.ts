@@ -122,7 +122,6 @@ export function makeToolContext(overrides?: Partial<ToolContext>): ToolContext {
 		getContextWindow: () => [],
 		updateContextWindow: () => {},
 		signal: new AbortController().signal,
-		progress: () => {},
 		stop: (opts) => ({ type: 'stop', ...opts }),
 		getContextWindowTokens: () => 0,
 		getContextWindowLimit: () => undefined,

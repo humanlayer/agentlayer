@@ -9,7 +9,7 @@ import type {
 import type { ModelMessage } from 'ai'
 import { simulateReadableStream } from 'ai/test'
 import { z } from 'zod'
-import { Agent, defineTool, maxSteps, startState, type ToolProgressData, toolCompleted } from '../src'
+import { Agent, defineTool, maxSteps, startState, toolCompleted } from '../src'
 import { assistantText, assistantWithToolCall, mockModel, userMessage } from './mocks'
 
 const MOCK_USAGE: LanguageModelV3GenerateResult['usage'] = {
@@ -280,65 +280,6 @@ describe('AbortSignal', () => {
 		await agent.run({ state: startState([userMessage('go')]), signal: controller.signal }).result
 
 		expect(capturedSignal).toBe(controller.signal)
-	})
-})
-
-// ─── onToolProgress ───────────────────────────────────────────────────────────
-
-describe('onToolProgress', () => {
-	test('ctx.progress calls onToolProgress with toolCallId and toolName', async () => {
-		const progressEvents: Array<{ toolCallId: string; toolName: string; data: ToolProgressData }> = []
-
-		const progressTool = defineTool({
-			name: 'worker',
-			description: 'Reports progress',
-			input: z.object({}),
-			execute: async (_input, ctx) => {
-				ctx.progress({ type: 'status', message: 'starting' })
-				ctx.progress({ type: 'output', content: 'some output' })
-				return 'done'
-			},
-		})
-
-		const agent = new Agent({
-			model: mockModel([assistantWithToolCall('worker', {}), assistantText('Done.')]),
-			tools: { worker: progressTool },
-			onToolProgress: (toolCallId, toolName, data) => {
-				progressEvents.push({ toolCallId, toolName, data })
-			},
-		})
-
-		await agent.run({ state: startState([userMessage('go')]) }).result
-
-		expect(progressEvents).toHaveLength(2)
-		expect(progressEvents[0]!.toolName).toBe('worker')
-		expect(progressEvents[0]!.toolCallId).toBeTruthy()
-		expect(progressEvents[0]!.data).toEqual({ type: 'status', message: 'starting' })
-		expect(progressEvents[1]!.data).toEqual({ type: 'output', content: 'some output' })
-		// Both events should have the same toolCallId
-		expect(progressEvents[0]!.toolCallId).toBe(progressEvents[1]!.toolCallId)
-	})
-
-	test('ctx.progress is no-op when onToolProgress not provided', async () => {
-		// Should not throw even when progress is called
-		const progressTool = defineTool({
-			name: 'worker',
-			description: 'Reports progress',
-			input: z.object({}),
-			execute: async (_input, ctx) => {
-				ctx.progress({ type: 'status', message: 'ok' })
-				return 'done'
-			},
-		})
-
-		const agent = new Agent({
-			model: mockModel([assistantWithToolCall('worker', {}), assistantText('Done.')]),
-			tools: { worker: progressTool },
-			// No onToolProgress
-		})
-
-		const result = await agent.run({ state: startState([userMessage('go')]) }).result
-		expect(result.finishReason).toBe('complete')
 	})
 })
 

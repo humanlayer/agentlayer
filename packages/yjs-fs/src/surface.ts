@@ -1,7 +1,9 @@
+import type { DurableStreamsTransportMode } from './durable-streams/shared'
+
 export type DurableStreamsClientOptions = {
-	mode: 'single-stream' | 'per-document'
+	mode: DurableStreamsTransportMode
 }
 
 export type DurableStreamsServerOptions = {
-	mode: DurableStreamsClientOptions['mode']
+	mode: DurableStreamsTransportMode
 }

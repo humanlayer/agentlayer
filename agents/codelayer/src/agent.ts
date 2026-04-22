@@ -1,5 +1,5 @@
 import type { LanguageModel } from 'ai'
-import { Agent, doomLoop, type AgentConfig, type Tool } from '@humanlayer/agentlayer-core'
+import { Agent, doomLoop, tarsPersona, type AgentConfig, type Tool } from '@humanlayer/agentlayer-core'
 import {
 	createAgentFilesystemHooks,
 	createAgentSystemPrompt,
@@ -26,9 +26,10 @@ export interface CodelayerAgentOptions {
 	model: LanguageModel
 	cwd: string
 	hooks?: AgentConfig['hooks']
-	onToolProgress?: AgentConfig['onToolProgress']
 	systemPromptAdditions?: string[]
 	rlm?: boolean
+	rpi?: boolean
+	tars?: boolean
 	exaApiKey?: string
 	skillTool?: Tool<any, any>
 	additionalTools?: Record<string, Tool<any, any>>
@@ -86,9 +87,10 @@ export async function createCodelayerAgent(opts: CodelayerAgentOptions): Promise
 		model,
 		cwd,
 		hooks,
-		onToolProgress,
 		systemPromptAdditions = [],
 		rlm = false,
+		rpi = false,
+		tars = false,
 		exaApiKey,
 		skillTool,
 		additionalTools = {},
@@ -96,6 +98,10 @@ export async function createCodelayerAgent(opts: CodelayerAgentOptions): Promise
 	} = opts
 	const modelFamily = detectModelFamily(model)
 	const providerOptions = buildProviderOptions(model)
+	const personaPromptAdditions = [
+		...(tars ? [tarsPersona(35)] : []),
+		...systemPromptAdditions,
+	]
 	const filesystemHooks = createAgentFilesystemHooks({ cwd })
 	const mergedHooks = mergeHooks(filesystemHooks, hooks)
 	const agentTool =
@@ -108,14 +114,14 @@ export async function createCodelayerAgent(opts: CodelayerAgentOptions): Promise
 			additionalTools,
 			hooks,
 			providerOptions,
-			systemPromptAdditions,
+			systemPromptAdditions: personaPromptAdditions,
 		}))
 
 	if (rlm) {
 		const system = await createAgentSystemPrompt({
 			cwd,
 			model,
-			systemPromptAdditions: [ORCHESTRATOR_PROMPT, ...systemPromptAdditions],
+			systemPromptAdditions: [ORCHESTRATOR_PROMPT, ...(rpi ? ['RPI specialist subagents are enabled. Prefer delegating specialized research and codebase analysis tasks to subagents when appropriate.'] : []), ...personaPromptAdditions],
 		})
 		const aux = await createCodingAgentAuxToolset({
 			cwd,
@@ -143,7 +149,6 @@ export async function createCodelayerAgent(opts: CodelayerAgentOptions): Promise
 			tools,
 			system,
 			hooks: mergedHooks,
-			onToolProgress,
 			stopWhen: [doomLoop(3)],
 			providerOptions,
 		})
@@ -169,7 +174,10 @@ export async function createCodelayerAgent(opts: CodelayerAgentOptions): Promise
 	const system = await createAgentSystemPrompt({
 		cwd,
 		model,
-		systemPromptAdditions,
+		systemPromptAdditions: [
+			...(rpi ? ['RPI specialist subagents are enabled. Prefer delegating specialized research and codebase analysis tasks to subagents when appropriate.'] : []),
+			...personaPromptAdditions,
+		],
 	})
 
 	return new Agent({
@@ -177,7 +185,6 @@ export async function createCodelayerAgent(opts: CodelayerAgentOptions): Promise
 		tools,
 		system,
 		hooks: mergedHooks,
-		onToolProgress,
 		stopWhen: [doomLoop(3)],
 		providerOptions,
 	})

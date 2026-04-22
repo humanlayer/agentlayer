@@ -23,6 +23,14 @@ export type {
 	DurableStreamsServerOptions,
 } from './surface'
 export type {
+	DurableStreamsBindingDescriptor,
+	DurableStreamsBindingTarget,
+	DurableStreamsClient,
+	DurableStreamsClientSession,
+	DurableStreamsContentBindingChange,
+	DurableStreamsTransportMode,
+} from './durable-streams/shared'
+export type {
 	CommentAnchor,
 	CommentReply,
 	ContentId,

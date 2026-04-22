@@ -3,31 +3,36 @@ title: Motivation
 description: Why `@humanlayer/agentlayer-core` separates tool interfaces from their implementations and keeps state serializable.
 ---
 
-## We have opinions about coding agents
+# We have opinions about coding agents
 We've been building agents for a while now: coding agents, human-in-the-loop agents, and outer-loop background agents. 
 It's safe to say that we have [a lot of opinions about coding agents](https://humanlayer.com/blog) - from [creating research/plan/implement](https://github.com/humanlayer/humanlayer) to  talking about [Advanced Context Engineering](https://www.youtube.com/watch?v=VvkhYWFWaKI)
 
-If you've come across our content, you know we have strong opinions both about coding agents and about agent frameworks in general. To build good agents, you need good abstractions, but also deep low-level control over the execution flow, the agent's internal state, and most importantly, the **context window**.
+To build good agents, you need good abstractions, but also deep low-level control over the execution flow, the agent's internal state, and most importantly, the **context window**.
 
 
 ## But this is not a coding agent
-Existing coding agents are usually opinionated about execution, storage, and control flow. You can write plugins or hooks, but it is much harder to get in and mess with the control flow, do surgery on the context window, swap a tool backend, or replace a runtime without forking the entire project.
+Existing coding agents are usually opinionated about **tools**, **storage**, **context**, and **control flow**. You can write plugins or hooks, but it is hard to get in and mess with the control flow. You can use an agent SDK, but you don't have a stable API for storing & resuming sessions. You can mute tools, but you can't add first-class tools without an MCP. You can configure sub-agents or enable auto-compact, but you can't do surgery on the context window.
 
-State is the other big problem. Existing coding agents tend to store state in on-disk databases, session files, or process-local stores. That's fine for interactive local use. It's not fine when you need to run an agent in one process, save its state to a store, and resume it in a different process after a human approves something hours or days later. It's not fine when you need to treat the filesystem as an API, but when you need a different storage backend. And if you're building production agents, using an agent SDK that ships you a compiled, closed-source binary doesn't cut it. 
+**State** is the other big problem. Existing coding agents tend to store state in on-disk databases, session files, or process-local stores. That's fine for interactive local use. It's not fine when you need to run an agent in one process, save its state to a store, and resume it in a different process after a human approves something hours or days later. It's not fine when you need to treat the filesystem as an API, but when you need a different storage backend. It's not fine if you need state to be portable across systems. And if you're building production agents, using an agent SDK that ships you a compiled, closed-source binary doesn't cut it. 
 
-## This is not a coding agent
-
+Importantly, _everybody has different needs_ here. And as far as agents are concerned, [we prefer building small, sharp tools](https://github.com/humanlayer/12-factor-agents) to solve our specific needs, and then we generalize as necessary.
 
 ## This is a framework for building coding agents
+So instead of building a coding agent, we built a framework for building coding agents based on [everything we've learned about agents](https://humanlayer.com/blog) over the past year and a half.
 
 
-So we built `@humanlayer/agentlayer-core` -- the framework for building your own coding agent. 
+## And you should bring your own opinions
+And while we have lots of opinions about coding agents, this framework doesn't force you into them. Bring your prompts, your provider, your control flow, and your tools. The state is JSON-serializable, pausable, resumable, and recursive.
 
-## Own Everything
+Things like...
 
-Your prompts, your context window, your control flow, your state, your tool interfaces. In code. Type-safe. Imperative.
+* **Auto-Compact** -  Love it? we have a hook for it. Hate it? don't use it. 
+* **Sub-agents** - infinite-depth, recursively serialized into the agent's JSON-serializable state. Use ours, build your own, or don't use them, or build an RLM - it's totally up to you.
+* **Retrieval**  - `grep` maxi? great, we have a tool for it. Prefer more powerful, expressive search for massive codebases? It's easy to write and plugin your own tool.
+* **Control flow** - Hooks are just code that can alter control flow, suspend or pause the agent loop, read/write a KV store that's part of the agent's serializable state, and can temporarily (or permanently) alter the agent's context window.
+* **Forking** - love Pi's tree mode or Claude Code's undo/rewind feature? State is fully serializable and trivially rewindable & forkable
+* **Context Window Management** - tools and hooks can edit the agent's context window for deterministic or agentic context search and pruning. 
 
-Not hidden framework conventions. Not config files where you cannot tell what the runtime is actually doing. Code.
 
 ## Interface != Implementation
 

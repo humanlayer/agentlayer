@@ -31,6 +31,7 @@
 	"exports": {
 		".": "./src/index.ts",
 		"./presence": "./src/presence.ts",
+		"./durable-streams/shared": "./src/durable-streams/shared.ts",
 		"./durable-streams/client": "./src/durable-streams/client.ts",
 		"./durable-streams/server": "./src/durable-streams/server.ts"
 	},
