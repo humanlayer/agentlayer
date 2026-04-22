@@ -5,5 +5,10 @@ export type DurableStreamsClientOptions = {
 }
 
 export type DurableStreamsServerOptions = {
-	mode: DurableStreamsTransportMode
+	mode?: DurableStreamsTransportMode
+	host?: string
+	durableStreamsPort?: number
+	yjsPort?: number
+	service?: string
+	dataDir?: string
 }

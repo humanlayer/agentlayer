@@ -22,6 +22,8 @@ export type {
 	DurableStreamsClientOptions,
 	DurableStreamsServerOptions,
 } from './surface'
+export type { DurableStreamsDevServer } from './durable-streams/server'
+export { defineDurableStreamsServer, startDurableStreamsDevServer } from './durable-streams/server'
 export type {
 	DurableStreamsBindingDescriptor,
 	DurableStreamsBindingTarget,

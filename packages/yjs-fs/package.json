@@ -5,17 +5,64 @@
 	"version": "0.0.0",
 	"private": false,
 	"publishConfig": {
-		"access": "public"
+		"access": "public",
+		"main": "./dist/index.js",
+		"module": "./dist/index.js",
+		"types": "./dist/index.d.ts",
+		"exports": {
+			".": {
+				"types": "./dist/index.d.ts",
+				"import": "./dist/index.js",
+				"default": "./dist/index.js"
+			},
+			"./presence": {
+				"types": "./dist/presence.d.ts",
+				"import": "./dist/presence.js",
+				"default": "./dist/presence.js"
+			},
+			"./durable-streams/shared": {
+				"types": "./dist/durable-streams/shared.d.ts",
+				"import": "./dist/durable-streams/shared.js",
+				"default": "./dist/durable-streams/shared.js"
+			},
+			"./durable-streams/client": {
+				"types": "./dist/durable-streams/client.d.ts",
+				"import": "./dist/durable-streams/client.js",
+				"default": "./dist/durable-streams/client.js"
+			},
+			"./durable-streams/server": {
+				"types": "./dist/durable-streams/server.d.ts",
+				"import": "./dist/durable-streams/server.js",
+				"default": "./dist/durable-streams/server.js"
+			},
+			"./durable-streams/single-stream-client": {
+				"types": "./dist/durable-streams/single-stream-client.d.ts",
+				"import": "./dist/durable-streams/single-stream-client.js",
+				"default": "./dist/durable-streams/single-stream-client.js"
+			},
+			"./durable-streams/per-doc-client": {
+				"types": "./dist/durable-streams/per-doc-client.d.ts",
+				"import": "./dist/durable-streams/per-doc-client.js",
+				"default": "./dist/durable-streams/per-doc-client.js"
+			}
+		}
 	},
 	"files": [
-		"src"
+		"src",
+		"dist"
 	],
 	"scripts": {
-		"typecheck": "tsgo --noEmit"
+		"typecheck": "tsgo --noEmit",
+		"build": "bun run build:js && bunx tsc -p tsconfig.build.json",
+		"build:js": "bun run build.ts",
+		"build:types": "bunx tsc -p tsconfig.build.json"
 	},
 	"devDependencies": {
 		"@ai-sdk/anthropic": "catalog:",
 		"@ai-sdk/provider": "catalog:",
+		"@durable-streams/client": "0.2.3",
+		"@durable-streams/server": "0.3.1",
+		"@durable-streams/y-durable-streams": "0.2.4",
 		"@humanlayer/agentlayer-core": "workspace:*",
 		"@types/bun": "latest",
 		"@types/turndown": "5.0.6",
@@ -24,6 +71,9 @@
 		"zod": "catalog:"
 	},
 	"peerDependencies": {
+		"@durable-streams/client": "^0.2.3",
+		"@durable-streams/server": "^0.3.1",
+		"@durable-streams/y-durable-streams": "^0.2.4",
 		"typescript": "^5",
 		"yjs": "^13.0.0",
 		"y-protocols": "^1.0.0"
@@ -33,7 +83,9 @@
 		"./presence": "./src/presence.ts",
 		"./durable-streams/shared": "./src/durable-streams/shared.ts",
 		"./durable-streams/client": "./src/durable-streams/client.ts",
-		"./durable-streams/server": "./src/durable-streams/server.ts"
+		"./durable-streams/server": "./src/durable-streams/server.ts",
+		"./durable-streams/single-stream-client": "./src/durable-streams/single-stream-client.ts",
+		"./durable-streams/per-doc-client": "./src/durable-streams/per-doc-client.ts"
 	},
 	"dependencies": {},
 	"author": {
