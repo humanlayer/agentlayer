@@ -105,8 +105,13 @@ async function ensureOnlyAllowlistedPackagesAreStaged() {
             continue;
         }
 
-        const relativeDir = entry.parentPath.slice(releaseStageDir.length + 1);
-        stagedPackageDirs.add(relativeDir.replaceAll("\\", "/"));
+        const relativeDir = entry.parentPath.slice(releaseStageDir.length + 1).replaceAll("\\", "/");
+        if (!relativeDir.startsWith('packages/')) {
+            continue;
+        }
+
+        const packageDir = relativeDir.split('/').slice(0, 2).join('/');
+        stagedPackageDirs.add(packageDir);
     }
 
     const expectedDirs = new Set(publishablePackages.map((pkg) => pkg.dir));

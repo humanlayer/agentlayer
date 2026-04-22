@@ -5,11 +5,15 @@ import { parseArgs } from "node:util";
 
 import {
     getPublishablePackageByDir,
+    getSourceExportEntries,
     getWorkspacePackageByName,
     manifestName,
     publishablePackages,
+    readPackageManifest,
     releaseStageDir,
     repoRoot,
+    sourceExportToDistDtsPath,
+    sourceExportToDistJsPath,
 } from "./manifest";
 
 type PackageManifest = {
@@ -167,7 +171,29 @@ function shouldCopyPath(sourceDir: string, sourcePath: string) {
     const relativePath = relative(sourceDir, sourcePath);
     const segments = relativePath.split(sep);
 
-    return !segments.includes("node_modules") && !segments.includes("dist");
+    return !segments.includes("node_modules");
+}
+
+async function ensureBuildArtifacts(packageDir: string) {
+	const manifest = await readPackageManifest(join(repoRoot, packageDir))
+	const sourceExports = getSourceExportEntries(manifest)
+
+	if (sourceExports.length === 0) {
+		throw new Error(`No source exports found for ${packageDir}`)
+	}
+
+	for (const sourceExport of sourceExports) {
+		const jsPath = join(repoRoot, packageDir, sourceExportToDistJsPath(sourceExport))
+		const dtsPath = join(repoRoot, packageDir, sourceExportToDistDtsPath(sourceExport))
+
+		if (!(await Bun.file(jsPath).exists())) {
+			throw new Error(`Missing built JavaScript artifact: ${jsPath}`)
+		}
+
+		if (!(await Bun.file(dtsPath).exists())) {
+			throw new Error(`Missing built declaration artifact: ${dtsPath}`)
+		}
+	}
 }
 
 async function preparePackage(packageDir: string, version: string, catalog: Record<string, string>) {
@@ -176,6 +202,7 @@ async function preparePackage(packageDir: string, version: string, catalog: Reco
     const sourceManifest = await readManifest(packageDir);
 
     assertPublishableManifest(packageDir, sourceManifest);
+    await ensureBuildArtifacts(packageDir);
 
     const stagedManifest = stageManifest(sourceManifest, version, catalog);
 

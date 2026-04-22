@@ -5,13 +5,37 @@
 	"version": "0.0.0",
 	"private": false,
 	"publishConfig": {
-		"access": "public"
+		"access": "public",
+		"main": "./dist/index.js",
+		"module": "./dist/index.js",
+		"types": "./dist/index.d.ts",
+		"exports": {
+			".": {
+				"types": "./dist/index.d.ts",
+				"import": "./dist/index.js",
+				"default": "./dist/index.js"
+			},
+			"./prompts": {
+				"types": "./dist/prompts/index.d.ts",
+				"import": "./dist/prompts/index.js",
+				"default": "./dist/prompts/index.js"
+			},
+			"./tools": {
+				"types": "./dist/tools/index.d.ts",
+				"import": "./dist/tools/index.js",
+				"default": "./dist/tools/index.js"
+			}
+		}
 	},
 	"files": [
-		"src"
+		"src",
+		"dist"
 	],
 	"scripts": {
-		"typecheck": "tsgo --noEmit"
+		"typecheck": "tsgo --noEmit",
+		"build": "bun run build:js && bunx tsc -p tsconfig.build.json",
+		"build:js": "bun run build.ts",
+		"build:types": "bunx tsc -p tsconfig.build.json"
 	},
 	"devDependencies": {
 		"@ai-sdk/anthropic": "catalog:",

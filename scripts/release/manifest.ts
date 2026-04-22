@@ -1,6 +1,8 @@
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import type { PackageManifest } from './build/package-build'
+
 export type WorkspaceReleaseEntry = {
     name: string;
     dir: string;
@@ -60,4 +62,30 @@ export function getWorkspacePackageByName(packageName: string) {
 
 export function getStagedPackageDir(packageDir: string) {
     return join(releaseStageDir, packageDir);
+}
+
+export async function readPackageManifest(packageDir: string): Promise<PackageManifest> {
+	const manifestPath = join(packageDir, manifestName)
+	return (await Bun.file(manifestPath).json()) as PackageManifest
+}
+
+export function getSourceExportEntries(manifest: PackageManifest): string[] {
+	const exportsMap = manifest.exports ?? {}
+	return Object.values(exportsMap).filter((value): value is string => typeof value === 'string')
+}
+
+export function sourceExportToDistJsPath(sourceExport: string): string {
+	if (!sourceExport.startsWith('./src/')) {
+		throw new Error(`Expected source export to start with ./src/, got ${sourceExport}`)
+	}
+
+	return sourceExport.replace('./src/', './dist/').replace(/\.(ts|tsx)$/, '.js')
+}
+
+export function sourceExportToDistDtsPath(sourceExport: string): string {
+	if (!sourceExport.startsWith('./src/')) {
+		throw new Error(`Expected source export to start with ./src/, got ${sourceExport}`)
+	}
+
+	return sourceExport.replace('./src/', './dist/').replace(/\.(ts|tsx)$/, '.d.ts')
 }
