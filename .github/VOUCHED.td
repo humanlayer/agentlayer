@@ -27,4 +27,3 @@ docs-agent[bot]
 github-actions[bot]
 K-Mistele
 luisegarduno
-turbobot-temp
