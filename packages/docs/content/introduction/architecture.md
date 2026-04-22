@@ -13,27 +13,27 @@ When you call `agent.run(options)`, the following sequence occurs:
 
 ```mermaid
 flowchart TD
-  A[agent.run(options)] --> B[new AgentRun]
-  B --> C[executeLoop]
-  C --> D[executeDanglingToolCalls]
-  D --> E[main loop]
-  E --> F[check abort signal]
-  F --> G[run pre-request hooks]
-  G --> H[call model]
-  H --> I[push assistant message]
-  I --> J{tool calls?}
-  J -- no --> K[finish complete]
-  J -- yes --> L[build step]
-  L --> M[before-execution stop check]
-  M --> N[resolve tool calls in parallel]
-  N --> O[merge hook and tool state updates]
-  O --> P[classify outcomes]
-  P --> Q{approval required?}
-  Q -- yes --> R[finish approvalRequired]
-  Q -- no --> S{stop requested?}
-  S -- yes --> T[finish stopCondition]
-  S -- no --> U[append results]
-  U --> V[after-execution stop check]
+  A["agent.run"] --> B["new AgentRun"]
+  B --> C["executeLoop"]
+  C --> D["execute dangling tool calls"]
+  D --> E["main loop"]
+  E --> F["check abort signal"]
+  F --> G["run pre-request hooks"]
+  G --> H["call model"]
+  H --> I["push assistant message"]
+  I --> J{"tool calls"}
+  J -- "no" --> K["finish complete"]
+  J -- "yes" --> L["build step"]
+  L --> M["before-execution stop check"]
+  M --> N["resolve tool calls in parallel"]
+  N --> O["merge hook and tool state updates"]
+  O --> P["classify outcomes"]
+  P --> Q{"approval required"}
+  Q -- "yes" --> R["finish approvalRequired"]
+  Q -- "no" --> S{"stop requested"}
+  S -- "yes" --> T["finish stopCondition"]
+  S -- "no" --> U["append results"]
+  U --> V["after-execution stop check"]
   V --> E
 ```
 

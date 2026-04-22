@@ -45,16 +45,26 @@ Pre-request hooks are different: they run before the next model call and can rew
 
 Approval hooks gate execution.
 
-Context fields:
+Context shape:
 
-- `toolName: string`
-- `toolCallId: string`
-- `input: Record<string, unknown>`
-- `tool: ToolInfo`
-- `getContextWindow(): ReadonlyArray<ModelMessage>`
-- `next(): NextResult`
-- `deny(reason?: string): DenyResult`
-- `ask(approval: ApprovalRequestData): AskResult`
+```ts
+interface ApprovalHookContext {
+  toolName: string
+  toolCallId: string
+  input: Record<string, unknown>
+  tool: ToolInfo
+  getContextWindow(): ReadonlyArray<ModelMessage>
+  next(): NextResult
+  deny(reason?: string): DenyResult
+  ask(approval: ApprovalRequestData): AskResult
+}
+
+interface ApprovalRequestData {
+  id?: string
+  metadata?: Record<string, unknown>
+  message?: string
+}
+```
 
 Use approval hooks when the question is: should this tool call be allowed to run at all?
 
@@ -66,18 +76,34 @@ Source on `main`:
 
 PreToolUse hooks run after approval passes and before the tool executes.
 
-Context fields:
+Context shape:
 
-- `toolName: string`
-- `toolCallId: string`
-- `input: Record<string, unknown>`
-- `tool: ToolInfo`
-- `getContextWindow(): ReadonlyArray<ModelMessage>`
-- `getState<T>(key: string): T | undefined`
-- `updateState<T>(key: string, updater: (current: T | undefined) => T): void`
-- `next(updatedInput?: Record<string, unknown>, opts?: NextOptions): NextResult`
-- `toolResult(output: string, opts?: ToolResultOptions): ToolResultResult`
-- `stop(options?: StopOptions): HookStopResult`
+```ts
+interface PreToolUseHookContext {
+  toolName: string
+  toolCallId: string
+  input: Record<string, unknown>
+  tool: ToolInfo
+  getContextWindow(): ReadonlyArray<ModelMessage>
+  getState<T>(key: string): T | undefined
+  updateState<T>(key: string, updater: (current: T | undefined) => T): void
+  next(updatedInput?: Record<string, unknown>, opts?: NextOptions): NextResult
+  toolResult(output: string, opts?: ToolResultOptions): ToolResultResult
+  stop(options?: StopOptions): HookStopResult
+}
+
+interface NextOptions {
+  updateContextWindow?: boolean
+  notifyModel?: boolean
+}
+
+interface StopOptions {
+  include?: boolean
+  output?: string
+  dropParallel?: boolean
+  reason?: string
+}
+```
 
 Use pre-tool hooks when the question is: should this tool run with modified input, be short-circuited, or deliberately stop the loop?
 
@@ -90,18 +116,22 @@ Source on `main`:
 
 PostToolUse hooks run after the tool executes.
 
-Context fields:
+Context shape:
 
-- `toolName: string`
-- `toolCallId: string`
-- `input: Record<string, unknown>`
-- `output: string`
-- `rawOutput: unknown`
-- `tool: ToolInfo`
-- `getContextWindow(): ReadonlyArray<ModelMessage>`
-- `getState<T>(key: string): T | undefined`
-- `updateState<T>(key: string, updater: (current: T | undefined) => T): void`
-- `done(mutatedResult?: string): DoneResult`
+```ts
+interface PostToolUseHookContext {
+  toolName: string
+  toolCallId: string
+  input: Record<string, unknown>
+  output: string
+  rawOutput: unknown
+  tool: ToolInfo
+  getContextWindow(): ReadonlyArray<ModelMessage>
+  getState<T>(key: string): T | undefined
+  updateState<T>(key: string, updater: (current: T | undefined) => T): void
+  done(mutatedResult?: string): DoneResult
+}
+```
 
 Use post-tool hooks when the question is: should the output be transformed before the model sees it?
 
@@ -115,13 +145,20 @@ PreRequest hooks run before the next model call and can transform the context wi
 
 This is the most important hook type for deliberate context mutation.
 
-Context fields:
+Context shape:
 
-- `messages: ReadonlyArray<ModelMessage>`
-- `contextWindowTokens: number`
-- `contextWindowLimit: number | undefined`
-- `next(): PreRequestNextResult`
-- `transform(messages: ModelMessage[], opts?: { persist?: boolean }): PreRequestTransformResult`
+```ts
+interface PreRequestHookContext {
+  messages: ReadonlyArray<ModelMessage>
+  contextWindowTokens: number
+  contextWindowLimit: number | undefined
+  next(): PreRequestNextResult
+  transform(
+    messages: ModelMessage[],
+    opts?: { persist?: boolean },
+  ): PreRequestTransformResult
+}
+```
 
 Use pre-request hooks when the question is: what should the model remember on the next turn?
 
@@ -153,8 +190,12 @@ If tools and post-tool hooks control what happened, pre-request hooks control wh
 
 Pre-tool and post-tool hooks also get hook-local state access through:
 
-- `getState<T>(key: string): T | undefined`
-- `updateState<T>(key: string, updater: (current: T | undefined) => T): void`
+```ts
+interface HookStateAccess {
+  getState<T>(key: string): T | undefined
+  updateState<T>(key: string, updater: (current: T | undefined) => T): void
+}
+```
 
 That state is threaded through the hook chain and merged after execution.
 
@@ -168,12 +209,14 @@ The `stop(options?)` helper on pre-tool hooks requests that the agent loop halt 
 
 It does not mean “interrupt right now.” It means the loop should stop in an orderly way so the caller can persist state and resume later if needed.
 
-Supported `StopOptions` fields are:
-
-- `include?: boolean` -- whether to include this tool result in the context window
-- `output?: string` -- optional replacement output string to use if included
-- `dropParallel?: boolean` -- whether sibling tool results from the same parallel batch should also be dropped
-- `reason?: string` -- human-readable stop reason
+```ts
+interface StopOptions {
+  include?: boolean
+  output?: string
+  dropParallel?: boolean
+  reason?: string
+}
+```
 
 Source on `main`:
 

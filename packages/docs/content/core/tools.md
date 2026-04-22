@@ -191,6 +191,13 @@ This is for cooperative cancellation in tool internals such as `fetch()` calls o
 
 ```ts
 stop(options?: StopOptions): HookStopResult
+
+interface StopOptions {
+  include?: boolean
+  output?: string
+  dropParallel?: boolean
+  reason?: string
+}
 ```
 
 Requests that the agent loop stop **after** this tool call completes.
@@ -199,11 +206,12 @@ This is not the same thing as aborting execution right this second.
 
 It is a loop-control primitive: the tool returns a stop result, the loop records the outcome, and the caller can then freeze state, persist it, and resume later if needed. That makes it especially useful for long-running outer-loop agents and workflow-driven agents that deliberately pause between phases.
 
-Supported `StopOptions` fields are:
+Field meanings:
 
-- `reason?: string` -- human-readable explanation for why the loop should stop
-- `include?: boolean` -- whether the tool result should be appended to the context window before stopping
-- `dropParallel?: boolean` -- whether sibling results from the same parallel batch should also be dropped
+- `include` controls whether this tool result is appended before the loop stops
+- `output` lets you override the tool result text that gets appended when `include` is true
+- `dropParallel` also drops sibling results from the same parallel batch
+- `reason` records a human-readable explanation for the stop
 
 ### `getContextWindowTokens()`
 
@@ -304,7 +312,6 @@ This same pattern also shows up in the filesystem hook layer. The read-before-wr
 Codebase examples on `main`:
 
 - [`file-state.ts`](https://github.com/humanlayer/agentlayer/blob/main/packages/agentlayer-filesystem/src/hooks/file-state.ts)
-- [`createAgentFilesystemHooks` export surface](https://github.com/humanlayer/agentlayer/blob/main/packages/agentlayer-filesystem/src/hooks/index.ts)
 
 Those hooks are built around the existing file-oriented interfaces:
 
