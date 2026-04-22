@@ -7,11 +7,11 @@ import type {
 	LanguageModelV3Text,
 	LanguageModelV3ToolCall,
 } from '@ai-sdk/provider'
-import { MockLanguageModelV3, simulateReadableStream } from 'ai/test'
 import type { ModelMessage, ToolModelMessage, UserModelMessage } from 'ai'
+import { MockLanguageModelV3, simulateReadableStream } from 'ai/test'
 import type { ToolContext } from '../src/define-tool'
 
-type MockResponse = Pick<LanguageModelV3GenerateResult, 'content'> & {
+export type MockResponse = Pick<LanguageModelV3GenerateResult, 'content'> & {
 	usage?: LanguageModelV3GenerateResult['usage']
 }
 
@@ -74,6 +74,14 @@ function toStreamParts(part: LanguageModelV3Content): LanguageModelV3StreamPart[
 				{ type: 'text-end', id },
 			]
 		}
+		case 'reasoning': {
+			const id = crypto.randomUUID()
+			return [
+				{ type: 'reasoning-start', id },
+				{ type: 'reasoning-delta', id, delta: part.text },
+				{ type: 'reasoning-end', id },
+			]
+		}
 		case 'tool-call':
 			return [part]
 		default:
@@ -84,6 +92,13 @@ function toStreamParts(part: LanguageModelV3Content): LanguageModelV3StreamPart[
 export function assistantText(text: string, opts?: { usage?: MockResponse['usage'] }): MockResponse {
 	const part: LanguageModelV3Text = { type: 'text', text }
 	return { content: [part], ...(opts?.usage ? { usage: opts.usage } : {}) }
+}
+
+export function assistantReasoningText(text: string, opts?: { usage?: MockResponse['usage'] }): MockResponse {
+	return {
+		content: [{ type: 'reasoning', text }],
+		...(opts?.usage ? { usage: opts.usage } : {}),
+	}
 }
 
 export function assistantWithToolCall(
@@ -110,6 +125,10 @@ export function assistantWithToolCalls(
 		input: JSON.stringify(call.input),
 	}))
 	return { content: parts }
+}
+
+export function mockResponse(parts: MockResponse['content'], opts?: { usage?: MockResponse['usage'] }): MockResponse {
+	return { content: parts, ...(opts?.usage ? { usage: opts.usage } : {}) }
 }
 
 export function userMessage(content: string): UserModelMessage {

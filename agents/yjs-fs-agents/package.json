@@ -1,0 +1,25 @@
+{
+	"name": "@humanlayer/yjs-fs-agents",
+	"module": "src/index.ts",
+	"type": "module",
+	"private": true,
+	"scripts": {
+		"typecheck": "tsgo --noEmit"
+	},
+	"devDependencies": {
+		"@ai-sdk/anthropic": "catalog:",
+		"@ai-sdk/provider": "catalog:",
+		"@humanlayer/agentlayer-core": "workspace:*",
+		"@humanlayer/yjs-fs": "workspace:*",
+		"@types/bun": "latest",
+		"ai": "catalog:",
+		"zod": "catalog:"
+	},
+	"peerDependencies": {
+		"typescript": "^5"
+	},
+	"exports": {
+		".": "./src/index.ts"
+	},
+	"dependencies": {}
+}

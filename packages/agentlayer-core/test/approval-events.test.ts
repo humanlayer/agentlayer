@@ -81,6 +81,20 @@ describe('approvalRequested events', () => {
 		expect(run.running).toBe(false)
 	})
 
+	test('streaming deltas do not trigger approvals before finalized step handling', async () => {
+		const agent = createAgentWithApproval([assistantWithToolCall('dangerous', { target: 'staging' })])
+
+		const run = agent.run({ state: startState([userMessage('deploy')]), stream: true })
+		const eventTypes: AgentEvent['type'][] = []
+		for await (const event of run) {
+			eventTypes.push(event.type)
+		}
+
+		expect(eventTypes).toContain('stepFinish')
+		expect(eventTypes).toContain('approvalRequested')
+		expect(eventTypes.indexOf('stepFinish')).toBeLessThan(eventTypes.indexOf('approvalRequested'))
+	})
+
 	test('multiple approval requests produce multiple events', async () => {
 		const agent = createAgentWithApproval([
 			assistantWithToolCalls(

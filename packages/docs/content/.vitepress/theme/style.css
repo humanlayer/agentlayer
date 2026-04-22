@@ -1,0 +1,260 @@
+:root {
+	--vp-font-family-base: "Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif;
+	--vp-font-family-mono: "SFMono-Regular", Menlo, Consolas, monospace;
+
+	--vp-c-bg: #f5f6f8;
+	--vp-c-bg-alt: #eceff3;
+	--vp-c-bg-elv: #ffffff;
+	--vp-c-bg-soft: #e4e8ee;
+
+	--vp-c-text-1: #273142;
+	--vp-c-text-2: #4b5565;
+	--vp-c-text-3: #6b7584;
+
+	--vp-c-default-1: #273142;
+	--vp-c-default-2: #4b5565;
+	--vp-c-default-3: #6b7584;
+	--vp-c-default-soft: rgba(39, 49, 66, 0.08);
+
+	--vp-c-brand-1: #426699;
+	--vp-c-brand-2: #31537f;
+	--vp-c-brand-3: #27456d;
+	--vp-c-brand-soft: rgba(66, 102, 153, 0.1);
+
+	--vp-c-tip-1: #0d9373;
+	--vp-c-tip-2: #0b7f63;
+	--vp-c-tip-3: #086a53;
+	--vp-c-tip-soft: rgba(13, 147, 115, 0.1);
+
+	--vp-c-warning-1: #9a6b17;
+	--vp-c-warning-2: #805910;
+	--vp-c-warning-3: #69480c;
+	--vp-c-warning-soft: rgba(154, 107, 23, 0.1);
+
+	--vp-c-danger-1: #a14d5d;
+	--vp-c-danger-2: #8a3e4e;
+	--vp-c-danger-3: #73313f;
+	--vp-c-danger-soft: rgba(161, 77, 93, 0.1);
+
+	--vp-home-hero-name-color: #273142;
+	--vp-home-hero-name-background: none;
+	--vp-home-hero-image-background-image: none;
+	--vp-home-hero-image-filter: none;
+
+	--vp-button-brand-border: transparent;
+	--vp-button-brand-text: #ffffff;
+	--vp-button-brand-bg: #426699;
+	--vp-button-brand-hover-border: transparent;
+	--vp-button-brand-hover-text: #ffffff;
+	--vp-button-brand-hover-bg: #31537f;
+	--vp-button-brand-active-bg: #27456d;
+
+	--vp-custom-block-tip-border: transparent;
+	--vp-custom-block-tip-text: var(--vp-c-text-1);
+	--vp-custom-block-tip-bg: rgba(13, 147, 115, 0.08);
+	--vp-custom-block-tip-code-bg: rgba(13, 147, 115, 0.08);
+	--vp-layout-max-width: 1440px;
+}
+
+html {
+	font-size: 15px;
+}
+
+body {
+	background: #f5f6f8;
+	font-family: var(--vp-font-family-base);
+	color: var(--vp-c-text-1);
+}
+
+.VPNavBar,
+.VPDoc,
+.VPHome {
+	background: #f5f6f8;
+}
+
+.VPSidebar,
+.VPNavBar.has-sidebar .content-body,
+.VPDoc.has-aside .content-container,
+.VPFeature,
+.VPContent {
+	background: transparent;
+}
+
+.VPFeature {
+	border: 1px solid rgba(39, 49, 66, 0.08);
+	background: #ffffff;
+	box-shadow: none;
+}
+
+.VPNavBarTitle .title,
+.VPNavBarTitle .title span {
+	font-weight: 700;
+	letter-spacing: -0.02em;
+}
+
+.VPContent,
+.VPDoc .container,
+.VPNavBar .content,
+.VPNavBar .container {
+	max-width: 1440px;
+}
+
+.vp-doc {
+	line-height: 1.65;
+}
+
+.vp-doc h1,
+.vp-doc h2,
+.vp-doc h3,
+.vp-doc h4,
+.VPHero .name,
+.VPHero .text {
+	letter-spacing: -0.015em;
+}
+
+.vp-doc h1 {
+	font-size: 2.25rem;
+	font-weight: 700;
+	margin-bottom: 1rem;
+}
+
+.vp-doc h2 {
+	font-size: 1.45rem;
+	font-weight: 700;
+	margin-top: 2.5rem;
+	padding-top: 0.25rem;
+	border-top: 1px solid rgba(39, 49, 66, 0.08);
+}
+
+.vp-doc h3 {
+	font-size: 1.1rem;
+	font-weight: 700;
+}
+
+.vp-doc p,
+.vp-doc li,
+.vp-doc table {
+	font-size: 0.97rem;
+}
+
+.vp-doc a,
+.VPNavBarMenuLink.active,
+.VPNavBarMenuLink:hover,
+.VPSidebarItem.is-active > .item > .link > .text {
+	color: #426699;
+}
+
+.vp-doc div[class*="language-"],
+.vp-block,
+.vp-code-group .blocks,
+.VPFeature,
+.VPButton,
+.VPSidebarItem .item,
+.VPLink,
+.vp-doc .mermaid,
+.vp-doc .agentlayer-mermaid,
+.vp-doc :not(pre) > code,
+.vp-doc .custom-block,
+.VPDocOutlineDropdown,
+.DocSearch-Button,
+.vp-doc table,
+.vp-doc th,
+.vp-doc td,
+.VPSidebar,
+.VPNavBar {
+	border-radius: 0;
+}
+
+.vp-doc div[class*="language-"] {
+	border: 1px solid rgba(39, 49, 66, 0.08);
+	background: #ffffff;
+	color: #273142;
+	box-shadow: none;
+}
+
+.vp-doc div[class*="language-"] > span.lang {
+	color: #4b5565;
+}
+
+.vp-doc div[class*="language-"] pre,
+.vp-doc div[class*="language-"] code {
+	background: transparent;
+}
+
+.vp-doc div[class*="language-"] .shiki,
+.vp-doc div[class*="language-"] .vp-code {
+	background: #ffffff !important;
+	color: #273142 !important;
+	--shiki-light-bg: #ffffff !important;
+	--shiki-dark-bg: #0f172a !important;
+}
+
+.vp-doc :not(pre) > code {
+	color: #426699;
+	background: rgba(66, 102, 153, 0.08);
+	padding: 0.18rem 0.38rem;
+}
+
+.vp-doc .mermaid,
+.vp-doc .agentlayer-mermaid {
+	padding: 1rem;
+	background: #ffffff;
+	border: 1px solid rgba(39, 49, 66, 0.08);
+	box-shadow: none;
+	overflow-x: auto;
+}
+
+.VPSidebar {
+	border-right: 1px solid rgba(39, 49, 66, 0.08);
+	padding-top: 1rem;
+}
+
+.VPNavBar {
+	border-bottom: 1px solid rgba(39, 49, 66, 0.08);
+}
+
+.VPSidebarItem .item {
+	padding-top: 0.28rem;
+	padding-bottom: 0.28rem;
+}
+
+.VPSidebarItem.level-0 > .item > .text,
+.VPSidebarItem.level-0 > .item > .link > .text {
+	font-weight: 600;
+	text-transform: uppercase;
+	font-size: 0.75rem;
+	letter-spacing: 0.06em;
+}
+
+.VPSidebarItem.level-1 .text,
+.VPSidebarItem.level-1 .link {
+	font-size: 0.92rem;
+}
+
+.VPSidebarItem.is-active > .item {
+	background: rgba(66, 102, 153, 0.06);
+}
+
+.VPNavBarSearch .DocSearch-Button {
+	background: #ffffff;
+	border: 1px solid rgba(39, 49, 66, 0.08);
+	box-shadow: none;
+}
+
+.vp-doc table {
+	width: 100%;
+	border-collapse: collapse;
+	background: #ffffff;
+}
+
+.vp-doc th,
+.vp-doc td {
+	border: 1px solid rgba(39, 49, 66, 0.08);
+	padding: 0.7rem 0.8rem;
+}
+
+.vp-doc th {
+	background: #eceff3;
+	text-align: left;
+	font-weight: 600;
+}

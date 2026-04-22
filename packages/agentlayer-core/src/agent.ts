@@ -1,9 +1,10 @@
-import type { LanguageModel, ModelMessage, ToolChoice } from 'ai'
+import type { FinishReason as AiSdkFinishReason, LanguageModel, ModelMessage, TextStreamPart, ToolChoice } from 'ai'
 import { streamText, tool as toAiSdkTool } from 'ai'
 
 type ProviderOptions = Parameters<typeof streamText>[0]['providerOptions']
+type StreamPart = TextStreamPart<any>
 
-import { AgentRun } from './agent-run'
+import { type AgentEvent, AgentRun } from './agent-run'
 import type { Tool, ToolProgressData } from './define-tool'
 import { AgentError, InvalidMessagesError } from './errors'
 import { type ExecuteToolCallContext, executeToolCall, type ToolCallResult } from './execute-tool-call'
@@ -186,6 +187,14 @@ interface ClassifiedOutcomes {
 	execStop?: ToolOutcome & { kind: 'executed' }
 }
 
+type StreamTextResult = ReturnType<typeof streamText>
+
+interface ExecutedModelStep {
+	response: Awaited<StreamTextResult['response']>
+	toolCalls: Awaited<StreamTextResult['toolCalls']>
+	usage: Awaited<StreamTextResult['usage']>
+}
+
 function classifyOutcomes(outcomes: ToolOutcome[]): ClassifiedOutcomes {
 	return {
 		asks: outcomes.filter((o): o is ToolOutcome & { kind: 'ask' } => o.kind === 'ask'),
@@ -359,7 +368,7 @@ export class Agent<TTools extends Record<string, Tool<any, any>> = Record<string
 					}
 				}
 
-				const result = await this.executeModelStep(requestMessages, signal, options.stream)
+				const result = await this.executeModelStep(requestMessages, signal, options.stream, stepIndex, agentRun)
 
 				// Only push non-tool messages from the AI SDK response.
 				// The agent manages tool result creation itself; the AI SDK may
@@ -795,7 +804,13 @@ export class Agent<TTools extends Record<string, Tool<any, any>> = Record<string
 		}
 	}
 
-	private async executeModelStep(requestMessages: ModelMessage[], signal: AbortSignal, _stream?: boolean) {
+	private async executeModelStep(
+		requestMessages: ModelMessage[],
+		signal: AbortSignal,
+		stream: boolean | undefined,
+		stepIndex: number,
+		agentRun: AgentRun,
+	): Promise<ExecutedModelStep> {
 		const result = streamText({
 			model: this.model,
 			tools: this.aiSdkTools,
@@ -806,19 +821,55 @@ export class Agent<TTools extends Record<string, Tool<any, any>> = Record<string
 			abortSignal: signal,
 		})
 
-		await result.consumeStream()
+		if (stream) {
+			for await (const part of result.fullStream) {
+				const event = this.translateStreamPart(part, stepIndex)
+				if (event) {
+					agentRun.pushEvent(event)
+				}
+			}
+		} else {
+			await result.consumeStream()
+		}
 
-		const [response, toolCalls, usage] = await Promise.all([
-			result.response,
-			result.toolCalls,
-			result.usage,
-		])
+		const [response, toolCalls, usage] = await Promise.all([result.response, result.toolCalls, result.usage])
 
 		return {
 			response,
 			toolCalls,
 			usage,
 		}
+	}
+
+	private translateStreamPart(part: StreamPart, stepIndex: number): AgentEvent | undefined {
+		switch (part.type) {
+			case 'start-step':
+				return { type: 'stepStart', stepIndex }
+			case 'text-start':
+				return { type: 'textStart', id: part.id, stepIndex }
+			case 'text-delta':
+				return { type: 'textDelta', id: part.id, text: part.text, stepIndex }
+			case 'text-end':
+				return { type: 'textEnd', id: part.id, stepIndex }
+			case 'reasoning-start':
+				return { type: 'reasoningStart', id: part.id, stepIndex }
+			case 'reasoning-delta':
+				return { type: 'reasoningDelta', id: part.id, text: part.text, stepIndex }
+			case 'reasoning-end':
+				return { type: 'reasoningEnd', id: part.id, stepIndex }
+			case 'finish-step':
+				return {
+					type: 'stepFinish',
+					stepIndex,
+					finishReason: this.mapFinishReason(part.finishReason),
+				}
+			default:
+				return undefined
+		}
+	}
+
+	private mapFinishReason(finishReason: AiSdkFinishReason | undefined): string | undefined {
+		return finishReason
 	}
 
 	/** Finish the run and invoke onError/onStop callbacks. */

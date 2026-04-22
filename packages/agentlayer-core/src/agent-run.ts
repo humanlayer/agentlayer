@@ -6,28 +6,68 @@ import type { TokenUsageEvent } from './token-usage'
 
 // ── AgentEvent — discriminated union for the async iterator ──────────────────
 
+type AgentEventMeta = {
+	agentId?: string
+	parentToolCallId?: string
+}
+
 export type AgentEvent =
-	| {
+	| ({
 			type: 'message'
 			message: ModelMessage
-			agentId?: string
-			parentToolCallId?: string
-	  }
-	| {
+	  } & AgentEventMeta)
+	| ({
 			type: 'approvalRequested'
 			approval: ApprovalRequest
 			toolCallId: string
 			toolName: string
 			input: Record<string, unknown>
-			agentId?: string
-			parentToolCallId?: string
-	  }
-	| {
+	  } & AgentEventMeta)
+	| ({
 			type: 'tokenUsage'
 			usage: TokenUsageEvent
-			agentId?: string
-			parentToolCallId?: string
-	  }
+	  } & AgentEventMeta)
+	| ({
+			type: 'stepStart'
+			stepIndex: number
+	  } & AgentEventMeta)
+	| ({
+			type: 'textStart'
+			id: string
+			stepIndex: number
+	  } & AgentEventMeta)
+	| ({
+			type: 'textDelta'
+			id: string
+			text: string
+			stepIndex: number
+	  } & AgentEventMeta)
+	| ({
+			type: 'textEnd'
+			id: string
+			stepIndex: number
+	  } & AgentEventMeta)
+	| ({
+			type: 'reasoningDelta'
+			id: string
+			text: string
+			stepIndex: number
+	  } & AgentEventMeta)
+	| ({
+			type: 'reasoningStart'
+			id: string
+			stepIndex: number
+	  } & AgentEventMeta)
+	| ({
+			type: 'reasoningEnd'
+			id: string
+			stepIndex: number
+	  } & AgentEventMeta)
+	| ({
+			type: 'stepFinish'
+			stepIndex: number
+			finishReason?: string
+	  } & AgentEventMeta)
 
 export class AgentRun implements AsyncIterable<AgentEvent> {
 	private state: { type: 'pending' } | { type: 'resolved'; value: RunResult } = { type: 'pending' }

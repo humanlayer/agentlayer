@@ -2,7 +2,14 @@
 	"name": "@humanlayer/agentlayer-filesystem",
 	"module": "src/index.ts",
 	"type": "module",
+	"version": "0.0.0",
 	"private": false,
+	"publishConfig": {
+		"access": "public"
+	},
+	"files": [
+		"src"
+	],
 	"scripts": {
 		"typecheck": "tsgo --noEmit"
 	},
@@ -24,13 +31,8 @@
 		".": "./src/index.ts",
 		"./utils": "./src/utils/index.ts",
 		"./tools": "./src/tools/index.ts",
-		"./hooks": "./src/hooks/index.ts"
-	},
-	"version": "0.0.0",
-	"publishConfig": {
-		"access": "public"
-	},
-	"files": [
-		"src"
-	]
+		"./hooks": "./src/hooks/index.ts",
+		"./prompts": "./src/prompts/index.ts",
+		"./coding-agent": "./src/coding-agent.ts"
+	}
 }

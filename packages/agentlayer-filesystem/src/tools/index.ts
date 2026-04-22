@@ -1,5 +1,19 @@
 // Re-export from exa/ for backward compatibility
 
+export {
+	type AgentOutputTruncationOptions,
+	type CreateAgentFilesystemHooksOptions,
+	type CreateAgentFilesystemToolsetOptions,
+	type CreateCodingAgentAuxToolsetOptions,
+	type CreateCodingAgentToolsetOptions,
+	type CreateCodingSubagentToolOptions,
+	createClaudeAgentFilesystemToolset,
+	createClaudeCodingAgentToolset,
+	createCodexAgentFilesystemToolset,
+	createCodexCodingAgentToolset,
+	createCodingAgentAuxToolset,
+	createCodingSubagentTool,
+} from '../coding-agent'
 export { createApplyPatchTool } from './apply-patch'
 export { createBashTool } from './bash'
 export { createEditTool } from './edit'
@@ -9,4 +23,5 @@ export { createListTool } from './list'
 export { createMultiEditTool } from './multiedit'
 export { createReadTool } from './read'
 export { createSkillToolFromDirs, createSkillToolFromRepoDirs, type SkillDirEntry } from './skill'
+export { createWebSearchTool, type WebSearchToolOptions } from './web-search'
 export { createWriteTool } from './write'

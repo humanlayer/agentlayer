@@ -4,9 +4,9 @@
     "type": "module",
     "scripts": {
         "biome": "biome check . --write --unsafe",
+        "biome:check": "biome check .",
         "typecheck": "bun --filter '*' --parallel typecheck",
         "test": "bun test --concurrency 16 **/*",
-        "biome:check": "biome check .",
         "test:ci": "bun test ./packages/*/test/*.test.ts ./agents/*/test/*.test.ts",
         "docs:build": "bun run --cwd packages/docs docs:build",
         "release:prepare": "bun run scripts/release/prepare.ts",
@@ -22,17 +22,18 @@
         "typescript": "^5"
     },
     "workspaces": [
-        "packages/*"
+        "packages/*",
+        "agents/*"
     ],
     "catalog": {
         "@ai-sdk/anthropic": "3.0.69",
         "@ai-sdk/provider": "3.0.8",
-        "ai": "6.0.159",
-        "zod": "4.3.6",
         "@pulumi/aws": "7.26.0",
         "@pulumi/command": "1.2.1",
         "@pulumi/pulumi": "3.231.0",
-        "commander": "14.0.3"
+        "ai": "6.0.159",
+        "commander": "14.0.3",
+        "zod": "4.3.6"
     },
     "dependencies": {}
 }

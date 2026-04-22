@@ -2,7 +2,14 @@
 	"name": "@humanlayer/yjs-fs",
 	"module": "src/index.ts",
 	"type": "module",
+	"version": "0.0.0",
 	"private": false,
+	"publishConfig": {
+		"access": "public"
+	},
+	"files": [
+		"src"
+	],
 	"scripts": {
 		"typecheck": "tsgo --noEmit"
 	},
@@ -13,6 +20,7 @@
 		"@types/bun": "latest",
 		"@types/turndown": "5.0.6",
 		"ai": "catalog:",
+		"fast-check": "^4.3.0",
 		"zod": "catalog:"
 	},
 	"peerDependencies": {
@@ -21,18 +29,13 @@
 		"y-protocols": "^1.0.0"
 	},
 	"exports": {
-		".": "./src/index.ts"
+		".": "./src/index.ts",
+		"./durable-streams/client": "./src/durable-streams/client.ts",
+		"./durable-streams/server": "./src/durable-streams/server.ts"
 	},
 	"dependencies": {},
 	"author": {
 		"name": "Kyle Mistele",
 		"url": "https://x.com/0xblacklight"
-	},
-	"version": "0.0.0",
-	"publishConfig": {
-		"access": "public"
-	},
-	"files": [
-		"src"
-	]
+	}
 }

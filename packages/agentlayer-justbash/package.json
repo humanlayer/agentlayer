@@ -2,7 +2,14 @@
 	"name": "@humanlayer/agentlayer-justbash",
 	"module": "src/index.ts",
 	"type": "module",
+	"version": "0.0.0",
 	"private": false,
+	"publishConfig": {
+		"access": "public"
+	},
+	"files": [
+		"src"
+	],
 	"scripts": {
 		"typecheck": "tsgo --noEmit"
 	},
@@ -21,14 +28,8 @@
 	},
 	"exports": {
 		".": "./src/index.ts",
+		"./prompts": "./src/prompts/index.ts",
 		"./tools": "./src/tools/index.ts"
 	},
-	"dependencies": {},
-	"version": "0.0.0",
-	"publishConfig": {
-		"access": "public"
-	},
-	"files": [
-		"src"
-	]
+	"dependencies": {}
 }

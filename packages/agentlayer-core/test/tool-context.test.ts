@@ -6,8 +6,8 @@ import type {
 	LanguageModelV3StreamPart,
 	LanguageModelV3StreamResult,
 } from '@ai-sdk/provider'
-import { simulateReadableStream } from 'ai/test'
 import type { ModelMessage } from 'ai'
+import { simulateReadableStream } from 'ai/test'
 import { z } from 'zod'
 import { Agent, defineTool, maxSteps, startState, type ToolProgressData, toolCompleted } from '../src'
 import { assistantText, assistantWithToolCall, mockModel, userMessage } from './mocks'

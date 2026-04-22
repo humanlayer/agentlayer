@@ -25,6 +25,8 @@ function parseFirstHeading(content: string): string | null {
 }
 
 export interface CreateSkillToolFromRepoDirsOptions {
+	/** Working directory to search from. Defaults to process.cwd(). */
+	cwd?: string
 	/** Custom candidate directories relative to search roots (default: ['.claude/skills', '.agents/skills']) */
 	candidates?: string[]
 	/** Additional inline skills that override directory skills */
@@ -33,26 +35,28 @@ export interface CreateSkillToolFromRepoDirsOptions {
 	allowMissing?: boolean
 }
 
-function getRepoRoot(): string | undefined {
+function getRepoRoot(cwd: string): string | undefined {
 	try {
-		return execSync('git rev-parse --show-toplevel', { encoding: 'utf-8' }).trim()
+		return execSync('git rev-parse --show-toplevel', {
+			cwd,
+			encoding: 'utf-8',
+			stdio: ['ignore', 'pipe', 'ignore'],
+		}).trim()
 	} catch {
 		return undefined
 	}
 }
 
-function resolveSkillsDirs(opts: { candidates: string[] }): { dirs: string[]; searched: string[] } {
-	const cwd = process.cwd()
+function resolveSkillsDirs(opts: { cwd: string; candidates: string[] }): { dirs: string[]; searched: string[] } {
+	const cwd = opts.cwd
 	const candidates = opts.candidates
 
-	// Check cwd first
 	const cwdDirs = candidates.map((dir) => join(cwd, dir)).filter((dir) => existsSync(dir))
 	if (cwdDirs.length > 0) {
 		return { dirs: cwdDirs, searched: cwdDirs }
 	}
 
-	// Fall back to git root
-	const repoRoot = getRepoRoot()
+	const repoRoot = getRepoRoot(cwd)
 	if (repoRoot && repoRoot !== cwd) {
 		const rootDirs = candidates.map((dir) => join(repoRoot, dir)).filter((dir) => existsSync(dir))
 		if (rootDirs.length > 0) {
@@ -60,7 +64,6 @@ function resolveSkillsDirs(opts: { candidates: string[] }): { dirs: string[]; se
 		}
 	}
 
-	// Nothing found
 	const searched = repoRoot && repoRoot !== cwd ? [cwd, repoRoot] : [cwd]
 	return { dirs: [], searched }
 }
@@ -76,8 +79,9 @@ function resolveSkillsDirs(opts: { candidates: string[] }): { dirs: string[]; se
  * - <dir>/<name>.md (flat fallback)
  */
 export async function createSkillToolFromRepoDirs(opts: CreateSkillToolFromRepoDirsOptions = {}) {
+	const cwd = opts.cwd ?? process.cwd()
 	const candidates = opts.candidates ?? ['.claude/skills', '.agents/skills']
-	const { dirs, searched } = resolveSkillsDirs({ candidates })
+	const { dirs, searched } = resolveSkillsDirs({ cwd, candidates })
 
 	if (dirs.length === 0) {
 		if (opts.allowMissing) {
@@ -98,7 +102,6 @@ export interface SkillDirEntry {
 }
 
 export async function createSkillToolFromDirs(opts: { dirs: string | string[] | SkillDirEntry[]; skills?: Skill[] }) {
-	// Normalize dirs to SkillDirEntry[]
 	const directories: SkillDirEntry[] = (Array.isArray(opts.dirs) ? opts.dirs : [opts.dirs]).map((d) =>
 		typeof d === 'string' ? { path: expandTilde(d) } : { ...d, path: expandTilde(d.path) },
 	)
@@ -111,13 +114,11 @@ export async function createSkillToolFromDirs(opts: { dirs: string | string[] | 
 		try {
 			entries = await readdir(dir)
 		} catch {
-			continue // skip missing directories silently
+			continue
 		}
 
 		for (const entry of entries) {
 			const entryPath = join(dir, entry)
-
-			// Check for <dir>/<name>/SKILL.md (Claude Code convention)
 			const skillMdPath = join(entryPath, 'SKILL.md')
 			try {
 				const s = await stat(skillMdPath)
@@ -133,7 +134,6 @@ export async function createSkillToolFromDirs(opts: { dirs: string | string[] | 
 				// no SKILL.md in this entry
 			}
 
-			// Fallback: <dir>/<name>.md (flat convention)
 			if (entry.endsWith('.md')) {
 				const content = await Bun.file(entryPath).text()
 				const baseName = basename(entry, '.md')
@@ -144,15 +144,12 @@ export async function createSkillToolFromDirs(opts: { dirs: string | string[] | 
 		}
 	}
 
-	// First-loaded directory wins: don't override existing skills with same name
-	// This means directories earlier in the array have higher priority
 	const mergedMap = new Map<string, Skill>()
 	for (const skill of resolved) {
 		if (!mergedMap.has(skill.name)) {
 			mergedMap.set(skill.name, skill)
 		}
 	}
-	// Inline skills always override (for programmatic overrides)
 	for (const skill of opts.skills ?? []) {
 		mergedMap.set(skill.name, skill)
 	}

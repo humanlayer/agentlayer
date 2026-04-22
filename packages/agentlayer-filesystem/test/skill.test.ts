@@ -10,8 +10,8 @@ import type {
 	LanguageModelV3StreamResult,
 } from '@ai-sdk/provider'
 import { Agent, createSkillTool, startState } from '@humanlayer/agentlayer-core'
-import { simulateReadableStream } from 'ai/test'
 import type { ModelMessage } from 'ai'
+import { simulateReadableStream } from 'ai/test'
 import { createSkillToolFromDirs } from '../src/tools'
 import { assistantText, assistantWithToolCall, makeToolContext, userMessage } from './mocks'
 

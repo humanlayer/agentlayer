@@ -1,5 +1,5 @@
 import type { ModelMessage } from 'ai'
-import type { PreRequestHook } from '../hooks'
+import type { PreRequestHook } from './pre-request'
 
 export interface TruncateOldBashResultsOptions {
 	/** Number of most recent bash results to keep in full. Default: 3 */

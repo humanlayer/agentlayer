@@ -1,0 +1,31 @@
+{
+  "name": "@humanlayer/codelayer",
+  "module": "src/index.ts",
+  "type": "module",
+  "private": false,
+  "bin": "src/cli.ts",
+  "scripts": {
+    "start": "bun run cli",
+    "typecheck": "tsgo --noEmit",
+    "cli": "bun run src/cli.ts",
+    "codelayer": "bun --bun run src/cli.ts"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "devDependencies": {
+    "@ai-sdk/anthropic": "catalog:",
+    "@ai-sdk/openai": "^3.0.48",
+    "@ai-sdk/provider": "catalog:",
+    "@humanlayer/agentlayer-core": "workspace:*",
+    "@humanlayer/agentlayer-filesystem": "workspace:*",
+    "@types/bun": "latest",
+    "ai": "catalog:",
+    "commander": "^14.0.3",
+    "zod": "catalog:"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {}
+}

@@ -10,8 +10,11 @@
 		"includes": [
 			"packages/**/*",
 			"!packages/docs/.vitepress/**/*",
+			"!packages/docs/content/.vitepress/**/*",
 			"!**/node_modules/**/*",
-			"!packages/agentlayer-core/models.json"
+			"!packages/agentlayer-core/models.json",
+			"!.humanlayer",
+			"!node_modules"
 		]
 	},
 	"formatter": {

@@ -1,5 +1,5 @@
 import type { ModelMessage } from 'ai'
-import type { PreRequestHook } from '../hooks'
+import type { PreRequestHook } from './pre-request'
 
 export interface DeduplicateReadsOptions {
 	/** Whether to persist the deduplication. Default: false (view-only) */

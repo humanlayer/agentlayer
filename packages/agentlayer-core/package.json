@@ -2,7 +2,15 @@
 	"name": "@humanlayer/agentlayer-core",
 	"module": "src/index.ts",
 	"type": "module",
+	"version": "0.0.0",
 	"private": false,
+	"publishConfig": {
+		"access": "public"
+	},
+	"files": [
+		"src",
+		"README.md"
+	],
 	"scripts": {
 		"typecheck": "tsgo --noEmit"
 	},
@@ -26,14 +34,8 @@
 		"./interfaces": "./src/interfaces/index.ts"
 	},
 	"dependencies": {
+		"chalk": "^5.6.2",
+		"dedent": "^1.7.2",
 		"turndown": "7.2.4"
-	},
-	"version": "0.0.0",
-	"publishConfig": {
-		"access": "public"
-	},
-	"files": [
-		"src",
-		"README.md"
-	]
+	}
 }

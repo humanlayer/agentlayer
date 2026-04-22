@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Community Discord
+    url: http://humanlayer.com/discord
+    about: Ask for a vouch, get help, or introduce yourself before contributing.
+  - name: GitHub Discussions
+    url: https://github.com/humanlayer/agentlayer/discussions
+    about: Use Discussions for open-ended questions, design ideas, and community conversation.
