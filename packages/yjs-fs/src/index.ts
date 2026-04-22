@@ -1,6 +1,24 @@
 export type { YjsFilesystemOptions } from './filesystem'
 export { YjsFilesystem } from './filesystem'
 export type {
+	LocalSelectionState,
+	PresenceCursor,
+	PresenceState,
+	PresenceUser,
+	ResolvedPresenceSelection,
+} from './presence'
+export {
+	clearLocalSelection,
+	colorFromId,
+	getLocalPresenceState,
+	getLocalSelection,
+	getLocalSelectionState,
+	resolveLocalSelectionState,
+	setLocalPresenceState,
+	setLocalSelection,
+	updateLocalPresenceState,
+} from './presence'
+export type {
 	DurableStreamsClientOptions,
 	DurableStreamsServerOptions,
 } from './surface'

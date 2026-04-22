@@ -1,4 +1,15 @@
+import type { Awareness } from 'y-protocols/awareness'
 import * as Y from 'yjs'
+import {
+	clearLocalSelection as clearAwarenessSelection,
+	getLocalPresenceState,
+	getLocalSelection as getAwarenessSelection,
+	setLocalPresenceState,
+	setLocalSelection as setAwarenessSelection,
+	updateLocalPresenceState,
+	type PresenceState,
+	type ResolvedPresenceSelection,
+} from '../presence'
 import {
 	type CatalogState,
 	createCatalogState,
@@ -32,17 +43,24 @@ import {
 
 export type YjsFilesystemOptions = {
 	doc?: Y.Doc
+	awareness?: Awareness | null
 }
 
 export class YjsFilesystem {
 	readonly doc: Y.Doc
 	private readonly catalog: CatalogState
 	private readonly contentDocs: Y.Map<Y.Doc>
+	private _awareness: Awareness | null
 
 	constructor(options: YjsFilesystemOptions = {}) {
 		this.doc = options.doc ?? new Y.Doc()
 		this.catalog = createCatalogState(this.doc)
 		this.contentDocs = this.doc.getMap<Y.Doc>('contentDocs')
+		this._awareness = options.awareness ?? null
+	}
+
+	get awareness(): Awareness | null {
+		return this._awareness
 	}
 
 	lookup(path: string): LookupResult | undefined {
@@ -172,6 +190,62 @@ export class YjsFilesystem {
 	resolveComment(path: string, commentId: string, author: string): void {
 		const { entry, path: normalizedPath } = this.requireFileLookup(path)
 		resolveCommentRecord(this.requireContentDoc(entry.contentId, normalizedPath), commentId, author)
+	}
+
+	setAwareness(awareness: Awareness | null): void {
+		this._awareness = awareness
+	}
+
+	getLocalPresence(): PresenceState | null {
+		if (!this._awareness) {
+			return null
+		}
+
+		return getLocalPresenceState(this._awareness)
+	}
+
+	setLocalPresence(presence: PresenceState | null): void {
+		if (!this._awareness) {
+			return
+		}
+
+		setLocalPresenceState(this._awareness, presence)
+	}
+
+	updateLocalPresence(patch: Partial<PresenceState>): PresenceState | null {
+		if (!this._awareness) {
+			return null
+		}
+
+		return updateLocalPresenceState(this._awareness, patch)
+	}
+
+	setLocalSelection(path: string, anchorOffset: number, headOffset: number): void {
+		if (!this._awareness) {
+			return
+		}
+
+		const { entry, path: normalizedPath } = this.requireFileLookup(path)
+		const ytext = this.requireContentDoc(entry.contentId, normalizedPath).getText('content')
+		setAwarenessSelection(this._awareness, ytext, anchorOffset, headOffset)
+	}
+
+	clearLocalSelection(): void {
+		if (!this._awareness) {
+			return
+		}
+
+		clearAwarenessSelection(this._awareness)
+	}
+
+	getLocalSelection(path: string): ResolvedPresenceSelection | undefined {
+		if (!this._awareness) {
+			return undefined
+		}
+
+		const { entry, path: normalizedPath } = this.requireFileLookup(path)
+		const ytext = this.requireContentDoc(entry.contentId, normalizedPath).getText('content')
+		return getAwarenessSelection(this._awareness, ytext)
 	}
 
 	rename(fromPath: string, toPath: string): void {
