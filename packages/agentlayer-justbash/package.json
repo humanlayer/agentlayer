@@ -23,5 +23,12 @@
 		".": "./src/index.ts",
 		"./tools": "./src/tools/index.ts"
 	},
-	"dependencies": {}
+	"dependencies": {},
+	"version": "0.0.0",
+	"publishConfig": {
+		"access": "public"
+	},
+	"files": [
+		"src"
+	]
 }
