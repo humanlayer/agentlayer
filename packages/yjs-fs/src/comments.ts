@@ -20,12 +20,7 @@ export function initializeComments(doc: Y.Doc): void {
 	doc.getArray<YCommentRecord>(COMMENTS_KEY)
 }
 
-export function addCommentRecord(
-	doc: Y.Doc,
-	anchor: CommentAnchor,
-	body: string,
-	author: string,
-): string {
+export function addCommentRecord(doc: Y.Doc, anchor: CommentAnchor, body: string, author: string): string {
 	const ytext = doc.getText('content')
 	const comments = doc.getArray<YCommentRecord>(COMMENTS_KEY)
 	const id = crypto.randomUUID()
@@ -177,9 +172,7 @@ function readReplies(commentRecord: YCommentRecord, parentId: string): CommentRe
 				body: requireStringField(replyRecord, 'body'),
 				createdAt: requireNumberField(replyRecord, 'createdAt'),
 			})
-		} catch {
-			continue
-		}
+		} catch {}
 	}
 
 	return result.sort((left, right) => left.createdAt - right.createdAt)

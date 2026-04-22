@@ -71,12 +71,7 @@ export function createGlobTool(opts?: { cwd?: string; disallowSymlinks?: boolean
 				return matchesGlob(basename(cwd), input.pattern) ? [cwd] : []
 			}
 
-			const matches = await walkMatchingFiles(
-				cwd,
-				cwd,
-				input.pattern,
-				!(opts?.disallowSymlinks ?? false),
-			)
+			const matches = await walkMatchingFiles(cwd, cwd, input.pattern, !(opts?.disallowSymlinks ?? false))
 
 			const withMtime: Array<{ path: string; mtime: number }> = []
 			for (const path of matches) {

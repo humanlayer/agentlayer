@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
-import * as Y from 'yjs'
 import { EntryNotFoundError, YjsFilesystem } from '@humanlayer/yjs-fs'
+import * as Y from 'yjs'
 import { snapshotFilesystem } from './support/snapshot'
 import { syncBothWays } from './support/sync'
 

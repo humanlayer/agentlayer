@@ -60,20 +60,22 @@
 	"devDependencies": {
 		"@ai-sdk/anthropic": "catalog:",
 		"@ai-sdk/provider": "catalog:",
-		"@durable-streams/client": "0.2.3",
-		"@durable-streams/server": "0.3.1",
-		"@durable-streams/y-durable-streams": "0.2.4",
+		"@durable-streams/client": "0.2.1",
+		"@durable-streams/server": "0.1.7",
+		"@durable-streams/y-durable-streams": "0.1.4",
 		"@humanlayer/agentlayer-core": "workspace:*",
 		"@types/bun": "latest",
 		"@types/turndown": "5.0.6",
 		"ai": "catalog:",
 		"fast-check": "^4.3.0",
+		"lib0": "^0.2.117",
 		"zod": "catalog:"
 	},
 	"peerDependencies": {
-		"@durable-streams/client": "^0.2.3",
-		"@durable-streams/server": "^0.3.1",
-		"@durable-streams/y-durable-streams": "^0.2.4",
+		"@durable-streams/client": "^0.2.1",
+		"@durable-streams/server": "^0.1.7",
+		"@durable-streams/y-durable-streams": "^0.1.4",
+		"lib0": "^0.2.0",
 		"typescript": "^5",
 		"yjs": "^13.0.0",
 		"y-protocols": "^1.0.0"

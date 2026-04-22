@@ -233,12 +233,8 @@ describe('sub-agent streaming events', () => {
 			stream: false,
 		}).result
 
-		expect(
-			events.some((event) => event.type === 'toolInputDelta' && event.agentId !== undefined),
-		).toBe(true)
-		expect(
-			events.some((event) => event.type === 'textDelta' && event.agentId !== undefined),
-		).toBe(true)
+		expect(events.some((event) => event.type === 'toolInputDelta' && event.agentId !== undefined)).toBe(true)
+		expect(events.some((event) => event.type === 'textDelta' && event.agentId !== undefined)).toBe(true)
 
 		expect(streamingResult.state.messages).toEqual(nonStreamingResult.state.messages)
 		expect(streamingResult.newMessages).toEqual(nonStreamingResult.newMessages)
@@ -349,7 +345,9 @@ describe('sub-agent streaming events', () => {
 		expect(grandchildTextDelta?.agentId).not.toBe(childTextDelta?.agentId)
 
 		const nestedGrandchildEvents = events.filter((event) => event.agentId === grandchildTextDelta?.agentId)
-		expect(new Set(nestedGrandchildEvents.map((event) => event.parentToolCallId))).toEqual(new Set(['child-subagent-call']))
+		expect(new Set(nestedGrandchildEvents.map((event) => event.parentToolCallId))).toEqual(
+			new Set(['child-subagent-call']),
+		)
 
 		const rootFinalTextStartIndex = events.findIndex(
 			(event) => event.type === 'textStart' && event.agentId === undefined,
@@ -428,10 +426,7 @@ describe('sub-agent streaming events', () => {
 			(event): event is Extract<AgentEvent, { type: 'textDelta' }> =>
 				event.type === 'textDelta' && event.agentId !== undefined,
 		)
-		expect(childTextDeltas.map((event) => event.text).sort()).toEqual([
-			'Worker A complete.',
-			'Worker B complete.',
-		])
+		expect(childTextDeltas.map((event) => event.text).sort()).toEqual(['Worker A complete.', 'Worker B complete.'])
 		expect(new Set(childTextDeltas.map((event) => event.agentId)).size).toBe(2)
 		expect(new Set(childTextDeltas.map((event) => event.parentToolCallId))).toEqual(
 			new Set(['parent-subagent-call-a', 'parent-subagent-call-b']),
@@ -460,7 +455,9 @@ describe('sub-agent streaming events', () => {
 			]),
 			tools: { dangerous: dangerousTool },
 			hooks: {
-				approval: [(ctx) => (ctx.toolName === 'dangerous' ? ctx.ask({ message: 'Approve deep work?' }) : ctx.next())],
+				approval: [
+					(ctx) => (ctx.toolName === 'dangerous' ? ctx.ask({ message: 'Approve deep work?' }) : ctx.next()),
+				],
 			},
 		})
 
@@ -535,7 +532,7 @@ describe('sub-agent streaming events', () => {
 		})
 		expect(approvalEvent?.agentId).toBeDefined()
 
-		const approvalEventIndex = firstEvents.findIndex((event) => event === approvalEvent)
+		const approvalEventIndex = firstEvents.indexOf(approvalEvent)
 		const grandchildStepFinishIndex = firstEvents.findIndex(
 			(event) => event.type === 'stepFinish' && event.agentId === approvalEvent?.agentId,
 		)

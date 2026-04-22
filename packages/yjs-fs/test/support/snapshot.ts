@@ -1,4 +1,4 @@
-import { YjsFilesystem } from '@humanlayer/yjs-fs'
+import type { YjsFilesystem } from '@humanlayer/yjs-fs'
 
 export type FilesystemSnapshot = DirectorySnapshot
 
@@ -25,9 +25,10 @@ function snapshotDirectory(filesystem: YjsFilesystem, path: string): DirectorySn
 	const children: Record<string, DirectorySnapshot | FileSnapshot> = {}
 
 	for (const entry of filesystem.list(path)) {
-		children[entry.name] = entry.type === 'directory'
-			? snapshotDirectory(filesystem, entry.path)
-			: snapshotFile(filesystem, entry.path)
+		children[entry.name] =
+			entry.type === 'directory'
+				? snapshotDirectory(filesystem, entry.path)
+				: snapshotFile(filesystem, entry.path)
 	}
 
 	return {

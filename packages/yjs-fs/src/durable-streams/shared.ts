@@ -1,5 +1,5 @@
 import type { Awareness } from 'y-protocols/awareness'
-import * as Y from 'yjs'
+import type * as Y from 'yjs'
 import type { YjsFilesystem } from '../filesystem'
 import type { ContentId } from '../types'
 
@@ -73,9 +73,7 @@ export function getRootBindingTarget(filesystem: YjsFilesystem): DurableStreamsR
 	}
 }
 
-export function getAwarenessBindingTarget(
-	filesystem: YjsFilesystem,
-): DurableStreamsAwarenessBindingTarget | undefined {
+export function getAwarenessBindingTarget(filesystem: YjsFilesystem): DurableStreamsAwarenessBindingTarget | undefined {
 	if (!filesystem.awareness) {
 		return undefined
 	}
@@ -98,9 +96,7 @@ export function listContentBindingTargets(filesystem: YjsFilesystem): DurableStr
 		.sort((left, right) => left.contentId.localeCompare(right.contentId))
 }
 
-export function listDurableStreamsBindingTargets(
-	filesystem: YjsFilesystem,
-): DurableStreamsBindingTarget[] {
+export function listDurableStreamsBindingTargets(filesystem: YjsFilesystem): DurableStreamsBindingTarget[] {
 	const targets: DurableStreamsBindingTarget[] = [getRootBindingTarget(filesystem)]
 	const awarenessTarget = getAwarenessBindingTarget(filesystem)
 

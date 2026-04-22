@@ -64,9 +64,7 @@ describe('YjsFilesystem comments', () => {
 		comments = filesystem.getComments('/workspace/note.txt')
 
 		expect(comments).toEqual(
-			expect.arrayContaining([
-				expect.objectContaining({ body: 'Keep hello', anchorIndex: 0, anchorLength: 5 }),
-			]),
+			expect.arrayContaining([expect.objectContaining({ body: 'Keep hello', anchorIndex: 0, anchorLength: 5 })]),
 		)
 	})
 
@@ -82,8 +80,6 @@ describe('YjsFilesystem comments', () => {
 		expect(() => filesystem.replyToComment('/workspace/note.txt', 'missing', 'x', 'alice')).toThrow(
 			'Comment not found',
 		)
-		expect(() => filesystem.resolveComment('/workspace/note.txt', 'missing', 'alice')).toThrow(
-			'Comment not found',
-		)
+		expect(() => filesystem.resolveComment('/workspace/note.txt', 'missing', 'alice')).toThrow('Comment not found')
 	})
 })

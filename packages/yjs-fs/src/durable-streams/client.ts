@@ -1,15 +1,15 @@
 import type { YjsFilesystem } from '../filesystem'
 import type { DurableStreamsClientOptions } from '../surface'
 import {
+	type DurableStreamsBindingDescriptor,
+	type DurableStreamsClient,
+	type DurableStreamsClientSession,
+	type DurableStreamsContentBindingTarget,
 	getAwarenessBindingTarget,
 	getRootBindingTarget,
 	listContentBindingTargets,
 	observeContentBindingTargets,
 	sortBindingDescriptors,
-	type DurableStreamsBindingDescriptor,
-	type DurableStreamsClient,
-	type DurableStreamsClientSession,
-	type DurableStreamsContentBindingTarget,
 } from './shared'
 
 export type { DurableStreamsClientOptions }

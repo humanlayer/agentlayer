@@ -1,8 +1,6 @@
-import { startDurableStreamsDevServer, type DurableStreamsDevServer } from '@humanlayer/yjs-fs'
+import { type DurableStreamsDevServer, startDurableStreamsDevServer } from '@humanlayer/yjs-fs'
 
-export async function withDurableStreamsDevServer<T>(
-	run: (server: DurableStreamsDevServer) => Promise<T>,
-): Promise<T> {
+export async function withDurableStreamsDevServer<T>(run: (server: DurableStreamsDevServer) => Promise<T>): Promise<T> {
 	const server = await startDurableStreamsDevServer({
 		service: `test-${crypto.randomUUID()}`,
 	})

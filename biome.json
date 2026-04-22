@@ -14,7 +14,8 @@
 			"!**/node_modules/**/*",
 			"!packages/agentlayer-core/models.json",
 			"!.humanlayer",
-			"!node_modules"
+			"!node_modules",
+			"!**/dist"
 		]
 	},
 	"formatter": {

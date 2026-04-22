@@ -1,7 +1,7 @@
-import type { AgentEvent } from './agent-run'
-import type { ModelTokenUsage, TokenUsage } from './token-usage'
 import type { ModelMessage } from 'ai'
+import type { AgentEvent } from './agent-run'
 import * as color from './color'
+import type { ModelTokenUsage, TokenUsage } from './token-usage'
 
 const MAX_OUTPUT = 200
 const MAX_INPUT_VAL = 120
@@ -135,12 +135,16 @@ export class Renderer {
 
 			for (const part of parts) {
 				if (part.type === 'text' && (part as { text: string }).text.trim()) {
-					process.stdout.write(`${indent}${color.green('[Assistant]')} ${(part as { text: string }).text.trim()}\n`)
+					process.stdout.write(
+						`${indent}${color.green('[Assistant]')} ${(part as { text: string }).text.trim()}\n`,
+					)
 				} else if (part.type === 'reasoning') {
 					const text = (part as { text: string }).text.trim()
 					if (text) {
 						const oneLine = text.replace(/\n/g, ' ').trim()
-						process.stdout.write(`${indent}${color.purple('[Thinking]')} ${color.dim(truncate(oneLine, 140))}\n`)
+						process.stdout.write(
+							`${indent}${color.purple('[Thinking]')} ${color.dim(truncate(oneLine, 140))}\n`,
+						)
 					}
 				} else if (part.type === 'tool-call') {
 					const tc = part as { toolName: string; input: unknown }
@@ -164,23 +168,33 @@ export class Renderer {
 					if (isErr) {
 						process.stdout.write(`${indent}${color.red('[Error]')} ${color.dim(out || '(empty)')}\n`)
 					} else {
-						process.stdout.write(`${indent}${color.lightPurple('[Response]')} ${color.dim(out || '(empty)')}\n`)
+						process.stdout.write(
+							`${indent}${color.lightPurple('[Response]')} ${color.dim(out || '(empty)')}\n`,
+						)
 					}
 				}
 			}
 		} else if (msg.role === 'user') {
 			const text = Array.isArray(msg.content)
-				? (msg.content as Array<{ type: string; text?: string }>).filter((p) => p.type === 'text').map((p) => p.text).join(' ')
+				? (msg.content as Array<{ type: string; text?: string }>)
+						.filter((p) => p.type === 'text')
+						.map((p) => p.text)
+						.join(' ')
 				: String(msg.content)
 			if (text.trim()) {
 				process.stdout.write(`${indent}${color.darkBlue('[User]')} ${text.trim()}\n`)
 			}
 		} else if (msg.role === 'system') {
 			const text = Array.isArray(msg.content)
-				? (msg.content as Array<{ type: string; text?: string }>).filter((p) => p.type === 'text').map((p) => p.text).join(' ')
+				? (msg.content as Array<{ type: string; text?: string }>)
+						.filter((p) => p.type === 'text')
+						.map((p) => p.text)
+						.join(' ')
 				: String(msg.content)
 			if (text.trim()) {
-				process.stdout.write(`${indent}${color.dim('[System]')} ${color.dim(truncate(text.trim(), MAX_OUTPUT))}\n`)
+				process.stdout.write(
+					`${indent}${color.dim('[System]')} ${color.dim(truncate(text.trim(), MAX_OUTPUT))}\n`,
+				)
 			}
 		}
 	}

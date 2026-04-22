@@ -79,10 +79,10 @@ export * from './hooks/index'
 export * from './interfaces'
 export { buildToolResultMessage, extractLastAssistantText, toolResultMessage } from './messages'
 export { createOutputRenderer, type OutputRenderer, type OutputRendererOptions } from './output-renderer'
-export { CodingRenderer, type CodingRendererOptions } from './render-coding'
-export { Renderer, renderFinish, type RendererOptions } from './render'
 export { getPendingToolCalls } from './pending'
 export * from './prompts'
+export { Renderer, type RendererOptions, renderFinish } from './render'
+export { CodingRenderer, type CodingRendererOptions } from './render-coding'
 export {
 	type AgentPath,
 	type AgentState,

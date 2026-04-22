@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'bun:test'
-import { Awareness } from 'y-protocols/awareness'
-import * as Y from 'yjs'
 import { YjsFilesystem } from '@humanlayer/yjs-fs'
 import { createPerDocumentDurableStreamsClient } from '@humanlayer/yjs-fs/durable-streams/per-doc-client'
+import { Awareness } from 'y-protocols/awareness'
+import * as Y from 'yjs'
 import { withDurableStreamsDevServer } from './support/durable-server'
 
 function createReplica() {
@@ -96,7 +96,9 @@ describe('per-document durable transport', () => {
 
 			await waitFor(() => {
 				return Array.from(replicaB.awareness.getStates().values()).some((state) => {
-					return state?.presence && typeof state.presence === 'object' && state.presence.user?.id === 'agent-a'
+					return (
+						state?.presence && typeof state.presence === 'object' && state.presence.user?.id === 'agent-a'
+					)
 				})
 			})
 
@@ -139,9 +141,11 @@ describe('per-document durable transport', () => {
 			expect(channelIds).toContain('_root')
 			expect(channelIds).toContain('_awareness')
 			expect(descriptors.filter((descriptor) => descriptor.kind === 'content')).toHaveLength(2)
-			expect(descriptors.every((descriptor) => descriptor.kind !== 'content' || descriptor.channelId.startsWith('_file/'))).toBe(
-				true,
-			)
+			expect(
+				descriptors.every(
+					(descriptor) => descriptor.kind !== 'content' || descriptor.channelId.startsWith('_file/'),
+				),
+			).toBe(true)
 
 			await session.disconnect()
 		})

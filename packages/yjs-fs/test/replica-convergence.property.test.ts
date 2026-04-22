@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
+import { YjsFilesystem } from '@humanlayer/yjs-fs'
 import fc from 'fast-check'
 import * as Y from 'yjs'
-import { YjsFilesystem } from '@humanlayer/yjs-fs'
 import { snapshotFilesystem } from './support/snapshot'
 import { syncBothWays } from './support/sync'
 
@@ -43,13 +43,7 @@ describe('YjsFilesystem replica convergence properties', () => {
 	})
 })
 
-function applyOperation(
-	operation: Operation,
-	fsA: YjsFilesystem,
-	fsB: YjsFilesystem,
-	docA: Y.Doc,
-	docB: Y.Doc,
-): void {
+function applyOperation(operation: Operation, fsA: YjsFilesystem, fsB: YjsFilesystem, docA: Y.Doc, docB: Y.Doc): void {
 	if (operation.kind === 'sync') {
 		syncBothWays(docA, docB)
 		expect(snapshotFilesystem(fsA)).toEqual(snapshotFilesystem(fsB))
@@ -96,7 +90,11 @@ function applyOperation(
 			break
 		}
 		case 'rename': {
-			if (!filesystem.exists(operation.fromPath) || filesystem.exists(operation.toPath) || !parentIsDirectory(filesystem, operation.toPath)) {
+			if (
+				!filesystem.exists(operation.fromPath) ||
+				filesystem.exists(operation.toPath) ||
+				!parentIsDirectory(filesystem, operation.toPath)
+			) {
 				break
 			}
 
@@ -124,18 +122,28 @@ function applyOperation(
 
 function operationArbitrary(): fc.Arbitrary<Operation> {
 	return fc.oneof(
-		fc.record({ replica: replicaArbitrary(), path: pathArbitrary('dir') }).map(({ replica, path }) => ({ kind: 'mkdir' as const, replica, path })),
+		fc
+			.record({ replica: replicaArbitrary(), path: pathArbitrary('dir') })
+			.map(({ replica, path }) => ({ kind: 'mkdir' as const, replica, path })),
 		fc
 			.record({ replica: replicaArbitrary(), path: pathArbitrary('file'), content: fc.string({ maxLength: 12 }) })
 			.map(({ replica, path, content }) => ({ kind: 'createFile' as const, replica, path, content })),
 		fc
-			.record({ replica: replicaArbitrary(), path: pathArbitrary('write'), content: fc.string({ maxLength: 12 }) })
+			.record({
+				replica: replicaArbitrary(),
+				path: pathArbitrary('write'),
+				content: fc.string({ maxLength: 12 }),
+			})
 			.map(({ replica, path, content }) => ({ kind: 'writeFile' as const, replica, path, content })),
-		fc.record({ replica: replicaArbitrary(), path: pathArbitrary('edit') }).map(({ replica, path }) => ({ kind: 'editFile' as const, replica, path })),
+		fc
+			.record({ replica: replicaArbitrary(), path: pathArbitrary('edit') })
+			.map(({ replica, path }) => ({ kind: 'editFile' as const, replica, path })),
 		fc
 			.record({ replica: replicaArbitrary(), fromPath: pathArbitrary('from'), toPath: pathArbitrary('to') })
 			.map(({ replica, fromPath, toPath }) => ({ kind: 'rename' as const, replica, fromPath, toPath })),
-		fc.record({ replica: replicaArbitrary(), path: pathArbitrary('delete') }).map(({ replica, path }) => ({ kind: 'unlink' as const, replica, path })),
+		fc
+			.record({ replica: replicaArbitrary(), path: pathArbitrary('delete') })
+			.map(({ replica, path }) => ({ kind: 'unlink' as const, replica, path })),
 		fc.constant({ kind: 'sync' as const }),
 	)
 }

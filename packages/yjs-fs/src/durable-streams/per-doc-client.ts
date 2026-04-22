@@ -1,18 +1,17 @@
-import { YjsProvider } from '@durable-streams/y-durable-streams'
 import type { HeadersRecord } from '@durable-streams/client'
-import * as Y from 'yjs'
+import { YjsProvider } from '@durable-streams/y-durable-streams'
 import type { YjsFilesystem } from '../filesystem'
 import type { ContentId } from '../types'
 import {
+	type DurableStreamsBindingDescriptor,
+	type DurableStreamsClient,
+	type DurableStreamsClientSession,
+	type DurableStreamsContentBindingTarget,
 	getAwarenessBindingTarget,
 	getRootBindingTarget,
 	listContentBindingTargets,
 	observeContentBindingTargets,
 	sortBindingDescriptors,
-	type DurableStreamsBindingDescriptor,
-	type DurableStreamsClient,
-	type DurableStreamsClientSession,
-	type DurableStreamsContentBindingTarget,
 } from './shared'
 
 const ROOT_CHANNEL_ID = '_root'
@@ -47,10 +46,13 @@ class PerDocumentDurableStreamsClientSession implements DurableStreamsClientSess
 	private readonly contentProviders = new Map<ContentId, YjsProvider>()
 	private readonly stopObservingContentDocs: () => void
 	private rootProvider: YjsProvider | null = null
+	private readonly rootDocId: string
+	private disconnected = false
 
 	constructor(filesystem: YjsFilesystem, options: PerDocumentDurableStreamsClientOptions) {
 		this.filesystem = filesystem
 		this.options = options
+		this.rootDocId = rootDocId(this.options)
 		this.stopObservingContentDocs = observeContentBindingTargets(filesystem, (change) => {
 			for (const contentId of change.removed) {
 				this.unbindContent(contentId)
@@ -63,6 +65,7 @@ class PerDocumentDurableStreamsClientSession implements DurableStreamsClientSess
 	}
 
 	async connect(): Promise<void> {
+		this.disconnected = false
 		this.bindRoot()
 
 		for (const target of listContentBindingTargets(this.filesystem)) {
@@ -77,6 +80,10 @@ class PerDocumentDurableStreamsClientSession implements DurableStreamsClientSess
 	}
 
 	async disconnect(): Promise<void> {
+		if (this.disconnected) {
+			return
+		}
+		this.disconnected = true
 		this.stopObservingContentDocs()
 
 		for (const provider of this.contentProviders.values()) {
@@ -111,10 +118,14 @@ class PerDocumentDurableStreamsClientSession implements DurableStreamsClientSess
 			doc: rootTarget.doc,
 			awareness: awarenessTarget?.awareness,
 			baseUrl: yjsBaseUrl(this.options),
-			docId: rootDocId(this.options),
+			docId: this.rootDocId,
 			headers: this.options.headers,
 			liveMode: this.options.liveMode,
 			connect: false,
+		})
+
+		this.rootProvider.on('error', () => {
+			// Avoid surfacing provider retry churn as session fatal errors.
 		})
 	}
 
@@ -128,10 +139,14 @@ class PerDocumentDurableStreamsClientSession implements DurableStreamsClientSess
 		const provider = new YjsProvider({
 			doc: target.doc,
 			baseUrl: yjsBaseUrl(this.options),
-			docId: contentDocId(this.options, target.contentId),
+			docId: contentDocId(this.rootDocId, target.contentId),
 			headers: this.options.headers,
 			liveMode: this.options.liveMode,
 			connect: false,
+		})
+
+		provider.on('error', () => {
+			// Avoid surfacing provider retry churn as session fatal errors.
 		})
 
 		this.contentProviders.set(target.contentId, provider)
@@ -162,8 +177,8 @@ function rootDocId(options: PerDocumentDurableStreamsClientOptions): string {
 	return `${prefix(options)}/_root`
 }
 
-function contentDocId(options: PerDocumentDurableStreamsClientOptions, contentId: ContentId): string {
-	return `${prefix(options)}/_file/${contentId}`
+function contentDocId(rootDocId: string, contentId: ContentId): string {
+	return `${rootDocId}/_file/${contentId}`
 }
 
 function descriptorForRoot(): DurableStreamsBindingDescriptor {

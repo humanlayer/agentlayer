@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from 'bun:test'
-import { stripANSI } from 'bun'
 import type { ModelMessage } from 'ai'
+import { stripANSI } from 'bun'
 import { CodingRenderer } from '../src/render-coding'
 
 const originalWrite = process.stdout.write.bind(process.stdout)

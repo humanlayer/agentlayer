@@ -1,12 +1,6 @@
 import type { ModelMessage } from 'ai'
 import type { AgentRun } from './agent-run'
-import type {
-	SubAgentPauseResult,
-	SubAgentResult,
-	SubAgentRunHandle,
-	Tool,
-	ToolContext,
-} from './define-tool'
+import type { SubAgentPauseResult, SubAgentResult, SubAgentRunHandle, Tool, ToolContext } from './define-tool'
 import type { HookStopResult, StopOptions } from './hooks'
 import { buildToolResultMessage } from './messages'
 import type { AgentState } from './state'

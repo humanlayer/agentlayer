@@ -84,7 +84,7 @@ export function createCatalogState(doc: Y.Doc): CatalogState {
 	const existingRootEntryId = catalog.get(ROOT_ENTRY_ID_KEY)
 	const rootEntryId = typeof existingRootEntryId === 'string' ? existingRootEntryId : ROOT_ENTRY_ID
 
-		doc.transact(() => {
+	doc.transact(() => {
 		// Ensure `/` always exists as a first-class directory entry with a stable id.
 		if (catalog.get(ROOT_ENTRY_ID_KEY) !== rootEntryId) {
 			catalog.set(ROOT_ENTRY_ID_KEY, rootEntryId)

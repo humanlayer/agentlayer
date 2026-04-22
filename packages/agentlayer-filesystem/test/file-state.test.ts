@@ -11,7 +11,14 @@ import {
 	createWastedReadHook,
 	createWastedReadHooks,
 } from '../src/hooks'
-import { assistantText, assistantWithToolCall, assistantWithToolCalls, getToolResults, mockModel, userMessage } from './mocks'
+import {
+	assistantText,
+	assistantWithToolCall,
+	assistantWithToolCalls,
+	getToolResults,
+	mockModel,
+	userMessage,
+} from './mocks'
 
 async function fileText(filePath: string): Promise<string> {
 	return await readFile(filePath, 'utf8')
@@ -1534,7 +1541,10 @@ describe('file-state hooks', () => {
 				tools: { read: readTool },
 				hooks,
 			}).run({
-				state: startState([...first.state.messages, userMessage('Read both files again')], first.state.toolState),
+				state: startState(
+					[...first.state.messages, userMessage('Read both files again')],
+					first.state.toolState,
+				),
 			}).result
 
 			expect(readExecuted).toBe(2)

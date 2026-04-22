@@ -1,7 +1,7 @@
 import type { ModelMessage } from 'ai'
 import type { AgentEvent } from './agent-run'
-import type { TokenUsageEvent } from './token-usage'
 import * as color from './color'
+import type { TokenUsageEvent } from './token-usage'
 
 export interface OutputRendererOptions {
 	output?: NodeJS.WritableStream

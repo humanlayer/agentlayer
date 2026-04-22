@@ -1,0 +1,6 @@
+config:
+  aws:region: us-east-1
+  aws:allowedAccountIds:
+    - "654654321315"
+  pulumi:autonaming:
+    pattern: ${name}-${stack}-${alphanum(6)}

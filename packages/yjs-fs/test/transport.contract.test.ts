@@ -1,25 +1,19 @@
 import { describe, expect, test } from 'bun:test'
-import { Awareness } from 'y-protocols/awareness'
-import * as Y from 'yjs'
+import { EntryNotFoundError, resolveLocalSelectionState, YjsFilesystem } from '@humanlayer/yjs-fs'
+import { createPerDocumentDurableStreamsClient } from '@humanlayer/yjs-fs/durable-streams/per-doc-client'
 import {
-	EntryNotFoundError,
-	resolveLocalSelectionState,
-	YjsFilesystem,
-} from '@humanlayer/yjs-fs'
-import {
-	createPerDocumentDurableStreamsClient,
-} from '@humanlayer/yjs-fs/durable-streams/per-doc-client'
-import {
-	createInMemorySingleStreamTransport,
-	createSingleStreamDurableStreamsClient,
-} from '@humanlayer/yjs-fs/durable-streams/single-stream-client'
-import {
-	sortBindingDescriptors,
 	type DurableStreamsBindingDescriptor,
 	type DurableStreamsClient,
 	type DurableStreamsClientSession,
 	type DurableStreamsTransportMode,
+	sortBindingDescriptors,
 } from '@humanlayer/yjs-fs/durable-streams/shared'
+import {
+	createInMemorySingleStreamTransport,
+	createSingleStreamDurableStreamsClient,
+} from '@humanlayer/yjs-fs/durable-streams/single-stream-client'
+import { Awareness } from 'y-protocols/awareness'
+import * as Y from 'yjs'
 import { snapshotFilesystem } from './support/snapshot'
 
 type TransportHarness = {
@@ -161,12 +155,8 @@ function runTransportContractSuite(harness: TransportHarness): void {
 		replicaA.filesystem.unlink('/workspace/renamed.txt')
 		expect(replicaA.filesystem.exists('/workspace/renamed.txt')).toBe(false)
 		expect(replicaB.filesystem.exists('/workspace/renamed.txt')).toBe(false)
-		expect(sortBindingDescriptors(sessionA.describeBindings())).toEqual(
-			expectedBindings(harness.mode, [], true),
-		)
-		expect(sortBindingDescriptors(sessionB.describeBindings())).toEqual(
-			expectedBindings(harness.mode, [], true),
-		)
+		expect(sortBindingDescriptors(sessionA.describeBindings())).toEqual(expectedBindings(harness.mode, [], true))
+		expect(sortBindingDescriptors(sessionB.describeBindings())).toEqual(expectedBindings(harness.mode, [], true))
 
 		await disconnectSessions(sessionA, sessionB)
 	})
@@ -403,10 +393,7 @@ function resolveSelectionForReplica(
 		return undefined
 	}
 
-	return resolveLocalSelectionState(
-		ytext,
-		selection as Parameters<typeof resolveLocalSelectionState>[1],
-	)
+	return resolveLocalSelectionState(ytext, selection as Parameters<typeof resolveLocalSelectionState>[1])
 }
 
 function isRecord(value: unknown): value is Record<string, any> {

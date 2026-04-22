@@ -1,11 +1,11 @@
 import { describe, expect, test } from 'bun:test'
-import { Awareness } from 'y-protocols/awareness'
-import * as Y from 'yjs'
 import { YjsFilesystem } from '@humanlayer/yjs-fs'
 import {
 	createInMemorySingleStreamTransport,
 	createSingleStreamDurableStreamsClient,
 } from '@humanlayer/yjs-fs/durable-streams/single-stream-client'
+import { Awareness } from 'y-protocols/awareness'
+import * as Y from 'yjs'
 
 function createReplica() {
 	const doc = new Y.Doc()
@@ -115,9 +115,9 @@ describe('single-stream durable transport', () => {
 
 		expect(channelIds).toEqual(['filesystem', 'filesystem.awareness'])
 		expect(descriptors.filter((descriptor) => descriptor.kind === 'content')).toHaveLength(2)
-		expect(descriptors.every((descriptor) => descriptor.kind !== 'content' || descriptor.channelId === 'filesystem')).toBe(
-			true,
-		)
+		expect(
+			descriptors.every((descriptor) => descriptor.kind !== 'content' || descriptor.channelId === 'filesystem'),
+		).toBe(true)
 
 		session.disconnect()
 	})

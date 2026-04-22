@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
-import * as Y from 'yjs'
 import { YjsFilesystem } from '@humanlayer/yjs-fs'
+import * as Y from 'yjs'
 import { syncBothWays, syncDoc } from './support/sync'
 
 describe('YjsFilesystem sync', () => {

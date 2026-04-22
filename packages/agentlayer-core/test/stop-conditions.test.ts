@@ -14,7 +14,14 @@ import {
 	toolCompleted,
 	totalToolFailures,
 } from '../src'
-import { assistantText, assistantWithToolCall, getToolResults, mockModel, mockStreamingModel, userMessage } from './mocks'
+import {
+	assistantText,
+	assistantWithToolCall,
+	getToolResults,
+	mockModel,
+	mockStreamingModel,
+	userMessage,
+} from './mocks'
 
 const bashTool = defineTool({
 	name: 'bash',

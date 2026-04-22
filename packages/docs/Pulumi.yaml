@@ -1,0 +1,8 @@
+name: agentlayer-docs
+runtime:
+  name: nodejs
+  options:
+    packagemanager: bun
+main: pulumi.ts
+description: AgentLayer documentation site deployment
+refresh: always

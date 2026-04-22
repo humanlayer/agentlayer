@@ -4,6 +4,9 @@
 	"type": "module",
 	"private": true,
 	"devDependencies": {
+		"@pulumi/aws": "catalog:",
+		"@pulumi/command": "catalog:",
+		"@pulumi/pulumi": "catalog:",
 		"@braintree/sanitize-url": "^7.1.1",
 		"@types/bun": "latest",
 		"cytoscape": "^3.30.4",
@@ -25,6 +28,8 @@
 	"scripts": {
 		"docs:dev": "vitepress dev content",
 		"docs:build": "vitepress build content",
-		"docs:preview": "vitepress preview content"
+		"docs:preview": "vitepress preview content",
+		"pulumi:preview": "pulumi preview -s humanlayer/agentlayer-docs/prod --non-interactive",
+		"pulumi:up": "pulumi up -s humanlayer/agentlayer-docs/prod --yes --non-interactive"
 	}
 }

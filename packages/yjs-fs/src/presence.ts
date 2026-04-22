@@ -74,7 +74,7 @@ export function getLocalPresenceState(awareness: Awareness): PresenceState | nul
 }
 
 export function setLocalPresenceState(awareness: Awareness, presence: PresenceState | null): void {
-	awareness.setLocalStateField(PRESENCE_FIELD, presence === null ? null : normalizePresenceState(presence) ?? {})
+	awareness.setLocalStateField(PRESENCE_FIELD, presence === null ? null : (normalizePresenceState(presence) ?? {}))
 }
 
 export function updateLocalPresenceState(awareness: Awareness, patch: Partial<PresenceState>): PresenceState {
@@ -90,12 +90,7 @@ export function updateLocalPresenceState(awareness: Awareness, patch: Partial<Pr
 	return normalized
 }
 
-export function setLocalSelection(
-	awareness: Awareness,
-	ytext: Y.Text,
-	anchorOffset: number,
-	headOffset: number,
-): void {
+export function setLocalSelection(awareness: Awareness, ytext: Y.Text, anchorOffset: number, headOffset: number): void {
 	const maxIndex = ytext.length
 	awareness.setLocalStateField(SELECTION_FIELD, {
 		anchor: Y.createRelativePositionFromTypeIndex(ytext, clampOffset(anchorOffset, maxIndex)),
@@ -119,10 +114,7 @@ export function getLocalSelectionState(awareness: Awareness): LocalSelectionStat
 	}
 }
 
-export function getLocalSelection(
-	awareness: Awareness,
-	ytext: Y.Text,
-): ResolvedPresenceSelection | undefined {
+export function getLocalSelection(awareness: Awareness, ytext: Y.Text): ResolvedPresenceSelection | undefined {
 	return resolveLocalSelectionState(ytext, getLocalSelectionState(awareness))
 }
 

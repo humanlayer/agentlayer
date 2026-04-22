@@ -4,19 +4,19 @@ import { z } from 'zod'
 import { Agent, type AgentEvent, defineTool, startState } from '../src'
 import { assistantText, assistantWithToolCalls, mockResponse, mockStreamingModel, userMessage } from './mocks'
 
-	const echoTool = defineTool({
-		name: 'echo',
-		description: 'Echo input',
-		input: z.object({ text: z.string() }),
-		execute: async (input) => input.text,
-	})
+const echoTool = defineTool({
+	name: 'echo',
+	description: 'Echo input',
+	input: z.object({ text: z.string() }),
+	execute: async (input) => input.text,
+})
 
-	const bashTool = defineTool({
-		name: 'bash',
-		description: 'Run bash',
-		input: z.object({ command: z.string() }),
-		execute: async () => 'ok',
-	})
+const bashTool = defineTool({
+	name: 'bash',
+	description: 'Run bash',
+	input: z.object({ command: z.string() }),
+	execute: async () => 'ok',
+})
 
 describe('streaming events', () => {
 	test('stream=true emits root text events in order and preserves final transcript parity', async () => {
@@ -129,7 +129,12 @@ describe('streaming events', () => {
 		const agent = new Agent({
 			model: mockStreamingModel([
 				mockResponse([
-					{ type: 'tool-call', toolCallId: 'call-bash-1', toolName: 'bash', input: JSON.stringify({ command: 'echo hi' }) },
+					{
+						type: 'tool-call',
+						toolCallId: 'call-bash-1',
+						toolName: 'bash',
+						input: JSON.stringify({ command: 'echo hi' }),
+					},
 				]),
 				assistantText('Done.'),
 			]),

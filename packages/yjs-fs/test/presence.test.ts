@@ -1,13 +1,13 @@
 import { describe, expect, test } from 'bun:test'
-import { Awareness } from 'y-protocols/awareness'
-import * as Y from 'yjs'
 import {
-	YjsFilesystem,
 	colorFromId,
 	getLocalPresenceState,
 	getLocalSelectionState,
 	resolveLocalSelectionState,
+	YjsFilesystem,
 } from '@humanlayer/yjs-fs'
+import { Awareness } from 'y-protocols/awareness'
+import * as Y from 'yjs'
 import { snapshotFilesystem } from './support/snapshot'
 
 function createAwareness(doc: Y.Doc): Awareness {

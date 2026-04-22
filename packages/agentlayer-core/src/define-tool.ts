@@ -292,11 +292,11 @@ export function defineToolInterface<TInput, TOutput = string>(
 				serialize: config.serialize
 					? (raw: TOutput, input: TInput) =>
 							config.serialize!(raw, input, {
-							getContextWindow: () => [],
-							updateContextWindow: () => {},
-							signal: new AbortController().signal,
-							stop: (opts) => ({ type: 'stop', ...opts }),
-							getContextWindowTokens: () => 0,
+								getContextWindow: () => [],
+								updateContextWindow: () => {},
+								signal: new AbortController().signal,
+								stop: (opts) => ({ type: 'stop', ...opts }),
+								getContextWindowTokens: () => 0,
 								getContextWindowLimit: () => undefined,
 							} as ToolContext)
 					: undefined,

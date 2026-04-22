@@ -1,22 +1,18 @@
-import {
-	applyAwarenessUpdate,
-	encodeAwarenessUpdate,
-	type Awareness,
-} from 'y-protocols/awareness'
+import { type Awareness, applyAwarenessUpdate, encodeAwarenessUpdate } from 'y-protocols/awareness'
 import * as Y from 'yjs'
-import type { DurableStreamsClientOptions } from '../surface'
 import type { YjsFilesystem } from '../filesystem'
+import type { DurableStreamsClientOptions } from '../surface'
 import type { ContentId } from '../types'
 import {
+	type DurableStreamsBindingDescriptor,
+	type DurableStreamsClient,
+	type DurableStreamsClientSession,
+	type DurableStreamsContentBindingTarget,
 	getAwarenessBindingTarget,
 	getRootBindingTarget,
 	listContentBindingTargets,
 	observeContentBindingTargets,
 	sortBindingDescriptors,
-	type DurableStreamsBindingDescriptor,
-	type DurableStreamsClient,
-	type DurableStreamsClientSession,
-	type DurableStreamsContentBindingTarget,
 } from './shared'
 
 const FILESYSTEM_CHANNEL_ID = 'filesystem'
@@ -208,10 +204,7 @@ class SingleStreamDurableStreamsClientSession implements DurableStreamsClientSes
 	}
 
 	private bindAwarenessUpdates(awareness: Awareness): () => void {
-		const listener = (
-			changes: { added: number[]; updated: number[]; removed: number[] },
-			origin: unknown,
-		) => {
+		const listener = (changes: { added: number[]; updated: number[]; removed: number[] }, origin: unknown) => {
 			if (origin === this.remoteOrigin) {
 				return
 			}

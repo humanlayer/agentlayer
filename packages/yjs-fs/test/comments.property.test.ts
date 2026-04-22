@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
-import fc from 'fast-check'
 import { YjsFilesystem } from '@humanlayer/yjs-fs'
+import fc from 'fast-check'
 
 const PROPERTY_SEED = 840251
 
@@ -69,7 +69,10 @@ function applyOperation(filesystem: YjsFilesystem, operation: Operation): void {
 			break
 		}
 		case 'editMiddle': {
-			filesystem.writeFile('/workspace/note.txt', BASE_CONTENT.replace('beta', `${operation.text}beta${operation.text}`))
+			filesystem.writeFile(
+				'/workspace/note.txt',
+				BASE_CONTENT.replace('beta', `${operation.text}beta${operation.text}`),
+			)
 			break
 		}
 		case 'editSuffix': {
@@ -124,16 +127,20 @@ function operationArbitrary(): fc.Arbitrary<Operation> {
 		fc.string({ maxLength: 6 }).map((text) => ({ kind: 'editMiddle' as const, text })),
 		fc.string({ maxLength: 8 }).map((text) => ({ kind: 'editSuffix' as const, text })),
 		fc.string({ minLength: 1, maxLength: 24 }).map((content) => ({ kind: 'writeFile' as const, content })),
-		fc.record({ body: fc.string({ minLength: 1, maxLength: 20 }), author: authorArbitrary() }).map(({ body, author }) => ({
-			kind: 'addComment' as const,
-			body,
-			author,
-		})),
-		fc.record({ body: fc.string({ minLength: 1, maxLength: 20 }), author: authorArbitrary() }).map(({ body, author }) => ({
-			kind: 'replyToComment' as const,
-			body,
-			author,
-		})),
+		fc
+			.record({ body: fc.string({ minLength: 1, maxLength: 20 }), author: authorArbitrary() })
+			.map(({ body, author }) => ({
+				kind: 'addComment' as const,
+				body,
+				author,
+			})),
+		fc
+			.record({ body: fc.string({ minLength: 1, maxLength: 20 }), author: authorArbitrary() })
+			.map(({ body, author }) => ({
+				kind: 'replyToComment' as const,
+				body,
+				author,
+			})),
 		authorArbitrary().map((author) => ({ kind: 'resolveComment' as const, author })),
 	)
 }

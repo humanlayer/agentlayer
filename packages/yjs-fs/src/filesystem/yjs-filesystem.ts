@@ -1,16 +1,6 @@
 import type { Awareness } from 'y-protocols/awareness'
 import * as Y from 'yjs'
 import {
-	clearLocalSelection as clearAwarenessSelection,
-	getLocalPresenceState,
-	getLocalSelection as getAwarenessSelection,
-	setLocalPresenceState,
-	setLocalSelection as setAwarenessSelection,
-	updateLocalPresenceState,
-	type PresenceState,
-	type ResolvedPresenceSelection,
-} from '../presence'
-import {
 	type CatalogState,
 	createCatalogState,
 	createFileInCatalog,
@@ -29,6 +19,16 @@ import {
 	replyToCommentRecord,
 	resolveCommentRecord,
 } from '../comments'
+import {
+	clearLocalSelection as clearAwarenessSelection,
+	getLocalSelection as getAwarenessSelection,
+	getLocalPresenceState,
+	type PresenceState,
+	type ResolvedPresenceSelection,
+	setLocalSelection as setAwarenessSelection,
+	setLocalPresenceState,
+	updateLocalPresenceState,
+} from '../presence'
 import {
 	type CommentAnchor,
 	type EditResult,
@@ -108,13 +108,17 @@ export class YjsFilesystem {
 		const contentDoc = new Y.Doc({ guid: crypto.randomUUID() })
 		const ytext = contentDoc.getText('content')
 
-		if (content.length > 0) {
-			ytext.insert(0, content)
-		}
 		initializeComments(contentDoc)
-
-		const entryId = createFileInCatalog(this.catalog, normalizedPath, contentDoc.guid, content.length)
 		this.contentDocs.set(contentDoc.guid, contentDoc)
+		const entryId = createFileInCatalog(this.catalog, normalizedPath, contentDoc.guid, 0)
+
+		if (content.length > 0) {
+			this.doc.transact(() => {
+				ytext.insert(0, content)
+				updateFileMetadata(this.catalog, entryId, content.length)
+			})
+		}
+
 		return entryId
 	}
 

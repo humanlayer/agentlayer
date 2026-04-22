@@ -840,25 +840,25 @@ export class Agent<TTools extends Record<string, Tool<any, any>> = Record<string
 	}
 
 	private translateStreamPart(part: StreamPart, stepIndex: number): AgentEvent | undefined {
-			switch (part.type) {
-				case 'start-step':
-					return { type: 'stepStart', stepIndex }
-				case 'text-start':
-					return { type: 'textStart', id: part.id, stepIndex }
-				case 'text-delta':
-					return { type: 'textDelta', id: part.id, text: part.text, stepIndex }
-				case 'text-end':
-					return { type: 'textEnd', id: part.id, stepIndex }
-				case 'tool-input-start':
-					return { type: 'toolInputStart', id: part.id, toolName: part.toolName, stepIndex }
-				case 'tool-input-delta':
-					return { type: 'toolInputDelta', id: part.id, delta: part.delta, stepIndex }
-				case 'tool-input-end':
-					return { type: 'toolInputEnd', id: part.id, stepIndex }
-				case 'reasoning-start':
-					return { type: 'reasoningStart', id: part.id, stepIndex }
-				case 'reasoning-delta':
-					return { type: 'reasoningDelta', id: part.id, text: part.text, stepIndex }
+		switch (part.type) {
+			case 'start-step':
+				return { type: 'stepStart', stepIndex }
+			case 'text-start':
+				return { type: 'textStart', id: part.id, stepIndex }
+			case 'text-delta':
+				return { type: 'textDelta', id: part.id, text: part.text, stepIndex }
+			case 'text-end':
+				return { type: 'textEnd', id: part.id, stepIndex }
+			case 'tool-input-start':
+				return { type: 'toolInputStart', id: part.id, toolName: part.toolName, stepIndex }
+			case 'tool-input-delta':
+				return { type: 'toolInputDelta', id: part.id, delta: part.delta, stepIndex }
+			case 'tool-input-end':
+				return { type: 'toolInputEnd', id: part.id, stepIndex }
+			case 'reasoning-start':
+				return { type: 'reasoningStart', id: part.id, stepIndex }
+			case 'reasoning-delta':
+				return { type: 'reasoningDelta', id: part.id, text: part.text, stepIndex }
 			case 'reasoning-end':
 				return { type: 'reasoningEnd', id: part.id, stepIndex }
 			case 'finish-step':
@@ -1042,9 +1042,7 @@ export class Agent<TTools extends Record<string, Tool<any, any>> = Record<string
 				pendingUpdates: execResult.pendingUpdates,
 				...(execResult.stopRequested !== undefined ? { stopRequested: execResult.stopRequested } : {}),
 				...(execResult.toolStateUpdate !== undefined ? { toolStateUpdate: execResult.toolStateUpdate } : {}),
-				...(execResult.hookStateUpdates.length > 0
-					? { hookStateUpdate: execResult.hookStateUpdates }
-					: {}),
+				...(execResult.hookStateUpdates.length > 0 ? { hookStateUpdate: execResult.hookStateUpdates } : {}),
 				...(execResult.subAgentPause !== undefined ? { subAgentPause: execResult.subAgentPause } : {}),
 			}
 		}
@@ -1062,9 +1060,7 @@ export class Agent<TTools extends Record<string, Tool<any, any>> = Record<string
 			pendingUpdates: execResult.pendingUpdates,
 			...(execResult.stopRequested !== undefined ? { stopRequested: execResult.stopRequested } : {}),
 			...(execResult.toolStateUpdate !== undefined ? { toolStateUpdate: execResult.toolStateUpdate } : {}),
-			...(execResult.hookStateUpdates.length > 0
-				? { hookStateUpdate: execResult.hookStateUpdates }
-				: {}),
+			...(execResult.hookStateUpdates.length > 0 ? { hookStateUpdate: execResult.hookStateUpdates } : {}),
 			...(execResult.subAgentPause !== undefined ? { subAgentPause: execResult.subAgentPause } : {}),
 		}
 	}

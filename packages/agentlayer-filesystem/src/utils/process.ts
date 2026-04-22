@@ -1,4 +1,4 @@
-import { spawn, type SpawnOptionsWithoutStdio } from 'node:child_process'
+import { type SpawnOptionsWithoutStdio, spawn } from 'node:child_process'
 import type { Readable } from 'node:stream'
 
 export async function streamToString(stream: Readable | null | undefined): Promise<string> {
@@ -31,9 +31,9 @@ export async function runProcess(
 		timeoutMs === undefined
 			? undefined
 			: setTimeout(() => {
-				timedOut = true
-				child.kill()
-			}, timeoutMs)
+					timedOut = true
+					child.kill()
+				}, timeoutMs)
 
 	try {
 		const [stdout, stderr, exitCode] = await Promise.all([
