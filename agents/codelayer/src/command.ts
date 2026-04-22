@@ -10,6 +10,9 @@ export interface CodelayerCliOptions {
 	model?: string
 	prompt?: string
 	rlm?: boolean
+	rpi?: boolean
+	tars?: boolean
+	stream?: boolean
 	verbose?: boolean
 }
 
@@ -19,12 +22,16 @@ export function createCodelayerCommand(): Command {
 		.option('-p, --provider <provider>', 'Provider: anthropic, openai, codex', 'anthropic')
 		.option('-m, --model <model>', 'Model ID (defaults per provider)')
 		.option('--rlm', 'Run in RLM mode with subagent orchestration')
+		.option('--rpi', 'Enable RPI-style specialist subagents')
+		.option('--tars', 'Add the TARS persona prompt to the agent')
+		.option('--stream', 'Stream raw tool arg chunks live instead of buffered compact args')
 		.option('--prompt <prompt>', 'Run non-interactively with this prompt')
 		.option('--verbose', 'Show full tool results in CLI output')
 		.action(async (opts: CodelayerCliOptions) => {
 			const renderer = createOutputRenderer({
-				writeLine: (line) => console.log(line),
+				output: process.stdout,
 				includeTokenUsage: opts.verbose,
+				streamToolArgs: opts.stream,
 			})
 			const provider = opts.provider as ProviderType
 			const modelId = opts.model ?? DEFAULT_MODELS[provider]
@@ -35,12 +42,14 @@ export function createCodelayerCommand(): Command {
 				model,
 				cwd: process.cwd(),
 				rlm: opts.rlm,
+				rpi: opts.rpi,
+				tars: opts.tars,
 				exaApiKey,
 				skillTool,
 				onToolProgress: renderer.onToolProgress,
 			})
 
-			console.log(`codelayer - provider: ${provider}, model: ${modelId}${opts.rlm ? ' (RLM mode)' : ''}`)
+			console.log(`codelayer - provider: ${provider}, model: ${modelId}${opts.rlm ? ' (RLM mode)' : ''}${opts.rpi ? ' +rpi' : ''}${opts.tars ? ' +tars' : ''}`)
 			console.log()
 
 			if (opts.prompt) {

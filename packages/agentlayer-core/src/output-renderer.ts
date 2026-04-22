@@ -5,9 +5,11 @@ import type { TokenUsageEvent } from './token-usage'
 import * as color from './color'
 
 export interface OutputRendererOptions {
-	writeLine: (line: string) => void
+	output?: NodeJS.WritableStream
+	writeLine?: (line: string) => void
 	includeTokenUsage?: boolean
 	includeToolResults?: boolean
+	streamToolArgs?: boolean
 }
 
 export interface OutputRenderer {
@@ -24,7 +26,12 @@ type ToolProgressState = {
 
 type LiveToolInputState = {
 	toolName: string
+	lineOpen: boolean
+	hasWrittenArgs: boolean
+	rawInput: string
 }
+
+const MAX_INPUT_VAL = 120
 
 const TOOL_COLORS: Record<string, (text: string) => string> = {
 	read: color.blue,
@@ -67,21 +74,76 @@ function renderToolResultOutput(output: unknown): string {
 	return JSON.stringify(output)
 }
 
+function truncate(s: string, max: number): string {
+	if (s.length <= max) return s
+	return `${s.slice(0, max)}${color.dim('...')}`
+}
+
+function shortPath(s: string): string {
+	const parts = s.split('/')
+	if (parts.length <= 3) return s
+	return `.../${parts.slice(-2).join('/')}`
+}
+
+function visibleWhitespace(s: string): string {
+	return s.replace(/\r/g, '\\r').replace(/\n/g, '\\n').replace(/\t/g, '\\t')
+}
+
+function compactText(s: string, max: number): string {
+	return truncate(visibleWhitespace(s.trim()), max)
+}
+
+function compactVal(v: unknown): string {
+	if (v === undefined || v === null) return ''
+	if (typeof v === 'string') {
+		if (v.startsWith('/') && v.includes('/')) return shortPath(v)
+		return compactText(v, 60)
+	}
+	return truncate(JSON.stringify(v), 60)
+}
+
+function compactInput(rawInput: unknown): string {
+	if (rawInput == null) return ''
+	let input: unknown = rawInput
+	if (typeof rawInput === 'string') {
+		try {
+			input = JSON.parse(rawInput)
+		} catch {
+			return ` ${compactText(rawInput, MAX_INPUT_VAL)}`
+		}
+	}
+	if (typeof input !== 'object') return ` ${compactText(String(input), MAX_INPUT_VAL)}`
+	const obj = input as Record<string, unknown>
+	const parts: string[] = []
+	for (const [k, v] of Object.entries(obj)) {
+		if (v === undefined || v === null) continue
+		parts.push(`${color.dim(`${k}=`)}${compactVal(v)}`)
+	}
+	return parts.length > 0 ? ` ${parts.join(' ')}` : ''
+}
+
 export function createOutputRenderer(options: OutputRendererOptions): OutputRenderer {
 	const textBuffers = new Map<string, string>()
 	const thinkingBuffers = new Map<string, string>()
-	const toolInputBuffers = new Map<string, string>()
 	const toolOutputBuffers = new Map<string, string>()
 	const toolProgressState = new Map<string, ToolProgressState>()
 	const liveToolInputs = new Map<string, LiveToolInputState>()
 	const sawLiveAssistantContentByScope = new Set<string>()
 	const sawLiveToolInputByScope = new Set<string>()
-
-	const writeLine = (line: string): void => {
-		options.writeLine(line)
-	}
-
+	const output = options.output
 	const includeToolResults = options.includeToolResults ?? false
+	const includeTokenUsage = options.includeTokenUsage ?? false
+	const streamToolArgs = options.streamToolArgs ?? false
+
+	let activeToolLineId: string | undefined
+
+	const write = (chunk: string): void => {
+		if (output) {
+			output.write(chunk)
+			return
+		}
+		options.writeLine?.(chunk)
+	}
 
 	const formatThinkingLine = (line: string): string => {
 		return `${color.purple('[Thinking]')} ${color.dim(color.italic(line.replace(/\r$/, '')))}`
@@ -90,6 +152,18 @@ export function createOutputRenderer(options: OutputRendererOptions): OutputRend
 	const formatToolLabel = (toolName: string): string => {
 		const colorFn = TOOL_COLORS[toolName.toLowerCase()] ?? color.blue
 		return colorFn(`[Tool] ${toolName}`)
+	}
+
+	const formatToolCall = (toolName: string, input: unknown): string => {
+		return `${formatToolLabel(toolName)}${compactInput(input)}`
+	}
+
+	const streamKey = (parts: { id?: string; agentId?: string; parentToolCallId?: string }): string => {
+		return [parts.agentId ?? 'root', parts.parentToolCallId ?? 'root', parts.id ?? ''].join(':')
+	}
+
+	const scopeKey = (parts: { agentId?: string; parentToolCallId?: string }): string => {
+		return [parts.agentId ?? 'root', parts.parentToolCallId ?? 'root'].join(':')
 	}
 
 	const ensureToolProgressState = (toolCallId: string, toolName: string): ToolProgressState => {
@@ -106,18 +180,72 @@ export function createOutputRenderer(options: OutputRendererOptions): OutputRend
 	const ensureToolLabel = (toolCallId: string, toolName: string): ToolProgressState => {
 		const state = ensureToolProgressState(toolCallId, toolName)
 		if (!state.sawLabel) {
-			writeLine(formatToolLabel(toolName))
+			flushActiveToolLine()
+			write(`${formatToolLabel(toolName)}\n`)
 			state.sawLabel = true
 		}
 		return state
 	}
 
-	const streamKey = (parts: { id?: string; agentId?: string; parentToolCallId?: string }): string => {
-		return [parts.agentId ?? 'root', parts.parentToolCallId ?? 'root', parts.id ?? ''].join(':')
+	const ensureToolInputState = (toolCallId: string, toolName: string): LiveToolInputState => {
+		const existing = liveToolInputs.get(toolCallId)
+		if (existing) {
+			existing.toolName = toolName
+			return existing
+		}
+		const created: LiveToolInputState = {
+			toolName,
+			lineOpen: false,
+			hasWrittenArgs: false,
+			rawInput: '',
+		}
+		liveToolInputs.set(toolCallId, created)
+		return created
 	}
 
-	const scopeKey = (parts: { agentId?: string; parentToolCallId?: string }): string => {
-		return [parts.agentId ?? 'root', parts.parentToolCallId ?? 'root'].join(':')
+	const activateToolLine = (toolCallId: string, toolName: string): LiveToolInputState => {
+		if (activeToolLineId && activeToolLineId !== toolCallId) {
+			flushActiveToolLine()
+		}
+		const state = ensureToolInputState(toolCallId, toolName)
+		if (!state.lineOpen) {
+			write(formatToolLabel(toolName))
+			state.lineOpen = true
+			activeToolLineId = toolCallId
+		}
+		return state
+	}
+
+	function flushActiveToolLine(): void {
+		if (!activeToolLineId) return
+		const state = liveToolInputs.get(activeToolLineId)
+		if (!state?.lineOpen) {
+			activeToolLineId = undefined
+			return
+		}
+		if (!streamToolArgs && state.rawInput.length > 0 && !state.hasWrittenArgs) {
+			write(compactInput(state.rawInput))
+			state.hasWrittenArgs = true
+		}
+		write('\n')
+		state.lineOpen = false
+		activeToolLineId = undefined
+	}
+
+	const flushToolInputLine = (toolCallId: string): void => {
+		const state = liveToolInputs.get(toolCallId)
+		if (!state) return
+		activateToolLine(toolCallId, state.toolName)
+		flushActiveToolLine()
+	}
+
+	const writeLine = (line: string): void => {
+		flushActiveToolLine()
+		if (output) {
+			output.write(`${line}\n`)
+			return
+		}
+		options.writeLine?.(line)
 	}
 
 	const emitBufferedLines = (buffers: Map<string, string>, key: string, chunk: string, prefix: string): void => {
@@ -143,38 +271,15 @@ export function createOutputRenderer(options: OutputRendererOptions): OutputRend
 		buffers.delete(key)
 	}
 
-	const ensureToolInputState = (toolCallId: string, toolName: string): LiveToolInputState => {
-		const existing = liveToolInputs.get(toolCallId)
-		if (existing) return existing
-		const created: LiveToolInputState = { toolName }
-		liveToolInputs.set(toolCallId, created)
-		return created
-	}
-
-	const flushToolInputBuffer = (toolCallId: string): void => {
-		const state = liveToolInputs.get(toolCallId)
-		const remainder = toolInputBuffers.get(toolCallId)
-		if (!state || !remainder) return
-		writeLine(`${formatToolLabel(state.toolName)} ${color.dim(remainder.replace(/\r$/, ''))}`)
-		toolInputBuffers.delete(toolCallId)
-	}
-
 	const emitToolInputDelta = (toolCallId: string, delta: string): void => {
-		const state = liveToolInputs.get(toolCallId)
-		if (!state) return
-		const next = `${toolInputBuffers.get(toolCallId) ?? ''}${delta}`
-		const lines = next.split('\n')
-		const remainder = lines.pop() ?? ''
-
-		for (const line of lines) {
-			writeLine(`${formatToolLabel(state.toolName)} ${color.dim(line.replace(/\r$/, ''))}`)
+		const state = activateToolLine(toolCallId, liveToolInputs.get(toolCallId)?.toolName ?? 'tool')
+		state.rawInput += delta
+		if (!streamToolArgs) return
+		if (!state.hasWrittenArgs) {
+			write(' ')
+			state.hasWrittenArgs = true
 		}
-
-		if (remainder.length > 0) {
-			toolInputBuffers.set(toolCallId, remainder)
-		} else {
-			toolInputBuffers.delete(toolCallId)
-		}
+		write(color.dim(visibleWhitespace(delta)))
 	}
 
 	const flushAllBuffers = (): void => {
@@ -185,7 +290,7 @@ export function createOutputRenderer(options: OutputRendererOptions): OutputRend
 			writeLine(formatThinkingLine(remainder))
 			thinkingBuffers.delete(key)
 		}
-		for (const [toolCallId] of toolInputBuffers) flushToolInputBuffer(toolCallId)
+		for (const [toolCallId] of liveToolInputs) flushToolInputLine(toolCallId)
 		for (const [toolCallId, buffer] of toolOutputBuffers) {
 			const toolName = toolProgressState.get(toolCallId)?.toolName ?? 'tool'
 			ensureToolLabel(toolCallId, toolName)
@@ -242,7 +347,7 @@ export function createOutputRenderer(options: OutputRendererOptions): OutputRend
 
 				if (part.type === 'tool-call') {
 					if (!skipFinalToolCalls) {
-						ensureToolLabel(part.toolCallId, part.toolName)
+						writeLine(formatToolCall(part.toolName, part.input))
 					}
 				}
 			}
@@ -257,8 +362,8 @@ export function createOutputRenderer(options: OutputRendererOptions): OutputRend
 				if (toolState?.sawOutput) continue
 				ensureToolLabel(part.toolCallId, part.toolName)
 
-				const output = renderToolResultOutput(part.output)
-				for (const line of output.split('\n')) {
+				const outputText = renderToolResultOutput(part.output)
+				for (const line of outputText.split('\n')) {
 					writeLine(`  ${line.replace(/\r$/, '')}`)
 				}
 			}
@@ -266,7 +371,7 @@ export function createOutputRenderer(options: OutputRendererOptions): OutputRend
 	}
 
 	const emitTokenUsage = (usage: TokenUsageEvent): void => {
-		if (!options.includeTokenUsage) return
+		if (!includeTokenUsage) return
 		writeLine(`tokens ${usage.model}: in=${usage.usage.inputTokens} out=${usage.usage.outputTokens}`)
 	}
 
@@ -294,7 +399,7 @@ export function createOutputRenderer(options: OutputRendererOptions): OutputRend
 					flushBuffer(textBuffers, streamKey(event), '')
 					return
 				case 'toolInputStart':
-					ensureToolInputState(event.id, event.toolName)
+					activateToolLine(event.id, event.toolName)
 					sawLiveToolInputByScope.add(scopeKey(event))
 					return
 				case 'toolInputDelta':
@@ -303,9 +408,8 @@ export function createOutputRenderer(options: OutputRendererOptions): OutputRend
 					return
 				case 'toolInputEnd':
 					sawLiveToolInputByScope.add(scopeKey(event))
-					flushToolInputBuffer(event.id)
+					flushToolInputLine(event.id)
 					liveToolInputs.delete(event.id)
-					toolInputBuffers.delete(event.id)
 					return
 				case 'reasoningDelta': {
 					sawLiveAssistantContentByScope.add(scopeKey(event))
@@ -326,9 +430,9 @@ export function createOutputRenderer(options: OutputRendererOptions): OutputRend
 				case 'reasoningStart':
 					return
 				case 'reasoningEnd': {
-					const finalRemainder = thinkingBuffers.get(streamKey(event))
-					if (finalRemainder) {
-						writeLine(formatThinkingLine(finalRemainder))
+					const remainder = thinkingBuffers.get(streamKey(event))
+					if (remainder) {
+						writeLine(formatThinkingLine(remainder))
 						thinkingBuffers.delete(streamKey(event))
 					}
 					return
@@ -342,8 +446,10 @@ export function createOutputRenderer(options: OutputRendererOptions): OutputRend
 				case 'tokenUsage':
 					emitTokenUsage(event.usage)
 					return
-				case 'stepFinish': {
-					for (const [toolCallId] of toolInputBuffers) flushToolInputBuffer(toolCallId)
+				case 'stepFinish':
+					for (const [toolCallId] of liveToolInputs) {
+						flushToolInputLine(toolCallId)
+					}
 					for (const [key] of textBuffers) {
 						if (key.startsWith(`${scopeKey(event)}:`)) {
 							flushBuffer(textBuffers, key, '')
@@ -359,17 +465,16 @@ export function createOutputRenderer(options: OutputRendererOptions): OutputRend
 						}
 					}
 					return
-				}
 				case 'stepStart':
 					return
 			}
 		},
 		onToolProgress(toolCallId, toolName, data) {
+			if (!includeToolResults) return
 			const current = ensureToolLabel(toolCallId, toolName)
 
 			if (data.type === 'status') {
 				toolProgressState.set(toolCallId, current)
-				if (!includeToolResults) return
 				writeLine(`  ${data.message}`)
 				return
 			}
@@ -377,7 +482,6 @@ export function createOutputRenderer(options: OutputRendererOptions): OutputRend
 			if (data.type === 'output') {
 				current.sawOutput = true
 				toolProgressState.set(toolCallId, current)
-				if (!includeToolResults) return
 				emitBufferedLines(toolOutputBuffers, toolCallId, data.content, '  ')
 				return
 			}

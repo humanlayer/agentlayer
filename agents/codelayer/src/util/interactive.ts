@@ -14,7 +14,7 @@ export function runInteractive(
 	agent: Agent,
 	options?: InteractiveOptions,
 	renderer: OutputRenderer = createOutputRenderer({
-		writeLine: (line) => (options?.output ?? process.stdout).write(`${line}\n`),
+		output: options?.output ?? process.stdout,
 	}),
 ): Promise<void> {
 	const prompt = options?.prompt ?? '> '
