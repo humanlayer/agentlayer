@@ -1,49 +1,58 @@
 import * as Y from 'yjs'
 import { type ContentId, type EditResult, EntryNotFoundError } from '../types'
 
-const CONTENT_DOCS_KEY = 'contentDocs'
+const FILES_KEY = 'files'
 const CONTENT_TEXT_KEY = 'content'
+
+type FileRecord = Y.Map<unknown>
 
 export class ContentStore {
 	readonly doc: Y.Doc
-	private readonly contentDocs: Y.Map<Y.Doc>
+	private readonly files: Y.Map<FileRecord>
 
 	constructor(doc: Y.Doc) {
 		this.doc = doc
-		this.contentDocs = doc.getMap<Y.Doc>(CONTENT_DOCS_KEY)
+		this.files = doc.getMap<FileRecord>(FILES_KEY)
 	}
 
-	create(content = ''): { contentId: ContentId; doc: Y.Doc; text: Y.Text } {
-		const contentDoc = new Y.Doc({ guid: crypto.randomUUID() })
-		const text = contentDoc.getText(CONTENT_TEXT_KEY)
+	create(content = ''): { contentId: ContentId; record: FileRecord; text: Y.Text } {
+		const contentId = crypto.randomUUID()
+		const record = new Y.Map<unknown>()
+		const text = new Y.Text()
+		record.set(CONTENT_TEXT_KEY, text)
 
 		if (content.length > 0) {
 			text.insert(0, content)
 		}
 
-		this.contentDocs.set(contentDoc.guid, contentDoc)
+		this.files.set(contentId, record)
 		return {
-			contentId: contentDoc.guid,
-			doc: contentDoc,
+			contentId,
+			record,
 			text,
 		}
 	}
 
 	delete(contentId: ContentId): void {
-		this.contentDocs.delete(contentId)
+		this.files.delete(contentId)
 	}
 
-	get(contentId: ContentId, pathForErrors: string): Y.Doc {
-		const contentDoc = this.contentDocs.get(contentId)
-		if (!contentDoc) {
+	get(contentId: ContentId, pathForErrors: string): FileRecord {
+		const record = this.files.get(contentId)
+		if (!(record instanceof Y.Map)) {
 			throw new EntryNotFoundError(pathForErrors)
 		}
 
-		return contentDoc
+		return record
 	}
 
 	getText(contentId: ContentId, pathForErrors: string): Y.Text {
-		return this.get(contentId, pathForErrors).getText(CONTENT_TEXT_KEY)
+		const text = this.get(contentId, pathForErrors).get(CONTENT_TEXT_KEY)
+		if (!(text instanceof Y.Text)) {
+			throw new EntryNotFoundError(pathForErrors)
+		}
+
+		return text
 	}
 
 	read(contentId: ContentId, pathForErrors: string): string {

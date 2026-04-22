@@ -8,24 +8,26 @@ import {
 } from '../comments'
 import type { CommentAnchor, FileComment } from '../types'
 
+type FileRecord = Y.Map<unknown>
+
 export class CommentStore {
-	initialize(doc: Y.Doc): void {
-		initializeComments(doc)
+	initialize(record: FileRecord): void {
+		initializeComments(record)
 	}
 
-	add(doc: Y.Doc, anchor: CommentAnchor, body: string, author: string): string {
-		return addCommentRecord(doc, anchor, body, author)
+	add(record: FileRecord, anchor: CommentAnchor, body: string, author: string): string {
+		return addCommentRecord(record, anchor, body, author)
 	}
 
-	list(doc: Y.Doc): FileComment[] {
-		return getCommentRecords(doc)
+	list(record: FileRecord): FileComment[] {
+		return getCommentRecords(record)
 	}
 
-	reply(doc: Y.Doc, commentId: string, body: string, author: string): string {
-		return replyToCommentRecord(doc, commentId, body, author)
+	reply(record: FileRecord, commentId: string, body: string, author: string): string {
+		return replyToCommentRecord(record, commentId, body, author)
 	}
 
-	resolve(doc: Y.Doc, commentId: string, author: string): void {
-		resolveCommentRecord(doc, commentId, author)
+	resolve(record: FileRecord, commentId: string, author: string): void {
+		resolveCommentRecord(record, commentId, author)
 	}
 }

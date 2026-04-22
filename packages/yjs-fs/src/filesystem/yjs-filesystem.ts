@@ -54,7 +54,7 @@ export class YjsFilesystem {
 	createFile(path: string, content = ''): string {
 		const normalizedPath = this.catalog.normalizePath(path)
 		const created = this.content.create()
-		this.comments.initialize(created.doc)
+		this.comments.initialize(created.record)
 		const entryId = this.catalog.createFileEntry(normalizedPath, created.contentId, 0)
 
 		if (content.length > 0) {

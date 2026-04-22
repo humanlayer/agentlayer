@@ -68,8 +68,8 @@ describe('YjsFilesystem presence', () => {
 		filesystem.setLocalSelection('/workspace/note.txt', 2, 8)
 
 		const selectionState = getLocalSelectionState(awareness)
-		const selectionDoc = doc.getMap<Y.Doc>('contentDocs').get(filesystem.stat('/workspace/note.txt').contentId!)
-		const ytext = selectionDoc?.getText('content')
+		const fileRecord = doc.getMap<Y.Map<unknown>>('files').get(filesystem.stat('/workspace/note.txt').contentId!)
+		const ytext = fileRecord?.get('content') as Y.Text | undefined
 
 		expect(filesystem.awareness).toBe(awareness)
 		expect(getLocalPresenceState(awareness)).toMatchObject({

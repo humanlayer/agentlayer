@@ -8,6 +8,7 @@
         "build": "bun run build:packages",
         "build:packages": "bun --filter @humanlayer/agentlayer-core build && bun --filter @humanlayer/agentlayer-filesystem build && bun --filter @humanlayer/agentlayer-justbash build && bun --filter @humanlayer/yjs-fs build",
         "typecheck": "bun --filter '*' --parallel typecheck",
+        "check": "bun --parallel 'typecheck' 'biome' 'test'",
         "test": "bun test --concurrency 16 **/*",
         "test:ci": "bun test ./packages/*/test/*.test.ts ./agents/*/test/*.test.ts",
         "docs:build": "bun run --cwd packages/docs docs:build",

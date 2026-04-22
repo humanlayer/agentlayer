@@ -21,7 +21,7 @@ export type DurableStreamsAwarenessBindingTarget = {
 export type DurableStreamsContentBindingTarget = {
 	kind: 'content'
 	contentId: ContentId
-	doc: Y.Doc
+	value: unknown
 	bindingKey: ContentId
 }
 
@@ -86,11 +86,11 @@ export function getAwarenessBindingTarget(filesystem: YjsFilesystem): DurableStr
 }
 
 export function listContentBindingTargets(filesystem: YjsFilesystem): DurableStreamsContentBindingTarget[] {
-	return Array.from(getContentDocsMap(filesystem).entries())
-		.map(([contentId, doc]) => ({
+	return Array.from(getFilesMap(filesystem).entries())
+		.map(([contentId, value]) => ({
 			kind: 'content' as const,
 			contentId,
-			doc,
+			value,
 			bindingKey: contentId,
 		}))
 		.sort((left, right) => left.contentId.localeCompare(right.contentId))
@@ -112,8 +112,8 @@ export function observeContentBindingTargets(
 	filesystem: YjsFilesystem,
 	onChange: (change: DurableStreamsContentBindingChange) => void,
 ): () => void {
-	const contentDocs = getContentDocsMap(filesystem)
-	const observer = (event: Y.YMapEvent<Y.Doc>) => {
+	const files = getFilesMap(filesystem)
+	const observer = (event: Y.YMapEvent<unknown>) => {
 		const added: DurableStreamsContentBindingTarget[] = []
 		const removed: ContentId[] = []
 
@@ -123,15 +123,15 @@ export function observeContentBindingTargets(
 				continue
 			}
 
-			const doc = contentDocs.get(contentId)
-			if (!doc) {
+			const value = files.get(contentId)
+			if (value === undefined) {
 				continue
 			}
 
 			added.push({
 				kind: 'content',
 				contentId,
-				doc,
+				value,
 				bindingKey: contentId,
 			})
 		}
@@ -146,9 +146,9 @@ export function observeContentBindingTargets(
 		})
 	}
 
-	contentDocs.observe(observer)
+	files.observe(observer)
 	return () => {
-		contentDocs.unobserve(observer)
+		files.unobserve(observer)
 	}
 }
 
@@ -186,6 +186,6 @@ function bindingKindRank(kind: DurableStreamsBindingKind): number {
 	}
 }
 
-function getContentDocsMap(filesystem: YjsFilesystem): Y.Map<Y.Doc> {
-	return filesystem.doc.getMap<Y.Doc>('contentDocs')
+function getFilesMap(filesystem: YjsFilesystem): Y.Map<unknown> {
+	return filesystem.doc.getMap<unknown>('files')
 }

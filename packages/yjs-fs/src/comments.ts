@@ -10,19 +10,23 @@ import type { CommentAnchor, CommentReply, FileComment } from './types'
 type YCommentRecordValue = string | number | boolean | Y.Array<Y.Map<string | number>>
 type YCommentRecord = Y.Map<YCommentRecordValue>
 type YCommentReplyRecord = Y.Map<string | number>
+type FileRecord = Y.Map<unknown>
 
+const CONTENT_KEY = 'content'
 const COMMENTS_KEY = 'comments'
 const ANCHOR_START_KEY = 'anchorStart'
 const ANCHOR_END_KEY = 'anchorEnd'
 const REPLIES_KEY = 'replies'
 
-export function initializeComments(doc: Y.Doc): void {
-	doc.getArray<YCommentRecord>(COMMENTS_KEY)
+export function initializeComments(record: FileRecord): void {
+	if (!(record.get(COMMENTS_KEY) instanceof Y.Array)) {
+		record.set(COMMENTS_KEY, new Y.Array<YCommentRecord>())
+	}
 }
 
-export function addCommentRecord(doc: Y.Doc, anchor: CommentAnchor, body: string, author: string): string {
-	const ytext = doc.getText('content')
-	const comments = doc.getArray<YCommentRecord>(COMMENTS_KEY)
+export function addCommentRecord(record: FileRecord, anchor: CommentAnchor, body: string, author: string): string {
+	const ytext = requireText(record)
+	const comments = requireComments(record)
 	const id = crypto.randomUUID()
 	const createdAt = Date.now()
 
@@ -38,16 +42,26 @@ export function addCommentRecord(doc: Y.Doc, anchor: CommentAnchor, body: string
 	commentRecord.set(REPLIES_KEY, new Y.Array<YCommentReplyRecord>())
 	commentRecord.set('resolved', false)
 
-	doc.transact(() => {
+	const doc = ytext.doc
+	doc?.transact(() => {
 		comments.push([commentRecord])
 	})
+
+	if (!doc) {
+		comments.push([commentRecord])
+	}
 
 	return id
 }
 
-export function getCommentRecords(doc: Y.Doc): FileComment[] {
-	const comments = doc.getArray<YCommentRecord>(COMMENTS_KEY)
+export function getCommentRecords(record: FileRecord): FileComment[] {
+	const comments = requireComments(record)
 	const result: FileComment[] = []
+	const ytext = requireText(record)
+	const doc = ytext.doc
+	if (!doc) {
+		return []
+	}
 
 	for (let index = 0; index < comments.length; index += 1) {
 		const commentRecord = comments.get(index)
@@ -64,8 +78,8 @@ export function getCommentRecords(doc: Y.Doc): FileComment[] {
 	return result.sort((left, right) => left.createdAt - right.createdAt)
 }
 
-export function replyToCommentRecord(doc: Y.Doc, commentId: string, body: string, author: string): string {
-	const commentRecord = requireCommentRecord(doc, commentId)
+export function replyToCommentRecord(record: FileRecord, commentId: string, body: string, author: string): string {
+	const commentRecord = requireCommentRecord(record, commentId)
 	let replies = commentRecord.get(REPLIES_KEY)
 
 	if (!(replies instanceof Y.Array)) {
@@ -81,33 +95,28 @@ export function replyToCommentRecord(doc: Y.Doc, commentId: string, body: string
 	reply.set('body', body)
 	reply.set('createdAt', Date.now())
 
-	doc.transact(() => {
-		replies.push([reply])
-	})
-
+	replies.push([reply])
 	return replyId
 }
 
-export function resolveCommentRecord(doc: Y.Doc, commentId: string, author: string): void {
-	const commentRecord = requireCommentRecord(doc, commentId)
+export function resolveCommentRecord(record: FileRecord, commentId: string, author: string): void {
+	const commentRecord = requireCommentRecord(record, commentId)
 	const resolved = commentRecord.get('resolved') === true
 
-	doc.transact(() => {
-		if (resolved) {
-			commentRecord.set('resolved', false)
-			commentRecord.delete('resolvedAt')
-			commentRecord.delete('resolvedBy')
-			return
-		}
+	if (resolved) {
+		commentRecord.set('resolved', false)
+		commentRecord.delete('resolvedAt')
+		commentRecord.delete('resolvedBy')
+		return
+	}
 
-		commentRecord.set('resolved', true)
-		commentRecord.set('resolvedAt', Date.now())
-		commentRecord.set('resolvedBy', author)
-	})
+	commentRecord.set('resolved', true)
+	commentRecord.set('resolvedAt', Date.now())
+	commentRecord.set('resolvedBy', author)
 }
 
-function requireCommentRecord(doc: Y.Doc, commentId: string): YCommentRecord {
-	const comments = doc.getArray<YCommentRecord>(COMMENTS_KEY)
+function requireCommentRecord(record: FileRecord, commentId: string): YCommentRecord {
+	const comments = requireComments(record)
 
 	for (let index = 0; index < comments.length; index += 1) {
 		const commentRecord = comments.get(index)
@@ -176,6 +185,24 @@ function readReplies(commentRecord: YCommentRecord, parentId: string): CommentRe
 	}
 
 	return result.sort((left, right) => left.createdAt - right.createdAt)
+}
+
+function requireText(record: FileRecord): Y.Text {
+	const text = record.get(CONTENT_KEY)
+	if (!(text instanceof Y.Text)) {
+		throw new Error('Missing file content text')
+	}
+
+	return text
+}
+
+function requireComments(record: FileRecord): Y.Array<YCommentRecord> {
+	const comments = record.get(COMMENTS_KEY)
+	if (!(comments instanceof Y.Array)) {
+		throw new Error('Missing comments array')
+	}
+
+	return comments as Y.Array<YCommentRecord>
 }
 
 function requireStringField<T>(record: Y.Map<T>, key: string): string {
