@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import { z } from 'zod'
 import type { PostToolUseHook, PreToolUseHook } from '../src'
 import { Agent, defineTool, startState } from '../src'
-import { assistantText, assistantWithToolCall, mockModel, userMessage } from './mocks'
+import { assistantText, assistantWithToolCall, assistantWithToolCalls, mockModel, userMessage } from './mocks'
 
 describe('hook state - pre and post contexts', () => {
 	test('pre hook can read and write hook state', async () => {
@@ -205,5 +205,72 @@ describe('hook state - merge behavior', () => {
 		const result = await agent.run({ state: startState([userMessage('go')], { shared: 'initial' }) }).result
 
 		expect(result.state.toolState).toEqual({ shared: 'from-tool' })
+	})
+
+	test('parallel pre-hook updates to the same object key preserve contributions from both tool calls', async () => {
+		const echoTool = defineTool({
+			name: 'echo',
+			description: 'Echoes text',
+			input: z.object({ label: z.string() }),
+			output: z.string(),
+			execute: async (input) => input.label,
+		})
+
+		const preHook: PreToolUseHook = (ctx) => {
+			const label = (ctx.input as { label: string }).label
+			ctx.updateState('seenByLabel', (current) => ({
+				...(current ?? {}),
+				[label]: true,
+			}))
+			return ctx.next()
+		}
+
+		const result = await new Agent({
+			model: mockModel([
+				assistantWithToolCalls(
+					{ toolName: 'echo', input: { label: 'first' } },
+					{ toolName: 'echo', input: { label: 'second' } },
+				),
+				assistantText('Done.'),
+			]),
+			tools: { echo: echoTool },
+			hooks: { preToolUse: [preHook] },
+		}).run({ state: startState([userMessage('go')]) }).result
+
+		expect(result.state.toolState).toEqual({
+			seenByLabel: {
+				first: true,
+				second: true,
+			},
+		})
+	})
+
+	test('parallel post-hook updates to the same array key preserve both outputs', async () => {
+		const echoTool = defineTool({
+			name: 'echo',
+			description: 'Echoes text',
+			input: z.object({ text: z.string() }),
+			output: z.string(),
+			execute: async (input) => input.text,
+		})
+
+		const postHook: PostToolUseHook = (ctx) => {
+			ctx.updateState<string[]>('outputs', (current) => [...(current ?? []), ctx.output])
+			return ctx.done()
+		}
+
+		const result = await new Agent({
+			model: mockModel([
+				assistantWithToolCalls(
+					{ toolName: 'echo', input: { text: 'alpha' } },
+					{ toolName: 'echo', input: { text: 'bravo' } },
+				),
+				assistantText('Done.'),
+			]),
+			tools: { echo: echoTool },
+			hooks: { postToolUse: [postHook] },
+		}).run({ state: startState([userMessage('go')]) }).result
+
+		expect(result.state.toolState).toEqual({ outputs: ['alpha', 'bravo'] })
 	})
 })

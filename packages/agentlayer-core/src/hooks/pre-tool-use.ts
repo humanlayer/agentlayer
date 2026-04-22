@@ -9,7 +9,7 @@ import {
 	type ToolResultOptions,
 	type ToolResultResult,
 } from './results'
-import type { HookChainStateResult, HookStateAccess, StopOptions, ToolInfo } from './shared'
+import type { HookChainStateResult, HookStateAccess, HookStateOperation, StopOptions, ToolInfo } from './shared'
 
 export interface PreToolUseHookContext extends HookStateAccess {
 	toolName: string
@@ -43,7 +43,7 @@ export async function runPreToolUseHooks(
 	let aggregatedUpdateContextWindow = false
 	let aggregatedNotifyModel = false
 	const localState: Record<string, unknown> = { ...(baseCtx.state ?? {}) }
-	const stateUpdates: Record<string, unknown> = {}
+	const stateUpdates: HookStateOperation[] = []
 
 	for (const hook of hooks) {
 		const ctx: PreToolUseHookContext = {
@@ -58,7 +58,10 @@ export async function runPreToolUseHooks(
 			updateState<T>(key: string, updater: (current: T | undefined) => T): void {
 				const nextValue = updater(localState[key] as T | undefined)
 				localState[key] = nextValue
-				stateUpdates[key] = nextValue
+				stateUpdates.push({
+					key,
+					apply: (current) => updater(current as T | undefined),
+				})
 			},
 			next(updatedInput?: Record<string, unknown>, opts?: NextOptions): NextResult {
 				return hookNext(updatedInput, opts)

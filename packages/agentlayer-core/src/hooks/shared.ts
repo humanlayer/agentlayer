@@ -5,9 +5,14 @@ export interface HookStateAccess {
 	updateState<T>(key: string, updater: (current: T | undefined) => T): void
 }
 
+export interface HookStateOperation {
+	key: string
+	apply: (current: unknown) => unknown
+}
+
 export interface HookChainStateResult<T> {
 	result: T
-	stateUpdates: Record<string, unknown>
+	stateUpdates: HookStateOperation[]
 }
 
 export interface ToolInfo<TInput = unknown, TOutput = unknown> {

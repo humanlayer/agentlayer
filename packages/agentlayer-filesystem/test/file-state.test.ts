@@ -11,7 +11,7 @@ import {
 	createWastedReadHook,
 	createWastedReadHooks,
 } from '../src/hooks'
-import { assistantText, assistantWithToolCall, getToolResults, mockModel, userMessage } from './mocks'
+import { assistantText, assistantWithToolCall, assistantWithToolCalls, getToolResults, mockModel, userMessage } from './mocks'
 
 async function fileText(filePath: string): Promise<string> {
 	return await readFile(filePath, 'utf8')
@@ -1312,6 +1312,236 @@ describe('file-state hooks', () => {
 			}).result
 			expect(applyPatchExecuted).toBe(1)
 			expect(await fileExists(newPath)).toBe(true)
+		} finally {
+			await rm(dir, { recursive: true })
+		}
+	})
+
+	test('parallel reads preserve verification state for multi-file apply_patch updates', async () => {
+		const dir = await mkdtemp(join(tmpdir(), 'file-state-hook-test-'))
+		try {
+			const firstPath = join(dir, 'first.txt')
+			const secondPath = join(dir, 'second.txt')
+			await writeFile(firstPath, 'first-old\n')
+			await writeFile(secondPath, 'second-old\n')
+
+			let readExecuted = 0
+			let applyPatchExecuted = 0
+
+			const readTool = defineTool({
+				name: 'read',
+				description: 'Read file',
+				input: z.object({ file_path: z.string() }),
+				output: z.string(),
+				execute: async (input) => {
+					readExecuted += 1
+					return fileText(input.file_path)
+				},
+			})
+
+			const applyPatchTool = defineTool({
+				name: 'apply_patch',
+				description: 'Apply patch',
+				input: z.object({ patch_text: z.string() }),
+				output: z.string(),
+				execute: async () => {
+					applyPatchExecuted += 1
+					await writeFile(firstPath, 'first-new\n')
+					await writeFile(secondPath, 'second-new\n')
+					return 'patched'
+				},
+			})
+
+			const hooks = {
+				preToolUse: [createWastedReadHook(), createReadBeforeWriteHook()],
+				postToolUse: [createFileStateTrackingHook()],
+			}
+
+			const first = await new Agent({
+				model: mockModel([
+					assistantWithToolCalls(
+						{ toolName: 'read', input: { file_path: firstPath } },
+						{ toolName: 'read', input: { file_path: secondPath } },
+					),
+					assistantText('Done'),
+				]),
+				tools: { read: readTool },
+				hooks,
+			}).run({ state: startState([userMessage('Read both files')]) }).result
+
+			expect(readExecuted).toBe(2)
+
+			const patchText = [
+				'*** Begin Patch',
+				`*** Update File: ${firstPath}`,
+				'@@',
+				'-first-old',
+				'+first-new',
+				`*** Update File: ${secondPath}`,
+				'@@',
+				'-second-old',
+				'+second-new',
+				'*** End Patch',
+			].join('\n')
+
+			const second = await new Agent({
+				model: mockModel([
+					assistantWithToolCall('apply_patch', { patch_text: patchText }),
+					assistantText('Done'),
+				]),
+				tools: { read: readTool, apply_patch: applyPatchTool },
+				hooks,
+			}).run({
+				state: startState([...first.state.messages, userMessage('Patch both files')], first.state.toolState),
+			}).result
+
+			expect(applyPatchExecuted).toBe(1)
+			expect(await fileText(firstPath)).toBe('first-new\n')
+			expect(await fileText(secondPath)).toBe('second-new\n')
+			const patchResult = getToolResults(second.state.messages, { toolName: 'apply_patch' })[0]!
+			expect(patchResult.output).toEqual({ type: 'text', value: 'patched' })
+		} finally {
+			await rm(dir, { recursive: true })
+		}
+	})
+
+	test('parallel reads preserve verification state for later writes to both files', async () => {
+		const dir = await mkdtemp(join(tmpdir(), 'file-state-hook-test-'))
+		try {
+			const firstPath = join(dir, 'first-write.txt')
+			const secondPath = join(dir, 'second-write.txt')
+			await writeFile(firstPath, 'first\n')
+			await writeFile(secondPath, 'second\n')
+
+			let readExecuted = 0
+			let writeExecuted = 0
+
+			const readTool = defineTool({
+				name: 'read',
+				description: 'Read file',
+				input: z.object({ file_path: z.string() }),
+				output: z.string(),
+				execute: async (input) => {
+					readExecuted += 1
+					return fileText(input.file_path)
+				},
+			})
+
+			const writeTool = defineTool({
+				name: 'write',
+				description: 'Write file',
+				input: z.object({ file_path: z.string(), content: z.string() }),
+				output: z.string(),
+				execute: async (input) => {
+					writeExecuted += 1
+					await writeFile(input.file_path, input.content)
+					return 'wrote'
+				},
+			})
+
+			const hooks = {
+				preToolUse: [createWastedReadHook(), createReadBeforeWriteHook()],
+				postToolUse: [createFileStateTrackingHook()],
+			}
+
+			const first = await new Agent({
+				model: mockModel([
+					assistantWithToolCalls(
+						{ toolName: 'read', input: { file_path: firstPath } },
+						{ toolName: 'read', input: { file_path: secondPath } },
+					),
+					assistantText('Done'),
+				]),
+				tools: { read: readTool },
+				hooks,
+			}).run({ state: startState([userMessage('Read both files')]) }).result
+
+			expect(readExecuted).toBe(2)
+
+			const second = await new Agent({
+				model: mockModel([
+					assistantWithToolCalls(
+						{ toolName: 'write', input: { file_path: firstPath, content: 'first-updated\n' } },
+						{ toolName: 'write', input: { file_path: secondPath, content: 'second-updated\n' } },
+					),
+					assistantText('Done'),
+				]),
+				tools: { read: readTool, write: writeTool },
+				hooks,
+			}).run({
+				state: startState([...first.state.messages, userMessage('Write both files')], first.state.toolState),
+			}).result
+
+			expect(writeExecuted).toBe(2)
+			expect(await fileText(firstPath)).toBe('first-updated\n')
+			expect(await fileText(secondPath)).toBe('second-updated\n')
+			const writeResults = getToolResults(second.state.messages, { toolName: 'write' })
+			expect(writeResults).toHaveLength(2)
+			expect(writeResults.every((result) => result.output.value === 'wrote')).toBe(true)
+		} finally {
+			await rm(dir, { recursive: true })
+		}
+	})
+
+	test('parallel reads preserve wasted-read coverage for every tracked file on resume', async () => {
+		const dir = await mkdtemp(join(tmpdir(), 'file-state-hook-test-'))
+		try {
+			const firstPath = join(dir, 'first-read.txt')
+			const secondPath = join(dir, 'second-read.txt')
+			await writeFile(firstPath, 'first\n')
+			await writeFile(secondPath, 'second\n')
+
+			let readExecuted = 0
+
+			const readTool = defineTool({
+				name: 'read',
+				description: 'Read file',
+				input: z.object({ file_path: z.string() }),
+				output: z.string(),
+				execute: async (input) => {
+					readExecuted += 1
+					return fileText(input.file_path)
+				},
+			})
+
+			const hooks = {
+				preToolUse: [createWastedReadHook()],
+				postToolUse: [createFileStateTrackingHook()],
+			}
+
+			const first = await new Agent({
+				model: mockModel([
+					assistantWithToolCalls(
+						{ toolName: 'read', input: { file_path: firstPath } },
+						{ toolName: 'read', input: { file_path: secondPath } },
+					),
+					assistantText('Done'),
+				]),
+				tools: { read: readTool },
+				hooks,
+			}).run({ state: startState([userMessage('Read both files')]) }).result
+
+			expect(readExecuted).toBe(2)
+
+			const second = await new Agent({
+				model: mockModel([
+					assistantWithToolCalls(
+						{ toolName: 'read', input: { file_path: firstPath } },
+						{ toolName: 'read', input: { file_path: secondPath } },
+					),
+					assistantText('Done'),
+				]),
+				tools: { read: readTool },
+				hooks,
+			}).run({
+				state: startState([...first.state.messages, userMessage('Read both files again')], first.state.toolState),
+			}).result
+
+			expect(readExecuted).toBe(2)
+			const readResults = getToolResults(second.state.messages, { toolName: 'read' })
+			expect(readResults).toHaveLength(4)
+			expect(readResults[2]!.output).toEqual({ type: 'text', value: wastedReadReminder(firstPath) })
+			expect(readResults[3]!.output).toEqual({ type: 'text', value: wastedReadReminder(secondPath) })
 		} finally {
 			await rm(dir, { recursive: true })
 		}
