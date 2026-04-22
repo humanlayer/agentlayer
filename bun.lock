@@ -25,7 +25,6 @@
         "@humanlayer/agentlayer-filesystem": "workspace:*",
         "@types/bun": "latest",
         "ai": "catalog:",
-        "chalk": "^5.6.2",
         "commander": "^14.0.3",
         "zod": "catalog:",
       },
@@ -52,6 +51,7 @@
       "name": "@humanlayer/agentlayer-core",
       "version": "0.0.0",
       "dependencies": {
+        "chalk": "^5.6.2",
         "dedent": "^1.7.2",
         "turndown": "7.2.4",
       },
