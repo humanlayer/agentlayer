@@ -96,5 +96,4 @@ console.log(result.finishReason)
 ## Read This Next
 
 - **[Motivation](/introduction/motivation)** -- why the toolkit is built this way
-- **[Getting Started](/introduction/getting-started)** -- first agent setup and run model
 - **[Architecture](/introduction/architecture)** -- loop lifecycle, tool resolution, and state model
