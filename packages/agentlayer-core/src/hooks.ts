@@ -768,13 +768,13 @@ export type PreRequestResult = PreRequestNextResult | PreRequestTransformResult
 
 /**
  * Context passed to each pre-request hook.
- * Pre-request hooks run before each generateText() call and can transform
+ * Pre-request hooks run before each streamText() call and can transform
  * the messages the model sees without mutating the actual context window.
  */
 export interface PreRequestHookContext {
 	/** Frozen snapshot of the messages about to be sent to the model. */
 	messages: ReadonlyArray<ModelMessage>
-	/** Estimated number of tokens in the context window. Updated after each generateText call. 0 before the first call. */
+	/** Estimated number of tokens in the context window. Updated after each streamText call. 0 before the first call. */
 	contextWindowTokens: number
 	/** Context window limit (from AgentConfig or models.dev). undefined if unknown. */
 	contextWindowLimit: number | undefined
@@ -786,7 +786,7 @@ export interface PreRequestHookContext {
 
 /**
  * A pre-request hook function.
- * Runs before each generateText() call. Can transform the messages the model
+ * Runs before each streamText() call. Can transform the messages the model
  * sees without mutating the actual context window (unless persist is set).
  */
 export type PreRequestHook = (ctx: PreRequestHookContext) => PreRequestResult | Promise<PreRequestResult>
@@ -796,7 +796,7 @@ export type PreRequestHook = (ctx: PreRequestHookContext) => PreRequestResult | 
 /**
  * Create a pre-request hook with a clean function signature.
  *
- * Pre-request hooks run before each generateText() call and can inspect or transform
+ * Pre-request hooks run before each streamText() call and can inspect or transform
  * the messages the model sees. Unlike tool-scoped hooks, pre-request hooks always fire.
  *
  * @example

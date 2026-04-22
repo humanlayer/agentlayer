@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import { z } from 'zod'
 import { Agent, type AgentEvent, defineTool, startState } from '../src'
-import { assistantText, assistantWithToolCall, mockModel, userMessage } from './mocks'
+import { assistantText, assistantWithToolCall, mockModel, mockStreamingModel, userMessage } from './mocks'
 
 const mockUsage = (input: number, output: number) => ({
 	inputTokens: { total: input, noCache: input, cacheRead: 0, cacheWrite: 0 },
@@ -16,7 +16,7 @@ const echoTool = defineTool({
 })
 
 describe('token usage events', () => {
-	test('emits tokenUsage event after each generateText call', async () => {
+	test('emits tokenUsage event after each streamText call', async () => {
 		const agent = new Agent({
 			model: mockModel([
 				assistantWithToolCall('echo', { text: 'hi' }, { usage: mockUsage(1000, 500) }),
@@ -33,7 +33,7 @@ describe('token usage events', () => {
 		}
 
 		expect(tokenEvents).toHaveLength(2)
-		// First event from first generateText call
+		// First event from first streamText call
 		expect(tokenEvents[0]!.type).toBe('tokenUsage')
 		if (tokenEvents[0]!.type === 'tokenUsage') {
 			expect(tokenEvents[0]!.usage.model).toBe('mock/mock-model')
@@ -65,7 +65,7 @@ describe('token usage events', () => {
 		expect(result.tokenUsage.byModel['mock/mock-model']).toBeDefined()
 	})
 
-	test('contextWindowTokens in state reflects last generateText call', async () => {
+	test('contextWindowTokens in state reflects last streamText call', async () => {
 		const agent = new Agent({
 			model: mockModel([
 				assistantWithToolCall('echo', { text: 'hi' }, { usage: mockUsage(1000, 500) }),
@@ -88,6 +88,29 @@ describe('token usage events', () => {
 		const result = await agent.run({ state: startState([userMessage('go')]) }).result
 		expect(result.tokenUsage).toBeDefined()
 		expect(result.tokenUsage.totals.inputTokens).toBe(0)
+	})
+
+	test('streamText backend preserves token usage and final state when stream=false', async () => {
+		const agent = new Agent({
+			model: mockStreamingModel([
+				assistantWithToolCall('echo', { text: 'hi' }, { usage: mockUsage(1000, 500) }),
+				assistantText('Done.', { usage: mockUsage(2000, 800) }),
+			]),
+			tools: { echo: echoTool },
+			contextWindowLimit: 200_000,
+		})
+
+		const run = agent.run({ state: startState([userMessage('go')]), stream: false })
+		const tokenEvents: AgentEvent[] = []
+		for await (const event of run) {
+			if (event.type === 'tokenUsage') tokenEvents.push(event)
+		}
+
+		expect(tokenEvents).toHaveLength(2)
+		const result = await run.result
+		expect(result.tokenUsage.totals.inputTokens).toBe(3000)
+		expect(result.tokenUsage.totals.outputTokens).toBe(1300)
+		expect(result.state.contextWindowTokens).toBe(2800)
 	})
 })
 

@@ -94,7 +94,7 @@ export interface ToolContext {
 	 */
 	stop(options?: StopOptions): HookStopResult
 
-	/** Returns the estimated token count in the current context window. Updated after each generateText call. */
+	/** Returns the estimated token count in the current context window. Updated after each streamText call. */
 	getContextWindowTokens(): number
 
 	/**

@@ -2,9 +2,12 @@ import type {
 	LanguageModelV3,
 	LanguageModelV3Content,
 	LanguageModelV3GenerateResult,
+	LanguageModelV3StreamPart,
+	LanguageModelV3StreamResult,
 	LanguageModelV3Text,
 	LanguageModelV3ToolCall,
 } from '@ai-sdk/provider'
+import { MockLanguageModelV3, simulateReadableStream } from 'ai/test'
 import type { ModelMessage, ToolModelMessage, UserModelMessage } from 'ai'
 import type { ToolContext } from '../src/define-tool'
 
@@ -18,33 +21,63 @@ const MOCK_USAGE: LanguageModelV3GenerateResult['usage'] = {
 }
 
 export function mockModel(responses: MockResponse[]): LanguageModelV3 {
+	return mockStreamingModel(responses)
+}
+
+export function mockStreamingModel(responses: MockResponse[]): LanguageModelV3 {
 	let index = 0
-	return {
-		specificationVersion: 'v3',
+
+	return new MockLanguageModelV3({
 		provider: 'mock',
 		modelId: 'mock-model',
 		supportedUrls: {},
-		async doGenerate(): Promise<LanguageModelV3GenerateResult> {
+		doStream: async (): Promise<LanguageModelV3StreamResult> => {
 			if (index >= responses.length) {
 				throw new Error(
-					`mockModel: no more responses (called ${index + 1} times, only ${responses.length} responses)`,
+					`mockStreamingModel: no more responses (called ${index + 1} times, only ${responses.length} responses)`,
 				)
 			}
+
 			const response = responses[index++]!
 			const hasToolCalls = response.content.some((c: LanguageModelV3Content) => c.type === 'tool-call')
+			const usage = response.usage ?? MOCK_USAGE
+
 			return {
-				content: response.content,
-				finishReason: {
-					unified: hasToolCalls ? 'tool-calls' : 'stop',
-					raw: hasToolCalls ? 'tool_use' : 'stop',
-				},
-				usage: response.usage ?? MOCK_USAGE,
-				warnings: [],
+				stream: simulateReadableStream<LanguageModelV3StreamPart>({
+					chunks: [
+						{ type: 'stream-start', warnings: [] },
+						...response.content.flatMap((part) => toStreamParts(part)),
+						{
+							type: 'finish',
+							finishReason: {
+								unified: hasToolCalls ? 'tool-calls' : 'stop',
+								raw: hasToolCalls ? 'tool_use' : 'stop',
+							},
+							usage,
+						},
+					],
+					initialDelayInMs: null,
+					chunkDelayInMs: null,
+				}),
 			}
 		},
-		async doStream() {
-			throw new Error('mockModel: streaming not supported')
-		},
+	})
+}
+
+function toStreamParts(part: LanguageModelV3Content): LanguageModelV3StreamPart[] {
+	switch (part.type) {
+		case 'text': {
+			const id = crypto.randomUUID()
+			return [
+				{ type: 'text-start', id },
+				{ type: 'text-delta', id, delta: part.text },
+				{ type: 'text-end', id },
+			]
+		}
+		case 'tool-call':
+			return [part]
+		default:
+			return []
 	}
 }
 

@@ -12,7 +12,13 @@
  */
 
 import { describe, expect, test } from 'bun:test'
-import type { LanguageModelV3, LanguageModelV3CallOptions, LanguageModelV3GenerateResult } from '@ai-sdk/provider'
+import type {
+	LanguageModelV3,
+	LanguageModelV3CallOptions,
+	LanguageModelV3GenerateResult,
+	LanguageModelV3StreamResult,
+} from '@ai-sdk/provider'
+import { simulateReadableStream } from 'ai/test'
 import { z } from 'zod'
 import type { PreRequestHook } from '../src'
 import { Agent, createPreRequestHook, defineTool, startState } from '../src'
@@ -37,6 +43,18 @@ function spyModel(responses: Parameters<typeof mockModel>[0]): SpyModel {
 		async doGenerate(options: LanguageModelV3CallOptions): Promise<LanguageModelV3GenerateResult> {
 			calls.push(structuredClone(options.prompt))
 			return inner.doGenerate(options)
+		},
+		async doStream(options: LanguageModelV3CallOptions): Promise<LanguageModelV3StreamResult> {
+			calls.push(structuredClone(options.prompt))
+			const result = await inner.doStream(options)
+			return {
+				...result,
+				stream: simulateReadableStream({
+					chunks: await Array.fromAsync(result.stream),
+					initialDelayInMs: null,
+					chunkDelayInMs: null,
+				}),
+			}
 		},
 	}
 	return { model, calls }
@@ -539,7 +557,7 @@ describe('preRequest — token context', () => {
 		outputTokens: { total: output, text: output, reasoning: 0 },
 	})
 
-	test('hook receives contextWindowTokens from previous generateText call', async () => {
+	test('hook receives contextWindowTokens from previous streamText call', async () => {
 		const capturedTokens: number[] = []
 
 		const hook = createPreRequestHook((ctx) => {
@@ -558,9 +576,9 @@ describe('preRequest — token context', () => {
 
 		await agent.run({ state: startState([userMessage('go')]) }).result
 
-		// First call: 0 tokens (no generateText yet)
+		// First call: 0 tokens (no streamText yet)
 		expect(capturedTokens[0]).toBe(0)
-		// Second call: 800 + 200 = 1000 from first generateText
+		// Second call: 800 + 200 = 1000 from first streamText
 		expect(capturedTokens[1]).toBe(1000)
 	})
 

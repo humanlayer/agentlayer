@@ -1,7 +1,7 @@
 import type { LanguageModel, ModelMessage, ToolChoice } from 'ai'
-import { generateText, tool as toAiSdkTool } from 'ai'
+import { streamText, tool as toAiSdkTool } from 'ai'
 
-type ProviderOptions = Parameters<typeof generateText>[0]['providerOptions']
+type ProviderOptions = Parameters<typeof streamText>[0]['providerOptions']
 
 import { AgentRun } from './agent-run'
 import type { Tool, ToolProgressData } from './define-tool'
@@ -78,6 +78,7 @@ export interface RunResult {
 export interface RunOptions {
 	state: AgentState
 	signal?: AbortSignal
+	stream?: boolean
 }
 
 function convertTools(tools: Record<string, Tool<any, any>>) {
@@ -358,15 +359,7 @@ export class Agent<TTools extends Record<string, Tool<any, any>> = Record<string
 					}
 				}
 
-				const result = await generateText({
-					model: this.model,
-					tools: this.aiSdkTools,
-					toolChoice: this.toolChoice,
-					providerOptions: this.providerOptions,
-					messages: requestMessages,
-					system: this.system,
-					abortSignal: signal,
-				})
+				const result = await this.executeModelStep(requestMessages, signal, options.stream)
 
 				// Only push non-tool messages from the AI SDK response.
 				// The agent manages tool result creation itself; the AI SDK may
@@ -776,7 +769,7 @@ export class Agent<TTools extends Record<string, Tool<any, any>> = Record<string
 				})
 			}
 		} catch (err) {
-			// When the caller's signal is aborted and generateText throws an AbortError,
+			// When the caller's signal is aborted and the model step throws an AbortError,
 			// treat it as an intentional interruption rather than an unexpected error.
 			if (options.signal?.aborted && err instanceof Error && err.name === 'AbortError') {
 				this.finishRun(agentRun, {
@@ -799,6 +792,32 @@ export class Agent<TTools extends Record<string, Tool<any, any>> = Record<string
 				tokenUsage: accumulator.snapshot(),
 			}
 			this.finishRun(agentRun, errorResult)
+		}
+	}
+
+	private async executeModelStep(requestMessages: ModelMessage[], signal: AbortSignal, _stream?: boolean) {
+		const result = streamText({
+			model: this.model,
+			tools: this.aiSdkTools,
+			toolChoice: this.toolChoice,
+			providerOptions: this.providerOptions,
+			messages: requestMessages,
+			system: this.system,
+			abortSignal: signal,
+		})
+
+		await result.consumeStream()
+
+		const [response, toolCalls, usage] = await Promise.all([
+			result.response,
+			result.toolCalls,
+			result.usage,
+		])
+
+		return {
+			response,
+			toolCalls,
+			usage,
 		}
 	}
 

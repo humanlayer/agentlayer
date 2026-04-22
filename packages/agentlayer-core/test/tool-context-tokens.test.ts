@@ -10,7 +10,7 @@ const mockUsage = (input: number, output: number) => ({
 })
 
 describe('ToolContext.getContextWindowTokens', () => {
-	test('tool can read context window tokens from previous generateText call', async () => {
+	test('tool can read context window tokens from previous streamText call', async () => {
 		let capturedTokens: number | undefined
 
 		const probeTool = defineTool({
@@ -32,13 +32,13 @@ describe('ToolContext.getContextWindowTokens', () => {
 		})
 
 		await agent.run({ state: startState([userMessage('go')]) }).result
-		// After the first generateText call (1000 + 500 = 1500), the tool executes
+		// After the first streamText call (1000 + 500 = 1500), the tool executes
 		expect(capturedTokens).toBe(1500)
 	})
 
-	test('getContextWindowTokens returns 0 before any generateText call', async () => {
-		// This tests the initial state — no generateText calls happened yet
-		// In practice, a tool only runs after generateText, so this is a degenerate case
+	test('getContextWindowTokens returns 0 before any streamText call', async () => {
+		// This tests the initial state — no streamText calls happened yet
+		// In practice, a tool only runs after streamText, so this is a degenerate case
 		// but it should return 0, not crash
 		const agent = new Agent({
 			model: mockModel([assistantText('Hi!')]),

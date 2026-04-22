@@ -1,11 +1,11 @@
 import { describe, expect, test } from 'bun:test'
 import { z } from 'zod'
 import { Agent, defineTool, startState, toolCalled, toolCompleted } from '../src'
-import { assistantWithToolCall, assistantWithToolCalls, mockModel, userMessage } from './mocks'
+import { assistantWithToolCall, assistantWithToolCalls, mockModel, mockStreamingModel, userMessage } from './mocks'
 
 /**
  * These tests prove that the agent's own loop controls tool execution,
- * not the AI SDK's generateText. The key assertion is execute call counts:
+ * not the AI SDK's streamText. The key assertion is execute call counts:
  *
  * - beforeExecution stop → execute count is 0
  * - afterExecution stop  → execute count is exactly 1
@@ -117,5 +117,20 @@ describe('execution ownership', () => {
 		expect(result.finishReason).toBe('stopCondition')
 		expect(getBashCount()).toBe(2) // two bash steps completed
 		expect(getDeployCount()).toBe(0) // deploy stopped before execution
+	})
+
+	test('streamText backend still leaves tool execution to AgentLayer', async () => {
+		const { deploy, getDeployCount } = createSpyTools()
+
+		const agent = new Agent({
+			model: mockStreamingModel([assistantWithToolCall('deploy', {})]),
+			tools: { deploy },
+			stopWhen: toolCalled('deploy'),
+		})
+
+		const result = await agent.run({ state: startState([userMessage('ship it')]) }).result
+
+		expect(result.finishReason).toBe('stopCondition')
+		expect(getDeployCount()).toBe(0)
 	})
 })

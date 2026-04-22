@@ -1,5 +1,12 @@
 import { describe, expect, test } from 'bun:test'
-import type { LanguageModelV3, LanguageModelV3CallOptions, LanguageModelV3GenerateResult } from '@ai-sdk/provider'
+import type {
+	LanguageModelV3,
+	LanguageModelV3CallOptions,
+	LanguageModelV3GenerateResult,
+	LanguageModelV3StreamPart,
+	LanguageModelV3StreamResult,
+} from '@ai-sdk/provider'
+import { simulateReadableStream } from 'ai/test'
 import type { ModelMessage } from 'ai'
 import { z } from 'zod'
 import { Agent, defineTool, maxSteps, startState, type ToolProgressData, toolCompleted } from '../src'
@@ -38,8 +45,53 @@ function capturingModel(
 				warnings: [],
 			}
 		},
-		async doStream() {
-			throw new Error('capturingModel: streaming not supported')
+		async doStream(options: LanguageModelV3CallOptions): Promise<LanguageModelV3StreamResult> {
+			onCall?.(options)
+			if (index >= responses.length) {
+				throw new Error(`capturingModel: no more responses`)
+			}
+			const response = responses[index++]!
+			const hasToolCalls = response.content.some((c) => c.type === 'tool-call')
+			const contentChunks: LanguageModelV3StreamPart[] = []
+			for (const part of response.content) {
+				if (part.type === 'text') {
+					const id = crypto.randomUUID()
+					contentChunks.push(
+						{ type: 'text-start', id },
+						{ type: 'text-delta', id, delta: part.text },
+						{ type: 'text-end', id },
+					)
+					continue
+				}
+
+				if (
+					part.type === 'tool-call' ||
+					part.type === 'tool-result' ||
+					part.type === 'source' ||
+					part.type === 'file'
+				) {
+					contentChunks.push(part)
+				}
+			}
+			const chunks: LanguageModelV3StreamPart[] = [
+				{ type: 'stream-start', warnings: [] },
+				...contentChunks,
+				{
+					type: 'finish',
+					finishReason: {
+						unified: hasToolCalls ? 'tool-calls' : 'stop',
+						raw: hasToolCalls ? 'tool_use' : 'stop',
+					},
+					usage: MOCK_USAGE,
+				},
+			]
+			return {
+				stream: simulateReadableStream<LanguageModelV3StreamPart>({
+					chunks,
+					initialDelayInMs: null,
+					chunkDelayInMs: null,
+				}),
+			}
 		},
 	}
 }

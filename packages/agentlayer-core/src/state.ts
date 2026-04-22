@@ -66,7 +66,7 @@ export interface AgentState {
 	 * Each value is a nested AgentState capturing the sub-agent's conversation.
 	 */
 	subAgents?: Record<string, AgentState>
-	/** Estimated tokens in context window after the most recent generateText call (input + output). */
+	/** Estimated tokens in context window after the most recent streamText call (input + output). */
 	contextWindowTokens?: number
 }
 
