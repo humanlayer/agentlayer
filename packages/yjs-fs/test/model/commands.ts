@@ -3,16 +3,23 @@ import fc from 'fast-check'
 import { YjsFilesystem } from '../../src'
 import {
 	actualEntryIdForPath,
+	bindActualCommentIdentity,
 	bindActualEntryIdentity,
+	bindActualReplyIdentity,
 	createNamespaceModel,
 	listModel,
+	listModelComments,
+	modelAddComment,
 	modelCreateFile,
 	modelDelete,
 	modelEditFile,
 	modelExists,
 	modelMkdir,
 	modelRename,
+	modelReplyToComment,
+	modelResolveComment,
 	modelWriteFile,
+	type ModelComment,
 	type NamespaceModel,
 	readModel,
 	statModel,
@@ -49,6 +56,9 @@ export function namespaceCommandArbitrary(): fc.Arbitrary<NamespaceCommand> {
 		createFileCommandArbitrary(),
 		writeFileCommandArbitrary(),
 		editFileCommandArbitrary(),
+		addCommentCommandArbitrary(),
+		replyToCommentCommandArbitrary(),
+		resolveCommentCommandArbitrary(),
 		renameCommandArbitrary(),
 		deleteCommandArbitrary(),
 	)
@@ -76,6 +86,7 @@ export function assertFilesystemMatchesModel(context: CommandContext): void {
 			const actualContent = context.filesystem.readFile(path)
 			const expectedContent = readModel(context.model, path)
 			expect(actualContent).toBe(expectedContent)
+			assertCommentsMatchModel(context, path)
 		}
 	}
 
@@ -178,6 +189,83 @@ function editFileCommandArbitrary(): fc.Arbitrary<NamespaceCommand> {
 	}))
 }
 
+function addCommentCommandArbitrary(): fc.Arbitrary<NamespaceCommand> {
+	return fc
+		.record({
+			path: pathArbitrary('comment'),
+			author: authorArbitrary(),
+			body: commentBodyArbitrary(),
+		})
+		.map(({ path, author, body }) => ({
+			label: `addComment(${path})`,
+			run(context) {
+				if (!isFilePath(context.model, path)) {
+					return
+				}
+
+				const content = readModel(context.model, path)
+				const anchor = anchorForContent(content)
+				if (!anchor) {
+					return
+				}
+
+				const commentId = modelAddComment(context.model, path, anchor, body, author)
+				const actualCommentId = context.filesystem.addComment(path, anchor, body, author)
+				bindActualCommentIdentity(context.model, path, commentId, actualCommentId)
+			},
+		}))
+}
+
+function replyToCommentCommandArbitrary(): fc.Arbitrary<NamespaceCommand> {
+	return fc
+		.record({
+			path: pathArbitrary('reply'),
+			author: authorArbitrary(),
+			body: commentBodyArbitrary(),
+		})
+		.map(({ path, author, body }) => ({
+			label: `replyToComment(${path})`,
+			run(context) {
+				if (!isFilePath(context.model, path)) {
+					return
+				}
+
+				const comment = firstOpenComment(context.model, path)
+				if (!comment?.actualId) {
+					return
+				}
+
+				const replyId = modelReplyToComment(context.model, path, comment.id, body, author)
+				const actualReplyId = context.filesystem.replyToComment(path, comment.actualId, body, author)
+				bindActualReplyIdentity(context.model, path, comment.id, replyId, actualReplyId)
+			},
+		}))
+}
+
+function resolveCommentCommandArbitrary(): fc.Arbitrary<NamespaceCommand> {
+	return fc
+		.record({
+			path: pathArbitrary('resolve'),
+			author: authorArbitrary(),
+		})
+		.map(({ path, author }) => ({
+			label: `resolveComment(${path})`,
+			run(context) {
+				if (!isFilePath(context.model, path)) {
+					return
+				}
+
+				const comment = firstComment(context.model, path)
+				if (!comment?.actualId) {
+					return
+				}
+
+				modelResolveComment(context.model, path, comment.id, author)
+				context.filesystem.resolveComment(path, comment.actualId, author)
+			},
+		}))
+}
+
 function renameCommandArbitrary(): fc.Arbitrary<NamespaceCommand> {
 	return fc
 		.record({
@@ -227,10 +315,43 @@ function deleteCommandArbitrary(): fc.Arbitrary<NamespaceCommand> {
 	}))
 }
 
+function assertCommentsMatchModel(context: CommandContext, path: string): void {
+	const expectedComments = listModelComments(context.model, path)
+	const actualComments = context.filesystem.getComments(path)
+
+	for (const expectedComment of expectedComments) {
+		expect(actualComments.some((actualComment) => actualComment.id === expectedComment.actualId)).toBe(true)
+	}
+
+	expect(actualComments).toHaveLength(expectedComments.length)
+
+	for (const expectedComment of expectedComments) {
+		const actualComment = actualComments.find((candidate) => candidate.id === expectedComment.actualId)
+		expect(actualComment).toBeDefined()
+		expect(actualComment?.author).toBe(expectedComment.author)
+		expect(actualComment?.body).toBe(expectedComment.body)
+		expect(actualComment?.resolved).toBe(expectedComment.resolved)
+		expect(actualComment?.resolvedBy).toBe(expectedComment.resolved ? expectedComment.resolvedBy : undefined)
+		expect(actualComment?.anchorLength).toBeGreaterThanOrEqual(0)
+		expect(actualComment?.anchorIndex).toBeGreaterThanOrEqual(0)
+
+		const actualReplies = actualComment?.replies ?? []
+		expect(actualReplies).toHaveLength(expectedComment.replies.length)
+
+		for (const expectedReply of expectedComment.replies) {
+			const actualReply = actualReplies.find((candidate) => candidate.id === expectedReply.actualId)
+			expect(actualReply).toBeDefined()
+			expect(actualReply?.parentId).toBe(expectedComment.actualId)
+			expect(actualReply?.author).toBe(expectedReply.author)
+			expect(actualReply?.body).toBe(expectedReply.body)
+		}
+	}
+}
+
 function collectExpectedDirectories(model: NamespaceModel): Map<string, true> {
 	const directories = new Map<string, true>()
 
-	for (const [path, _entryId] of model.idByPath.entries()) {
+	for (const [path] of model.idByPath.entries()) {
 		const stat = statModel(model, path)
 		if (stat.type === 'directory') {
 			directories.set(path, true)
@@ -257,6 +378,30 @@ function parentExists(model: NamespaceModel, path: string): boolean {
 	return modelExists(model, dirname(path))
 }
 
+function isFilePath(model: NamespaceModel, path: string): boolean {
+	return modelExists(model, path) && statModel(model, path).type === 'file'
+}
+
+function firstComment(model: NamespaceModel, path: string): ModelComment | undefined {
+	return listModelComments(model, path)[0]
+}
+
+function firstOpenComment(model: NamespaceModel, path: string): ModelComment | undefined {
+	return listModelComments(model, path).find((comment) => !comment.resolved)
+}
+
+function anchorForContent(content: string): { index: number; length: number } | undefined {
+	if (content.length === 0) {
+		return undefined
+	}
+
+	const length = Math.min(3, content.length)
+	const maxIndex = Math.max(0, content.length - length)
+	const midpoint = Math.floor(content.length / 2)
+	const index = Math.min(midpoint, maxIndex)
+	return { index, length }
+}
+
 function dirname(path: string): string {
 	if (path === '/') {
 		return '/'
@@ -276,4 +421,12 @@ function pathArbitrary(label: string): fc.Arbitrary<string> {
 
 function segmentArbitrary(label: string): fc.Arbitrary<string> {
 	return fc.constantFrom(`${label}-a`, `${label}-b`, `${label}-c`, `${label}-d`)
+}
+
+function authorArbitrary(): fc.Arbitrary<string> {
+	return fc.constantFrom('alice', 'bob', 'carol', 'dora')
+}
+
+function commentBodyArbitrary(): fc.Arbitrary<string> {
+	return fc.string({ minLength: 1, maxLength: 16 })
 }

@@ -12,10 +12,19 @@ import {
 	updateFileMetadata,
 } from '../catalog'
 import {
+	addCommentRecord,
+	getCommentRecords,
+	initializeComments,
+	replyToCommentRecord,
+	resolveCommentRecord,
+} from '../comments'
+import {
+	type CommentAnchor,
 	type EditResult,
 	type EntryDirent,
 	EntryNotFoundError,
 	type EntryStat,
+	type FileComment,
 	type LookupResult,
 	NotDirectoryError,
 	NotFileError,
@@ -84,6 +93,7 @@ export class YjsFilesystem {
 		if (content.length > 0) {
 			ytext.insert(0, content)
 		}
+		initializeComments(contentDoc)
 
 		const entryId = createFileInCatalog(this.catalog, normalizedPath, contentDoc.guid, content.length)
 		this.contentDocs.set(contentDoc.guid, contentDoc)
@@ -142,6 +152,26 @@ export class YjsFilesystem {
 			editLine,
 			affectedLines,
 		}
+	}
+
+	addComment(path: string, anchor: CommentAnchor, body: string, author: string): string {
+		const { entry, path: normalizedPath } = this.requireFileLookup(path)
+		return addCommentRecord(this.requireContentDoc(entry.contentId, normalizedPath), anchor, body, author)
+	}
+
+	getComments(path: string): FileComment[] {
+		const { entry, path: normalizedPath } = this.requireFileLookup(path)
+		return getCommentRecords(this.requireContentDoc(entry.contentId, normalizedPath))
+	}
+
+	replyToComment(path: string, commentId: string, body: string, author: string): string {
+		const { entry, path: normalizedPath } = this.requireFileLookup(path)
+		return replyToCommentRecord(this.requireContentDoc(entry.contentId, normalizedPath), commentId, body, author)
+	}
+
+	resolveComment(path: string, commentId: string, author: string): void {
+		const { entry, path: normalizedPath } = this.requireFileLookup(path)
+		resolveCommentRecord(this.requireContentDoc(entry.contentId, normalizedPath), commentId, author)
 	}
 
 	rename(fromPath: string, toPath: string): void {

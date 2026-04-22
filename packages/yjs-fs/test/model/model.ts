@@ -1,3 +1,23 @@
+export type ModelCommentReply = {
+	id: string
+	actualId?: string
+	parentId: string
+	author: string
+	body: string
+}
+
+export type ModelComment = {
+	id: string
+	actualId?: string
+	author: string
+	body: string
+	anchorIndex: number
+	anchorLength: number
+	replies: ModelCommentReply[]
+	resolved: boolean
+	resolvedBy?: string
+}
+
 type NamespaceNode = {
 	entryId: string
 	type: 'directory' | 'file'
@@ -5,6 +25,7 @@ type NamespaceNode = {
 	actualContentId?: string
 	contentId?: string
 	content?: string
+	comments?: ModelComment[]
 	children?: Set<string>
 }
 
@@ -15,6 +36,8 @@ export type NamespaceModel = {
 	rootEntryId: string
 	fileSequence: number
 	directorySequence: number
+	commentSequence: number
+	replySequence: number
 }
 
 export function createNamespaceModel(): NamespaceModel {
@@ -32,6 +55,8 @@ export function createNamespaceModel(): NamespaceModel {
 		rootEntryId,
 		fileSequence: 0,
 		directorySequence: 0,
+		commentSequence: 0,
+		replySequence: 0,
 	}
 }
 
@@ -41,7 +66,6 @@ export function modelExists(model: NamespaceModel, path: string): boolean {
 
 export function modelMkdir(model: NamespaceModel, path: string): void {
 	const parentPath = dirname(path)
-	const _name = basename(path)
 	const parentId = requiredId(model, parentPath)
 	const parent = requiredNode(model, parentId)
 
@@ -80,7 +104,7 @@ export function modelCreateFile(
 	const entryId = `file-${model.fileSequence}`
 	const contentId = `content-${model.fileSequence}`
 	model.fileSequence += 1
-	model.nodes.set(entryId, { entryId, type: 'file', contentId, content })
+	model.nodes.set(entryId, { entryId, type: 'file', contentId, content, comments: [] })
 	model.pathsById.set(entryId, path)
 	model.idByPath.set(path, entryId)
 	parent.children?.add(entryId)
@@ -120,6 +144,84 @@ export function modelEditFile(model: NamespaceModel, path: string, oldText: stri
 	}
 
 	node.content = `${content.slice(0, firstIndex)}${newText}${content.slice(firstIndex + oldText.length)}`
+}
+
+export function modelAddComment(
+	model: NamespaceModel,
+	path: string,
+	anchor: { index: number; length: number },
+	body: string,
+	author: string,
+): string {
+	const node = requiredFileNode(model, path)
+	const commentId = `comment-${model.commentSequence++}`
+	const comments = node.comments ?? []
+
+	comments.push({
+		id: commentId,
+		author,
+		body,
+		anchorIndex: anchor.index,
+		anchorLength: anchor.length,
+		replies: [],
+		resolved: false,
+	})
+	node.comments = comments
+	return commentId
+}
+
+export function bindActualCommentIdentity(
+	model: NamespaceModel,
+	path: string,
+	commentId: string,
+	actualCommentId: string,
+): void {
+	requiredComment(model, path, commentId).actualId = actualCommentId
+}
+
+export function modelReplyToComment(
+	model: NamespaceModel,
+	path: string,
+	commentId: string,
+	body: string,
+	author: string,
+): string {
+	const comment = requiredComment(model, path, commentId)
+	const replyId = `reply-${model.replySequence++}`
+
+	comment.replies.push({
+		id: replyId,
+		parentId: commentId,
+		author,
+		body,
+	})
+
+	return replyId
+}
+
+export function bindActualReplyIdentity(
+	model: NamespaceModel,
+	path: string,
+	commentId: string,
+	replyId: string,
+	actualReplyId: string,
+): void {
+	const reply = requiredComment(model, path, commentId).replies.find((candidate) => candidate.id === replyId)
+	if (!reply) {
+		throw new Error(`Missing reply: ${replyId}`)
+	}
+
+	reply.actualId = actualReplyId
+}
+
+export function modelResolveComment(model: NamespaceModel, path: string, commentId: string, author: string): void {
+	const comment = requiredComment(model, path, commentId)
+	comment.resolved = !comment.resolved
+	comment.resolvedBy = comment.resolved ? author : undefined
+}
+
+export function listModelComments(model: NamespaceModel, path: string): ModelComment[] {
+	return [...(requiredFileNode(model, path).comments ?? [])]
 }
 
 export function modelRename(model: NamespaceModel, fromPath: string, toPath: string): void {
@@ -237,6 +339,15 @@ function requiredPath(model: NamespaceModel, entryId: string): string {
 	}
 
 	return path
+}
+
+function requiredComment(model: NamespaceModel, path: string, commentId: string): ModelComment {
+	const comment = requiredFileNode(model, path).comments?.find((candidate) => candidate.id === commentId)
+	if (!comment) {
+		throw new Error(`Missing comment: ${commentId}`)
+	}
+
+	return comment
 }
 
 function requiredFileNode(model: NamespaceModel, path: string): NamespaceNode & { type: 'file'; contentId: string } {

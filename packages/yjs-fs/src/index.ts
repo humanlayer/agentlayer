@@ -5,6 +5,8 @@ export type {
 	DurableStreamsServerOptions,
 } from './surface'
 export type {
+	CommentAnchor,
+	CommentReply,
 	ContentId,
 	DirectoryEntry,
 	EditResult,
@@ -13,6 +15,7 @@ export type {
 	EntryMetadata,
 	EntryStat,
 	EntryType,
+	FileComment,
 	FileEntry,
 	LookupResult,
 } from './types'

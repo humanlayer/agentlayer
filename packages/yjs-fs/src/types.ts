@@ -60,6 +60,32 @@ export type EditResult = {
 	}
 }
 
+export type CommentAnchor = {
+	index: number
+	length: number
+}
+
+export type CommentReply = {
+	id: string
+	parentId: string
+	author: string
+	body: string
+	createdAt: number
+}
+
+export type FileComment = {
+	id: string
+	author: string
+	body: string
+	createdAt: number
+	anchorIndex: number
+	anchorLength: number
+	replies: CommentReply[]
+	resolved: boolean
+	resolvedAt?: number
+	resolvedBy?: string
+}
+
 export class YjsFsError extends Error {
 	readonly code: string
 
