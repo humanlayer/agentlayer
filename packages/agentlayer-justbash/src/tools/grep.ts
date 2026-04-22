@@ -1,7 +1,7 @@
 import type { GrepMatch } from '@humanlayer/agentlayer-core/interfaces'
 import { GrepTool } from '@humanlayer/agentlayer-core/interfaces'
+import { GREP_DESCRIPTION } from '@humanlayer/agentlayer-core/prompts'
 import type { Bash } from 'just-bash'
-import DESCRIPTION from './grep.txt'
 
 const MAX_MATCHES = 100
 
@@ -48,6 +48,6 @@ export function createGrepTool(bash: Bash) {
 
 			return matches
 		},
-		{ description: DESCRIPTION },
+		{ description: GREP_DESCRIPTION },
 	)
 }

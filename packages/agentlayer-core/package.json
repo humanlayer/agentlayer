@@ -19,6 +19,8 @@
 	},
 	"exports": {
 		".": "./src/index.ts",
+		"./prompts": "./src/prompts/index.ts",
+		"./tools": "./src/tools/index.ts",
 		"./hooks": "./src/hooks/index.ts",
 		"./utils": "./src/utils/index.ts",
 		"./interfaces": "./src/interfaces/index.ts"

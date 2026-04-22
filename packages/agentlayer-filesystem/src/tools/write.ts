@@ -1,8 +1,8 @@
 import { mkdir } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { WriteTool } from '@humanlayer/agentlayer-core/interfaces'
+import { WRITE_DESCRIPTION } from '@humanlayer/agentlayer-core/prompts'
 import { expandPath } from '../utils/expand-path'
-import DESCRIPTION from './write.txt'
 
 export interface WriteToolOptions {
 	cwd?: string
@@ -18,6 +18,6 @@ export function createWriteTool(opts: WriteToolOptions = {}) {
 			await Bun.write(filePath, input.content)
 			return `Successfully wrote to ${input.file_path}`
 		},
-		{ description: DESCRIPTION },
+		{ description: WRITE_DESCRIPTION },
 	)
 }

@@ -1,5 +1,5 @@
 import { GlobTool } from '@humanlayer/agentlayer-core/interfaces'
-import DESCRIPTION from './glob.txt'
+import { GLOB_DESCRIPTION } from '@humanlayer/agentlayer-core/prompts'
 
 const MAX_RESULTS = 100
 
@@ -29,6 +29,6 @@ export function createGlobTool(opts?: { cwd?: string; disallowSymlinks?: boolean
 
 			return withMtime.slice(0, MAX_RESULTS).map((f) => f.path)
 		},
-		{ description: DESCRIPTION },
+		{ description: GLOB_DESCRIPTION },
 	)
 }

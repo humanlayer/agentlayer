@@ -1,8 +1,8 @@
 import { mkdir } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { EditTool } from '@humanlayer/agentlayer-core/interfaces'
+import { EDIT_DESCRIPTION } from '@humanlayer/agentlayer-core/prompts'
 import { expandPath } from '../utils/expand-path'
-import DESCRIPTION from './edit.txt'
 
 export interface EditToolOptions {
 	cwd?: string
@@ -70,6 +70,6 @@ export function createEditTool(opts: EditToolOptions = {}) {
 
 			return { content: updated, matchCount }
 		},
-		{ description: DESCRIPTION },
+		{ description: EDIT_DESCRIPTION },
 	)
 }

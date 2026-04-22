@@ -1,8 +1,33 @@
 import type { ModelMessage } from 'ai'
-import z from 'zod'
+import { z } from 'zod'
 import type { RunResult } from '../agent'
 import { defineTool } from '../define-tool'
-import DESCRIPTION from './structured-output.txt'
+import { STRUCTURED_OUTPUT_DESCRIPTION } from '../prompts'
+
+/**
+ * Input for the generic structured output tool.
+ * The `data` field holds the structured response as a free-form object.
+ */
+export const structuredOutputInput = z.object({
+	data: z.record(z.string(), z.unknown()).describe('The structured output data matching the required schema'),
+})
+
+export type StructuredOutputInput = z.infer<typeof structuredOutputInput>
+
+/**
+ * A pre-built StructuredOutput tool that accepts any JSON object.
+ *
+ * For schema-validated structured output, use `structuredOutput(schema)`
+ * or `createStructuredOutputTool(schema)` instead.
+ */
+export const StructuredOutputTool = defineTool({
+	name: 'structured_output',
+	description: STRUCTURED_OUTPUT_DESCRIPTION,
+	input: structuredOutputInput,
+	execute: async (input) => {
+		return JSON.stringify(input.data)
+	},
+})
 
 /**
  * Create a typed StructuredOutput tool validated against a Zod schema.
@@ -13,7 +38,7 @@ export function createStructuredOutputTool<T extends z.ZodType>(schema: T) {
 	const jsonSchema = z.toJSONSchema(schema)
 
 	const description = [
-		DESCRIPTION,
+		STRUCTURED_OUTPUT_DESCRIPTION,
 		'',
 		'The `data` field must conform to the following JSON Schema:',
 		'```json',
@@ -59,30 +84,12 @@ export function extractStructuredOutput(messages: readonly ModelMessage[]): unkn
  * All-in-one structured output helper.
  *
  * Returns:
- * - `tool` — a `structured_output` tool wired to the given Zod schema
- * - `parse(result)` — extracts and validates the structured data from a `RunResult`
+ * - `tool` - a `structured_output` tool wired to the given Zod schema
+ * - `parse(result)` - extracts and validates the structured data from a `RunResult`
  *
  * `parse` returns the typed data on success, or `undefined` if no
  * `structured_output` tool call was found in the result messages.
  * Throws a `ZodError` if the data is present but fails schema validation.
- *
- * @example
- * ```ts
- * const { tool, parse } = structuredOutput(z.object({
- *   answer: z.number(),
- *   explanation: z.string(),
- * }))
- *
- * const agent = new Agent({
- *   model,
- *   tools: { structured_output: tool },
- *   stopWhen: structuredOutputCalled(),
- *   system: [defaultPrompt, structuredOutputPrompt],
- * })
- *
- * const result = await agent.run({ state }).result
- * const data = parse(result) // { answer: number, explanation: string } | undefined
- * ```
  */
 export function structuredOutput<T extends z.ZodType>(schema: T) {
 	const tool = createStructuredOutputTool(schema)

@@ -1,7 +1,7 @@
 import { WebFetchTool } from '@humanlayer/agentlayer-core'
+import { WEB_FETCH_DESCRIPTION } from '@humanlayer/agentlayer-core/prompts'
 import type { Bash } from 'just-bash'
 import TurndownService from 'turndown'
-import DESCRIPTION from './web-fetch.txt'
 
 const MAX_RESPONSE_SIZE = 5 * 1024 * 1024 // 5MB in bytes
 const MAX_TIMEOUT_MS = 120_000
@@ -92,6 +92,6 @@ export function createWebFetchTool(bash: Bash) {
 			}
 			return body
 		},
-		{ description: DESCRIPTION },
+		{ description: WEB_FETCH_DESCRIPTION },
 	)
 }

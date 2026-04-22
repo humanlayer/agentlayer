@@ -17,11 +17,17 @@
 	},
 	"peerDependencies": {
 		"typescript": "^5",
-		"just-bash": "^2.0.0"
+		"yjs": "^13.0.0",
+		"y-protocols": "^1.0.0"
 	},
 	"exports": {
 		".": "./src/index.ts",
-		"./tools": "./src/tools/index.ts"
+		"./tools": "./src/tools/index.ts",
+		"./hooks": "./src/hooks/index.ts"
 	},
-	"dependencies": {}
+	"dependencies": {},
+	"author": {
+		"name": "Kyle Mistele",
+		"url": "https://x.com/0xblacklight"
+	}
 }

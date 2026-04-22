@@ -1,6 +1,6 @@
 import { EditTool } from '@humanlayer/agentlayer-core/interfaces'
+import { EDIT_DESCRIPTION } from '@humanlayer/agentlayer-core/prompts'
 import type { Bash } from 'just-bash'
-import DESCRIPTION from './edit.txt'
 
 export function createEditTool(bash: Bash) {
 	return EditTool.define(
@@ -53,6 +53,6 @@ export function createEditTool(bash: Bash) {
 
 			return { content: updated, matchCount }
 		},
-		{ description: DESCRIPTION },
+		{ description: EDIT_DESCRIPTION },
 	)
 }

@@ -1,6 +1,6 @@
 import TurndownService from 'turndown'
 import { WebFetchTool } from '../interfaces/web-fetch'
-import DESCRIPTION from './web-fetch.txt'
+import { WEB_FETCH_DESCRIPTION } from '../prompts'
 
 const MAX_RESPONSE_SIZE = 5 * 1024 * 1024 // 5MB
 const MAX_TIMEOUT_MS = 120_000
@@ -113,6 +113,6 @@ export function createWebFetchTool() {
 			}
 			return body
 		},
-		{ description: DESCRIPTION },
+		{ description: WEB_FETCH_DESCRIPTION },
 	)
 }

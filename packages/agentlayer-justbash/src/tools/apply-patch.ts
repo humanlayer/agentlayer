@@ -1,8 +1,8 @@
 import { isAbsolute, resolve } from 'node:path'
 import { ApplyPatchTool } from '@humanlayer/agentlayer-core/interfaces'
+import { APPLY_PATCH_DESCRIPTION } from '@humanlayer/agentlayer-core/prompts'
 import { applyUpdateChunks, type PatchOperation, parsePatch, validateHunks } from '@humanlayer/agentlayer-core/utils'
 import type { Bash } from 'just-bash'
-import DESCRIPTION from './apply-patch.txt'
 
 export interface ApplyPatchOptions {
 	/** Working directory for resolving relative paths. If not provided, paths are resolved by bash's cwd. */
@@ -116,6 +116,6 @@ export function createApplyPatchTool(bash: Bash, opts: ApplyPatchOptions = {}) {
 
 			return results.join('\n')
 		},
-		{ description: DESCRIPTION },
+		{ description: APPLY_PATCH_DESCRIPTION },
 	)
 }

@@ -1,7 +1,7 @@
 import type { CodeSearchInput } from '@humanlayer/agentlayer-core/interfaces'
 import { CodeSearchTool } from '@humanlayer/agentlayer-core/interfaces'
+import { CODE_SEARCH_DESCRIPTION } from '@humanlayer/agentlayer-core/prompts'
 import type { Bash } from 'just-bash'
-import DESCRIPTION from './code-search.txt'
 
 const DEFAULT_TIMEOUT_SEC = 30
 const CONTEXT7_BASE_URL = 'https://context7.com'
@@ -114,6 +114,6 @@ export function createCodeSearchTool(bash: Bash, opts: JustBashCodeSearchOptions
 
 			return parts.join('\n\n---\n\n')
 		},
-		{ description: DESCRIPTION },
+		{ description: CODE_SEARCH_DESCRIPTION },
 	)
 }

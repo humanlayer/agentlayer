@@ -79,6 +79,7 @@ export {
 export * from './interfaces'
 export { buildToolResultMessage, extractLastAssistantText, toolResultMessage } from './messages'
 export { getPendingToolCalls } from './pending'
+export * from './prompts'
 export {
 	type AgentPath,
 	type AgentState,

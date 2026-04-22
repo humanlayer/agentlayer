@@ -1,6 +1,6 @@
 import { GlobTool } from '@humanlayer/agentlayer-core/interfaces'
+import { GLOB_DESCRIPTION } from '@humanlayer/agentlayer-core/prompts'
 import type { Bash } from 'just-bash'
-import DESCRIPTION from './glob.txt'
 
 export function createGlobTool(bash: Bash) {
 	return GlobTool.define(
@@ -28,6 +28,6 @@ export function createGlobTool(bash: Bash) {
 				.map((l) => l.trim())
 				.filter(Boolean)
 		},
-		{ description: DESCRIPTION },
+		{ description: GLOB_DESCRIPTION },
 	)
 }

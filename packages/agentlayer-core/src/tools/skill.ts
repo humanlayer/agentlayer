@@ -1,4 +1,5 @@
 import { type Skill, SkillTool } from '../interfaces'
+import { SKILL_DESCRIPTION } from '../prompts'
 
 export function createSkillTool(opts: { skills: Skill[] }) {
 	const skillMap = new Map(opts.skills.map((s) => [s.name, s]))
@@ -24,7 +25,7 @@ export function createSkillTool(opts: { skills: Skill[] }) {
 			return `Skill "${skill.name}" activated successfully. Follow the instructions above.`
 		},
 		{
-			description: `Activate a skill. Available skills:\n${skillList}`,
+			description: `${SKILL_DESCRIPTION}\n\nAvailable skills:\n${skillList}`,
 		},
 	)
 }

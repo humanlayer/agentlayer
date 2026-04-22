@@ -1,5 +1,5 @@
 import { BashTool } from '@humanlayer/agentlayer-core/interfaces'
-import DESCRIPTION from './bash.txt'
+import { BASH_DESCRIPTION } from '@humanlayer/agentlayer-core/prompts'
 
 export function createBashTool(opts?: { cwd?: string }) {
 	return BashTool.define(
@@ -34,6 +34,6 @@ export function createBashTool(opts?: { cwd?: string }) {
 
 			return `Exit code: ${exitCode}\n${output}`
 		},
-		{ description: DESCRIPTION },
+		{ description: BASH_DESCRIPTION },
 	)
 }

@@ -2,8 +2,8 @@ import { readdir, readFile, realpath, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { GrepMatch } from '@humanlayer/agentlayer-core/interfaces'
 import { GrepTool } from '@humanlayer/agentlayer-core/interfaces'
+import { GREP_DESCRIPTION } from '@humanlayer/agentlayer-core/prompts'
 import { rgPath } from 'ripgrep'
-import DESCRIPTION from './grep.txt'
 
 const MAX_MATCHES = 100
 
@@ -179,6 +179,6 @@ export function createGrepTool(opts?: { cwd?: string; disallowSymlinks?: boolean
 
 			return withMtime.slice(0, MAX_MATCHES).map((x) => x.match)
 		},
-		{ description: DESCRIPTION },
+		{ description: GREP_DESCRIPTION },
 	)
 }

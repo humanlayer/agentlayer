@@ -1,7 +1,7 @@
 import { BashTool } from '@humanlayer/agentlayer-core/interfaces'
+import { BASH_DESCRIPTION } from '@humanlayer/agentlayer-core/prompts'
 import { truncateOutput } from '@humanlayer/agentlayer-core/utils'
 import type { Bash } from 'just-bash'
-import DESCRIPTION from './bash.txt'
 
 export function createJustBashTool(bash: Bash) {
 	return BashTool.define(
@@ -15,6 +15,6 @@ export function createJustBashTool(bash: Bash) {
 			}
 			return truncateOutput(`Exit code: ${result.exitCode}\n${output}`)
 		},
-		{ description: DESCRIPTION },
+		{ description: BASH_DESCRIPTION },
 	)
 }

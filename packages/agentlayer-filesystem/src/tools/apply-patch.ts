@@ -1,8 +1,8 @@
 import { mkdir, unlink } from 'node:fs/promises'
 import { dirname, isAbsolute, resolve } from 'node:path'
 import { ApplyPatchTool } from '@humanlayer/agentlayer-core/interfaces'
+import { APPLY_PATCH_DESCRIPTION } from '@humanlayer/agentlayer-core/prompts'
 import { applyUpdateChunks, type PatchOperation, parsePatch, validateHunks } from '@humanlayer/agentlayer-core/utils'
-import DESCRIPTION from './apply-patch.txt'
 
 export interface ApplyPatchOptions {
 	/** Working directory for resolving relative paths. If not provided, relative paths are used as-is. */
@@ -96,6 +96,6 @@ export function createApplyPatchTool(opts: ApplyPatchOptions = {}) {
 
 			return results.join('\n')
 		},
-		{ description: DESCRIPTION },
+		{ description: APPLY_PATCH_DESCRIPTION },
 	)
 }

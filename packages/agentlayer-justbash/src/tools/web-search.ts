@@ -1,7 +1,7 @@
 import type { WebSearchInput, WebSearchResult } from '@humanlayer/agentlayer-core'
 import { WebSearchTool } from '@humanlayer/agentlayer-core'
+import { WEB_SEARCH_DESCRIPTION } from '@humanlayer/agentlayer-core/prompts'
 import type { Bash } from 'just-bash'
-import DESCRIPTION from './web-search.txt'
 
 const DEFAULT_TIMEOUT_SEC = 25
 
@@ -54,6 +54,6 @@ export function createWebSearchTool(bash: Bash, opts: JustBashWebSearchOptions) 
 
 			return { results }
 		},
-		{ description: DESCRIPTION },
+		{ description: WEB_SEARCH_DESCRIPTION },
 	)
 }

@@ -1,0 +1,31 @@
+{
+	"name": "@humanlayer/yjs-fs",
+	"module": "src/index.ts",
+	"type": "module",
+	"private": false,
+	"scripts": {
+		"typecheck": "tsgo --noEmit"
+	},
+	"devDependencies": {
+		"@ai-sdk/anthropic": "catalog:",
+		"@ai-sdk/provider": "catalog:",
+		"@humanlayer/agentlayer-core": "workspace:*",
+		"@types/bun": "latest",
+		"@types/turndown": "5.0.6",
+		"ai": "catalog:",
+		"zod": "catalog:"
+	},
+	"peerDependencies": {
+		"typescript": "^5",
+		"yjs": "^13.0.0",
+		"y-protocols": "^1.0.0"
+	},
+	"exports": {
+		".": "./src/index.ts"
+	},
+	"dependencies": {},
+	"author": {
+		"name": "Kyle Mistele",
+		"url": "https://x.com/0xblacklight"
+	}
+}

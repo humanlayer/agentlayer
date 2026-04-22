@@ -1,6 +1,6 @@
 import { WriteTool } from '@humanlayer/agentlayer-core'
+import { WRITE_DESCRIPTION } from '@humanlayer/agentlayer-core/prompts'
 import type { Bash } from 'just-bash'
-import DESCRIPTION from './write.txt'
 
 export function createWriteTool(bash: Bash) {
 	return WriteTool.define(
@@ -21,6 +21,6 @@ export function createWriteTool(bash: Bash) {
 
 			return `Successfully wrote to ${input.file_path}`
 		},
-		{ description: DESCRIPTION },
+		{ description: WRITE_DESCRIPTION },
 	)
 }

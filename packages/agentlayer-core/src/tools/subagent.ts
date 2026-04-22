@@ -3,9 +3,9 @@ import type { AgentEvent } from '..'
 import type { Agent, RunResult } from '../agent'
 import { defineTool } from '../define-tool'
 import { extractLastAssistantText } from '../messages'
+import { SUBAGENT_DESCRIPTION_TEMPLATE } from '../prompts'
 import type { AgentState } from '../state'
 import { startState } from '../state'
-import DESCRIPTION_TEMPLATE from './subagent.txt'
 
 // ── Input schemas ────────────────────────────────────────────────────────────
 
@@ -67,7 +67,7 @@ export function createSubagentsTool(opts: { agents: SubAgentConfig[]; onChildEve
 		.map((a) => `- ${a.name}: ${a.description}${a.resumable ? ' (resumable)' : ''}`)
 		.join('\n')
 
-	const description = DESCRIPTION_TEMPLATE.replace('{agents}', agentList)
+	const description = SUBAGENT_DESCRIPTION_TEMPLATE.replace('{agents}', agentList)
 
 	// Pick schema based on whether any agents support resumption.
 	const inputSchema = hasAnyResumable ? subagentInputResumable : subagentInputBase

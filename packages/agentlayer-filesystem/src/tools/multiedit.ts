@@ -1,8 +1,8 @@
 import type { EditOutput } from '@humanlayer/agentlayer-core/interfaces'
 import { MultiEditTool } from '@humanlayer/agentlayer-core/interfaces'
+import { MULTI_EDIT_DESCRIPTION } from '@humanlayer/agentlayer-core/prompts'
 import { expandPath } from '../utils/expand-path'
 import { createEditTool } from './edit'
-import DESCRIPTION from './multiedit.txt'
 
 export interface MultiEditToolOptions {
 	cwd?: string
@@ -40,6 +40,6 @@ export function createMultiEditTool(opts: MultiEditToolOptions = {}) {
 
 			return `Applied ${input.edits.length} edit(s) to ${input.file_path}`
 		},
-		{ description: DESCRIPTION },
+		{ description: MULTI_EDIT_DESCRIPTION },
 	)
 }

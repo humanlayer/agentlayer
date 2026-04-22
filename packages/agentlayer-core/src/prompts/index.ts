@@ -1,0 +1,35 @@
+import APPLY_PATCH_DESCRIPTION from './apply-patch.txt'
+import BASH_DESCRIPTION from './bash.txt'
+import CODE_SEARCH_DESCRIPTION from './code-search.txt'
+import EDIT_DESCRIPTION from './edit.txt'
+import GLOB_DESCRIPTION from './glob.txt'
+import GREP_DESCRIPTION from './grep.txt'
+import LIST_DESCRIPTION from './list.txt'
+import MULTI_EDIT_DESCRIPTION from './multiedit.txt'
+import READ_DESCRIPTION from './read.txt'
+import SKILL_DESCRIPTION from './skill.txt'
+import STRUCTURED_OUTPUT_DESCRIPTION from './structured-output.txt'
+import SUBAGENT_DESCRIPTION_TEMPLATE from './subagent.txt'
+import TODO_WRITE_DESCRIPTION from './todo-write.txt'
+import WEB_FETCH_DESCRIPTION from './web-fetch.txt'
+import WEB_SEARCH_DESCRIPTION from './web-search.txt'
+import WRITE_DESCRIPTION from './write.txt'
+
+export {
+	APPLY_PATCH_DESCRIPTION,
+	BASH_DESCRIPTION,
+	CODE_SEARCH_DESCRIPTION,
+	EDIT_DESCRIPTION,
+	GLOB_DESCRIPTION,
+	GREP_DESCRIPTION,
+	LIST_DESCRIPTION,
+	MULTI_EDIT_DESCRIPTION,
+	READ_DESCRIPTION,
+	SKILL_DESCRIPTION,
+	STRUCTURED_OUTPUT_DESCRIPTION,
+	SUBAGENT_DESCRIPTION_TEMPLATE,
+	TODO_WRITE_DESCRIPTION,
+	WEB_FETCH_DESCRIPTION,
+	WEB_SEARCH_DESCRIPTION,
+	WRITE_DESCRIPTION,
+}

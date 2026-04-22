@@ -1,7 +1,7 @@
 import { ReadTool } from '@humanlayer/agentlayer-core/interfaces'
+import { READ_DESCRIPTION } from '@humanlayer/agentlayer-core/prompts'
 import { isBinaryFile } from '@humanlayer/agentlayer-core/utils'
 import { expandPath } from '../utils/expand-path'
-import DESCRIPTION from './read.txt'
 
 export interface ReadToolOptions {
 	cwd?: string
@@ -20,6 +20,6 @@ export function createReadTool(opts: ReadToolOptions = {}) {
 			}
 			return await file.text()
 		},
-		{ description: DESCRIPTION },
+		{ description: READ_DESCRIPTION },
 	)
 }

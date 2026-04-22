@@ -1,7 +1,7 @@
 import type { ListEntry } from '@humanlayer/agentlayer-core/interfaces'
 import { ListTool } from '@humanlayer/agentlayer-core/interfaces'
+import { LIST_DESCRIPTION } from '@humanlayer/agentlayer-core/prompts'
 import type { Bash } from 'just-bash'
-import DESCRIPTION from './list.txt'
 export function createListTool(bash: Bash) {
 	return ListTool.define(
 		async (input) => {
@@ -36,6 +36,6 @@ export function createListTool(bash: Bash) {
 
 			return entries
 		},
-		{ description: DESCRIPTION },
+		{ description: LIST_DESCRIPTION },
 	)
 }

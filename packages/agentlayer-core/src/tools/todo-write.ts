@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { defineTool } from '../define-tool'
-import DESCRIPTION from './todo-write.txt'
+import { TODO_WRITE_DESCRIPTION } from '../prompts'
 export const todoItemSchema = z.object({
 	content: z.string().min(1),
 	status: z.enum(['pending', 'in_progress', 'completed']),
@@ -19,7 +19,7 @@ const todoStateSchema = z.array(todoItemSchema)
 
 export const TodoWriteTool = defineTool({
 	name: 'todo_write',
-	description: DESCRIPTION,
+	description: TODO_WRITE_DESCRIPTION,
 	input: todoWriteInput,
 	stateKey: 'todos',
 	stateSchema: todoStateSchema,

@@ -1,6 +1,6 @@
 import { ReadTool } from '@humanlayer/agentlayer-core/interfaces'
+import { READ_DESCRIPTION } from '@humanlayer/agentlayer-core/prompts'
 import type { Bash } from 'just-bash'
-import DESCRIPTION from './read.txt'
 
 export function createJustBashReadTool(bash: Bash) {
 	return ReadTool.define(
@@ -11,6 +11,6 @@ export function createJustBashReadTool(bash: Bash) {
 			}
 			return result.stdout
 		},
-		{ description: DESCRIPTION },
+		{ description: READ_DESCRIPTION },
 	)
 }

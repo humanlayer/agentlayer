@@ -2,7 +2,7 @@ import { readdir, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { ListEntry } from '@humanlayer/agentlayer-core/interfaces'
 import { ListTool } from '@humanlayer/agentlayer-core/interfaces'
-import DESCRIPTION from './list.txt'
+import { LIST_DESCRIPTION } from '@humanlayer/agentlayer-core/prompts'
 
 const DEFAULT_IGNORE = new Set([
 	'node_modules',
@@ -86,6 +86,6 @@ export function createListTool(opts?: { cwd?: string }) {
 
 			return result
 		},
-		{ description: DESCRIPTION },
+		{ description: LIST_DESCRIPTION },
 	)
 }
