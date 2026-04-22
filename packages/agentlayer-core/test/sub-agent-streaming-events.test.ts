@@ -6,7 +6,6 @@ import { createSubagentsTool } from '../src/tools'
 import {
 	assistantText,
 	assistantWithToolCall,
-	extractToolCallId,
 	getToolResults,
 	mockResponse,
 	mockStreamingModel,
@@ -247,5 +246,336 @@ describe('sub-agent streaming events', () => {
 		expect(streamingResult.state.contextWindowTokens).toBe(nonStreamingResult.state.contextWindowTokens)
 		expect(streamingResult.tokenUsage.totals).toEqual(nonStreamingResult.tokenUsage.totals)
 		expect(streamingResult.tokenUsage.byModel).toEqual(nonStreamingResult.tokenUsage.byModel)
+	})
+
+	test('grandchild streaming events reach the parent iterator with nested tagging intact', async () => {
+		const grandchildAgent = new Agent({
+			model: mockStreamingModel([
+				mockResponse(
+					[
+						{
+							type: 'tool-call',
+							toolCallId: 'grandchild-echo-call',
+							toolName: 'echo',
+							input: JSON.stringify({ text: 'deep payload' }),
+						},
+					],
+					{ usage: mockUsage(15, 5) },
+				),
+				assistantText('Grandchild complete.', { usage: mockUsage(18, 7) }),
+			]),
+			tools: { echo: echoTool },
+		})
+
+		const grandchildTool = createSubagentsTool({
+			agents: [{ name: 'grandchild-worker', description: 'A grandchild worker', agent: grandchildAgent }],
+		})
+
+		const childAgent = new Agent({
+			model: mockStreamingModel([
+				mockResponse(
+					[
+						{
+							type: 'tool-call',
+							toolCallId: 'child-subagent-call',
+							toolName: 'subagent',
+							input: JSON.stringify({
+								description: 'delegate deeper',
+								prompt: 'do deep work',
+								subagent_type: 'grandchild-worker',
+							}),
+						},
+					],
+					{ usage: mockUsage(40, 12) },
+				),
+				assistantText('Child complete after grandchild.', { usage: mockUsage(30, 9) }),
+			]),
+			tools: { subagent: grandchildTool },
+		})
+
+		const childTool = createSubagentsTool({
+			agents: [{ name: 'child-worker', description: 'A child worker', agent: childAgent }],
+		})
+
+		const parentAgent = new Agent({
+			model: mockStreamingModel([
+				mockResponse(
+					[
+						{
+							type: 'tool-call',
+							toolCallId: 'parent-subagent-call',
+							toolName: 'subagent',
+							input: JSON.stringify({
+								description: 'delegate work',
+								prompt: 'do nested work',
+								subagent_type: 'child-worker',
+							}),
+						},
+					],
+					{ usage: mockUsage(60, 14) },
+				),
+				assistantText('Parent complete.', { usage: mockUsage(50, 11) }),
+			]),
+			tools: { subagent: childTool },
+		})
+
+		const run = parentAgent.run({ state: startState([userMessage('go nested')]), stream: true })
+		const events: AgentEvent[] = []
+		for await (const event of run) {
+			events.push(event)
+		}
+
+		const result = await run.result
+		expect(result.finishReason).toBe('complete')
+
+		const childTextDelta = events.find(
+			(event): event is Extract<AgentEvent, { type: 'textDelta' }> =>
+				event.type === 'textDelta' && event.parentToolCallId === 'parent-subagent-call',
+		)
+		const grandchildTextDelta = events.find(
+			(event): event is Extract<AgentEvent, { type: 'textDelta' }> =>
+				event.type === 'textDelta' && event.parentToolCallId === 'child-subagent-call',
+		)
+		const grandchildToolInputDelta = events.find(
+			(event): event is Extract<AgentEvent, { type: 'toolInputDelta' }> =>
+				event.type === 'toolInputDelta' && event.parentToolCallId === 'child-subagent-call',
+		)
+
+		expect(childTextDelta).toMatchObject({ text: 'Child complete after grandchild.' })
+		expect(grandchildTextDelta).toMatchObject({ text: 'Grandchild complete.' })
+		expect(grandchildToolInputDelta?.delta).toContain('deep payload')
+		expect(childTextDelta?.agentId).toBeDefined()
+		expect(grandchildTextDelta?.agentId).toBeDefined()
+		expect(grandchildTextDelta?.agentId).not.toBe(childTextDelta?.agentId)
+
+		const nestedGrandchildEvents = events.filter((event) => event.agentId === grandchildTextDelta?.agentId)
+		expect(new Set(nestedGrandchildEvents.map((event) => event.parentToolCallId))).toEqual(new Set(['child-subagent-call']))
+
+		const rootFinalTextStartIndex = events.findIndex(
+			(event) => event.type === 'textStart' && event.agentId === undefined,
+		)
+		const lastNestedEventIndex = events.reduce(
+			(lastIndex, event, index) => (event.agentId !== undefined ? index : lastIndex),
+			-1,
+		)
+		expect(lastNestedEventIndex).toBeLessThan(rootFinalTextStartIndex)
+
+		const subagentResults = getSubagentResultTexts(result.state.messages)
+		expect(subagentResults).toHaveLength(1)
+		expect(subagentResults[0]).toContain('Child complete after grandchild.')
+		expect(JSON.stringify(result.state.messages)).not.toContain('Grandchild complete.')
+	})
+
+	test('parallel streaming child runs preserve separate child scopes on the parent iterator', async () => {
+		const childA = new Agent({
+			model: mockStreamingModel([assistantText('Worker A complete.', { usage: mockUsage(20, 6) })]),
+			tools: {},
+		})
+		const childB = new Agent({
+			model: mockStreamingModel([assistantText('Worker B complete.', { usage: mockUsage(22, 7) })]),
+			tools: {},
+		})
+
+		const childTool = createSubagentsTool({
+			agents: [
+				{ name: 'worker-a', description: 'Worker A', agent: childA },
+				{ name: 'worker-b', description: 'Worker B', agent: childB },
+			],
+		})
+
+		const parentAgent = new Agent({
+			model: mockStreamingModel([
+				mockResponse(
+					[
+						{
+							type: 'tool-call',
+							toolCallId: 'parent-subagent-call-a',
+							toolName: 'subagent',
+							input: JSON.stringify({
+								description: 'run worker a',
+								prompt: 'finish A',
+								subagent_type: 'worker-a',
+							}),
+						},
+						{
+							type: 'tool-call',
+							toolCallId: 'parent-subagent-call-b',
+							toolName: 'subagent',
+							input: JSON.stringify({
+								description: 'run worker b',
+								prompt: 'finish B',
+								subagent_type: 'worker-b',
+							}),
+						},
+					],
+					{ usage: mockUsage(70, 18) },
+				),
+				assistantText('Parent done after both workers.', { usage: mockUsage(45, 10) }),
+			]),
+			tools: { subagent: childTool },
+		})
+
+		const run = parentAgent.run({ state: startState([userMessage('fan out')]), stream: true })
+		const events: AgentEvent[] = []
+		for await (const event of run) {
+			events.push(event)
+		}
+
+		const result = await run.result
+		expect(result.finishReason).toBe('complete')
+
+		const childTextDeltas = events.filter(
+			(event): event is Extract<AgentEvent, { type: 'textDelta' }> =>
+				event.type === 'textDelta' && event.agentId !== undefined,
+		)
+		expect(childTextDeltas.map((event) => event.text).sort()).toEqual([
+			'Worker A complete.',
+			'Worker B complete.',
+		])
+		expect(new Set(childTextDeltas.map((event) => event.agentId)).size).toBe(2)
+		expect(new Set(childTextDeltas.map((event) => event.parentToolCallId))).toEqual(
+			new Set(['parent-subagent-call-a', 'parent-subagent-call-b']),
+		)
+
+		const lastChildEventIndex = events.reduce(
+			(lastIndex, event, index) => (event.agentId !== undefined ? index : lastIndex),
+			-1,
+		)
+		const rootFinalTextStartIndex = events.findIndex(
+			(event) => event.type === 'textStart' && event.agentId === undefined,
+		)
+		expect(lastChildEventIndex).toBeLessThan(rootFinalTextStartIndex)
+
+		const subagentResults = getSubagentResultTexts(result.state.messages)
+		expect(subagentResults).toHaveLength(2)
+		expect(subagentResults.some((resultText) => resultText.includes('Worker A complete.'))).toBe(true)
+		expect(subagentResults.some((resultText) => resultText.includes('Worker B complete.'))).toBe(true)
+	})
+
+	test('nested approvals stream through the parent iterator and resume cleanly after approval', async () => {
+		const grandchildAgent = new Agent({
+			model: mockStreamingModel([
+				assistantWithToolCall('dangerous', { value: 'deep payload' }, { usage: mockUsage(12, 4) }),
+				assistantText('Grandchild approved.', { usage: mockUsage(16, 6) }),
+			]),
+			tools: { dangerous: dangerousTool },
+			hooks: {
+				approval: [(ctx) => (ctx.toolName === 'dangerous' ? ctx.ask({ message: 'Approve deep work?' }) : ctx.next())],
+			},
+		})
+
+		const grandchildTool = createSubagentsTool({
+			agents: [{ name: 'grandchild-worker', description: 'A grandchild worker', agent: grandchildAgent }],
+		})
+
+		const childAgent = new Agent({
+			model: mockStreamingModel([
+				mockResponse(
+					[
+						{
+							type: 'tool-call',
+							toolCallId: 'child-subagent-call',
+							toolName: 'subagent',
+							input: JSON.stringify({
+								description: 'delegate deeper',
+								prompt: 'ask grandchild to do the risky work',
+								subagent_type: 'grandchild-worker',
+							}),
+						},
+					],
+					{ usage: mockUsage(24, 8) },
+				),
+				assistantText('Child done after approval.', { usage: mockUsage(20, 7) }),
+			]),
+			tools: { subagent: grandchildTool },
+		})
+
+		const childTool = createSubagentsTool({
+			agents: [{ name: 'child-worker', description: 'A child worker', agent: childAgent }],
+		})
+
+		const parentAgent = new Agent({
+			model: mockStreamingModel([
+				mockResponse(
+					[
+						{
+							type: 'tool-call',
+							toolCallId: 'parent-subagent-call',
+							toolName: 'subagent',
+							input: JSON.stringify({
+								description: 'delegate child work',
+								prompt: 'do nested risky work',
+								subagent_type: 'child-worker',
+							}),
+						},
+					],
+					{ usage: mockUsage(32, 9) },
+				),
+				assistantText('Parent done.', { usage: mockUsage(22, 6) }),
+			]),
+			tools: { subagent: childTool },
+		})
+
+		const firstRun = parentAgent.run({ state: startState([userMessage('start nested approval')]), stream: true })
+		const firstEvents: AgentEvent[] = []
+		for await (const event of firstRun) {
+			firstEvents.push(event)
+		}
+
+		const firstResult = await firstRun.result
+		expect(firstResult.finishReason).toBe('approvalRequired')
+		expect(getSubagentResultTexts(firstResult.state.messages)).toHaveLength(0)
+
+		const approvalEvent = firstEvents.find(
+			(event): event is Extract<AgentEvent, { type: 'approvalRequested' }> => event.type === 'approvalRequested',
+		)
+		expect(approvalEvent).toMatchObject({
+			toolName: 'dangerous',
+			parentToolCallId: 'child-subagent-call',
+		})
+		expect(approvalEvent?.agentId).toBeDefined()
+
+		const approvalEventIndex = firstEvents.findIndex((event) => event === approvalEvent)
+		const grandchildStepFinishIndex = firstEvents.findIndex(
+			(event) => event.type === 'stepFinish' && event.agentId === approvalEvent?.agentId,
+		)
+		expect(grandchildStepFinishIndex).toBeGreaterThan(-1)
+		expect(grandchildStepFinishIndex).toBeLessThan(approvalEventIndex)
+
+		const pendingApprovals = getAllPendingApprovals(firstResult.state)
+		expect(pendingApprovals).toHaveLength(1)
+		expect(pendingApprovals[0]?.path).toHaveLength(2)
+
+		const approvedState = withApprovals(firstResult.state, [
+			{ toolCallId: pendingApprovals[0]!.pending.toolCallId, approved: true },
+		])
+
+		const resumedRun = parentAgent.run({ state: approvedState, stream: true })
+		const resumedEvents: AgentEvent[] = []
+		for await (const event of resumedRun) {
+			resumedEvents.push(event)
+		}
+
+		const resumedResult = await resumedRun.result
+		expect(resumedResult.finishReason).toBe('complete')
+		expect(resumedEvents.some((event) => event.type === 'approvalRequested')).toBe(false)
+
+		const resumedGrandchildText = resumedEvents.find(
+			(event): event is Extract<AgentEvent, { type: 'textDelta' }> =>
+				event.type === 'textDelta' && event.parentToolCallId === 'child-subagent-call',
+		)
+		const resumedChildText = resumedEvents.find(
+			(event): event is Extract<AgentEvent, { type: 'textDelta' }> =>
+				event.type === 'textDelta' && event.parentToolCallId === 'parent-subagent-call',
+		)
+		expect(resumedGrandchildText).toMatchObject({ text: 'Grandchild approved.' })
+		expect(resumedChildText).toMatchObject({ text: 'Child done after approval.' })
+		expect(new Set(getAllPendingApprovals(resumedResult.state))).toEqual(new Set())
+		expect(resumedResult.state.subAgents).toBeUndefined()
+
+		const subagentResults = getSubagentResultTexts(resumedResult.state.messages)
+		expect(subagentResults).toHaveLength(1)
+		expect(subagentResults[0]).toContain('Child done after approval.')
+		expect(JSON.stringify(resumedResult.state.messages)).not.toContain('Grandchild approved.')
 	})
 })
