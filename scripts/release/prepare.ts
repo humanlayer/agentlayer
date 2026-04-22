@@ -1,13 +1,21 @@
 import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, relative, sep } from "node:path";
 import process from "node:process";
 import { parseArgs } from "node:util";
 
-import { manifestName, publishablePackages, releaseStageDir, repoRoot } from "./manifest";
+import {
+    getPublishablePackageByDir,
+    getWorkspacePackageByName,
+    manifestName,
+    publishablePackages,
+    releaseStageDir,
+    repoRoot,
+} from "./manifest";
 
 type PackageManifest = {
     name: string;
     version?: string;
+    private?: boolean;
     publishConfig?: {
         access?: string;
         [key: string]: unknown;
@@ -18,6 +26,12 @@ type PackageManifest = {
     optionalDependencies?: Record<string, string>;
     [key: string]: unknown;
 };
+
+type RootManifest = {
+    catalog?: Record<string, string>;
+};
+
+const rootManifestPath = join(repoRoot, manifestName);
 
 const dependencyFields = [
     "dependencies",
@@ -59,6 +73,25 @@ async function readManifest(packageDir: string): Promise<PackageManifest> {
     return JSON.parse(manifest) as PackageManifest;
 }
 
+async function readRootCatalog() {
+    const manifest = await readFile(rootManifestPath, "utf8");
+    const rootManifest = JSON.parse(manifest) as RootManifest;
+    return rootManifest.catalog ?? {};
+}
+
+function assertPublishableManifest(packageDir: string, manifest: PackageManifest) {
+    const releasePackage = getPublishablePackageByDir(packageDir);
+    if (!releasePackage) {
+        throw new Error(`Package ${packageDir} is not in the publish allowlist`);
+    }
+
+    if (manifest.name !== releasePackage.name) {
+        throw new Error(
+            `Publish allowlist mismatch for ${packageDir}: expected ${releasePackage.name}, found ${manifest.name}`,
+        );
+    }
+}
+
 function rewriteWorkspaceDeps(manifest: PackageManifest, version: string) {
     for (const field of dependencyFields) {
         const deps = manifest[field];
@@ -67,37 +100,92 @@ function rewriteWorkspaceDeps(manifest: PackageManifest, version: string) {
         }
 
         for (const [name, range] of Object.entries(deps)) {
-            if (range === "workspace:*" || range.startsWith("workspace:")) {
-                deps[name] = version;
+            if (!range.startsWith("workspace:")) {
+                continue;
             }
+
+            const workspacePackage = getWorkspacePackageByName(name);
+            if (!workspacePackage) {
+                throw new Error(`Unknown workspace dependency ${name}`);
+            }
+
+            const publishableDependency = getPublishablePackageByDir(workspacePackage.dir);
+            if (!publishableDependency) {
+                throw new Error(
+                    `Cannot publish ${manifest.name}: dependency ${name} is internal-only at ${workspacePackage.dir}`,
+                );
+            }
+
+            deps[name] = version;
         }
     }
 }
 
-function stageManifest(manifest: PackageManifest, version: string): PackageManifest {
+function replaceCatalogRanges(deps: Record<string, string> | undefined, catalog: Record<string, string>) {
+    if (!deps) {
+        return;
+    }
+
+    for (const [name, range] of Object.entries(deps)) {
+        if (range !== "catalog:") {
+            continue;
+        }
+
+        const resolved = catalog[name];
+        if (!resolved) {
+            throw new Error(`Missing catalog entry for ${name}`);
+        }
+
+        deps[name] = resolved;
+    }
+}
+
+function rewriteCatalogDeps(manifest: PackageManifest, catalog: Record<string, string>) {
+    for (const field of dependencyFields) {
+        replaceCatalogRanges(manifest[field], catalog);
+    }
+}
+
+function stageManifest(manifest: PackageManifest, version: string, catalog: Record<string, string>): PackageManifest {
     const stagedManifest: PackageManifest = structuredClone(manifest);
     stagedManifest.version = version;
+    stagedManifest.private = false;
     stagedManifest.publishConfig = {
         ...stagedManifest.publishConfig,
         access: "public",
     };
     rewriteWorkspaceDeps(stagedManifest, version);
+    rewriteCatalogDeps(stagedManifest, catalog);
     return stagedManifest;
 }
 
-async function preparePackage(packageDir: string, version: string) {
+function shouldCopyPath(sourceDir: string, sourcePath: string) {
+    if (sourcePath === sourceDir) {
+        return true;
+    }
+
+    const relativePath = relative(sourceDir, sourcePath);
+    const segments = relativePath.split(sep);
+
+    return !segments.includes("node_modules") && !segments.includes("dist");
+}
+
+async function preparePackage(packageDir: string, version: string, catalog: Record<string, string>) {
     const sourceDir = join(repoRoot, packageDir);
     const targetDir = join(releaseStageDir, packageDir);
     const sourceManifest = await readManifest(packageDir);
-    const stagedManifest = stageManifest(sourceManifest, version);
+
+    assertPublishableManifest(packageDir, sourceManifest);
+
+    const stagedManifest = stageManifest(sourceManifest, version, catalog);
 
     await mkdir(join(targetDir, ".."), { recursive: true });
     await cp(sourceDir, targetDir, {
         recursive: true,
         force: true,
         errorOnExist: false,
-        filter(source) {
-            return !source.includes(`${packageDir}/node_modules`) && !source.includes(`${packageDir}/dist`);
+        filter(sourcePath) {
+            return shouldCopyPath(sourceDir, sourcePath);
         },
     });
     await writeFile(join(targetDir, manifestName), `${JSON.stringify(stagedManifest, null, 2)}\n`);
@@ -114,22 +202,18 @@ async function main() {
 
     await rm(releaseStageDir, { recursive: true, force: true });
 
+    const catalog = await readRootCatalog();
     const preparedPackages = [] as Array<Awaited<ReturnType<typeof preparePackage>>>;
-    for (const packageDir of publishablePackages) {
-        preparedPackages.push(await preparePackage(packageDir, version));
-    }
-
-    if (dryRun) {
-        for (const preparedPackage of preparedPackages) {
-            console.log(`[dry-run] prepared ${preparedPackage.packageName} in ${preparedPackage.targetDir}`);
-        }
-        await rm(releaseStageDir, { recursive: true, force: true });
-        return;
+    for (const { dir } of publishablePackages) {
+        preparedPackages.push(await preparePackage(dir, version, catalog));
     }
 
     for (const preparedPackage of preparedPackages) {
-        console.log(`prepared ${preparedPackage.packageName} in ${preparedPackage.targetDir}`);
+        const prefix = dryRun ? "[dry-run] prepared" : "prepared";
+        console.log(`${prefix} ${preparedPackage.packageName} in ${preparedPackage.targetDir}`);
     }
 }
 
-await main();
+if (import.meta.main) {
+    await main();
+}

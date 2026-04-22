@@ -1,0 +1,27 @@
+name: Validate Publish
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release version to stage
+        required: true
+        type: string
+        default: 0.1.0-rc.1
+
+permissions:
+  contents: read
+
+jobs:
+  validate-publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+      - run: bun install --frozen-lockfile
+      - run: bun run release:prepare --version "${{ inputs.version }}"
+      - run: bun run release:publish --version "${{ inputs.version }}" --dry-run

@@ -1,0 +1,36 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+      - name: Get version from tag
+        id: version
+        run: |
+          echo "version=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+      - run: bun install --frozen-lockfile
+      - run: bun run biome:check
+      - run: bun run typecheck
+      - run: bun run test:ci
+      - run: bun run docs:build
+      - run: bun run release:prepare --version "${{ steps.version.outputs.version }}"
+      - run: bun run release:publish --version "${{ steps.version.outputs.version }}"
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
