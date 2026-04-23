@@ -2,6 +2,133 @@
 
 Individual tool factory functions that create filesystem-based tool implementations.
 
+## Tool Interface Architecture
+
+AgentLayer separates **tool interfaces** from **tool implementations**. This allows different backends to share serialization logic while implementing only the execution.
+
+### The Read Interface Pattern
+
+The `ReadTool` interface in `@humanlayer/agentlayer-core` defines:
+- Input schema (file path, offset, limit)
+- Output schema (string)
+- A `serialize` method that formats raw file content with right-aligned line numbers and arrow separators
+
+**Before (raw executor output):**
+```
+import { z } from 'zod'
+import { defineToolInterface } from '../define-tool'
+
+export const readInput = z.object({
+```
+
+**After (serialized for the model):**
+```
+1→import { z } from 'zod'
+2→import { defineToolInterface } from '../define-tool'
+3→
+4→export const readInput = z.object({
+
+(Showing lines 1-4 of 39. Use offset=5 to continue.)
+```
+
+**With offset=10 (lines numbered from 10):**
+```
+10→export const ReadTool = defineToolInterface<ReadInput, string>({
+11→  name: 'read',
+12→  description: 'Read a file with line numbers',
+
+(Showing lines 10-12 of 39. Use offset=13 to continue.)
+```
+
+The `serialize` method handles:
+- Right-aligned line numbers (width adjusts to largest number)
+- Arrow separator (`→`) between line number and content
+- Pagination hints when file is truncated
+- Correct line numbering when using `offset`
+
+```ts
+// In @humanlayer/agentlayer-core/interfaces/read.ts
+export const ReadTool = defineToolInterface<ReadInput, string>({
+  name: 'read',
+  description: 'Read a file with line numbers',
+  input: readInput,
+  output: z.string(),
+  serialize: (raw: string, input: ReadInput) => {
+    const lines = raw.split('\n')
+    const offset = input.offset ?? 1
+    const limit = input.limit ?? 2000
+    const slice = lines.slice(offset - 1, offset - 1 + limit)
+    const totalLines = lines.length
+
+    // Right-aligned line numbers with arrow separator
+    const width = String(offset + slice.length - 1).length
+    const numbered = slice
+      .map((line, i) => {
+        const lineNum = String(offset + i).padStart(width, ' ')
+        return `${lineNum}→${line}`
+      })
+      .join('\n')
+
+    if (slice.length < totalLines) {
+      return `${numbered}\n\n(Showing lines ${offset}-${offset + slice.length - 1} of ${totalLines}. Use offset=${offset + slice.length} to continue.)`
+    }
+    return `${numbered}\n\n(End of file - total ${totalLines} lines)`
+  },
+})
+```
+
+### Backend Implementations
+
+Different backends implement only the **executor** — the serialization is reused automatically.
+
+**Filesystem backend** (`@humanlayer/agentlayer-filesystem`):
+
+```ts
+import { ReadTool } from '@humanlayer/agentlayer-core/interfaces'
+import { readFile, stat } from 'node:fs/promises'
+
+export function createReadTool(opts: ReadToolOptions = {}) {
+  return ReadTool.define(
+    async (input) => {
+      const filePath = expandPath(input.file_path, opts.cwd)
+      // Executor returns raw file content — serialize() handles line numbers
+      return await readFile(filePath, 'utf8')
+    },
+    { description: READ_DESCRIPTION },
+  )
+}
+```
+
+**JustBash backend** (`@humanlayer/agentlayer-justbash`):
+
+```ts
+import { ReadTool } from '@humanlayer/agentlayer-core/interfaces'
+import type { Bash } from 'just-bash'
+
+export function createJustBashReadTool(bash: Bash) {
+  return ReadTool.define(
+    async (input) => {
+      const result = await bash.exec(`cat "${input.file_path}"`)
+      if (result.exitCode !== 0) {
+        throw new Error(`File not found: ${input.file_path}`)
+      }
+      // Executor returns raw content — serialize() adds line numbers
+      return result.stdout
+    },
+    { description: READ_DESCRIPTION },
+  )
+}
+```
+
+### Why This Matters
+
+1. **No duplicate serialization logic** — Line numbering is defined once in the interface
+2. **Consistent output format** — All backends produce identical model-facing output
+3. **Simple backends** — Implementers only write the file-reading logic
+4. **Type safety** — `ReadTool.define()` enforces the correct executor signature
+
+The same pattern applies to other tools (Glob, Grep, List) — each interface defines a `serialize` method that backends get for free.
+
 ## Filesystem Tools
 
 ### createReadTool()

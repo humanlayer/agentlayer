@@ -269,15 +269,25 @@ AgentLayer ships reusable interfaces in `@humanlayer/agentlayer-core/interfaces`
 | [`WebSearchTool`](https://github.com/humanlayer/agentlayer/blob/main/packages/agentlayer-core/src/interfaces/web-search.ts) | Web search |
 | [`SkillTool`](https://github.com/humanlayer/agentlayer/blob/main/packages/agentlayer-core/src/interfaces/skill.ts) | Activate named skills |
 
-These interfaces encode model-facing conventions. For example, `ReadTool` serializes file contents with line numbers:
+These interfaces encode model-facing conventions. For example, `ReadTool` serializes file contents with right-aligned line numbers and arrow separators:
 
+**Raw executor output:**
 ```
-1	const x = 1
-2	const y = 2
-3	console.log(x + y)
+const x = 1
+const y = 2
+console.log(x + y)
 ```
 
-Every implementation inherits the same serialization.
+**Serialized for the model:**
+```
+1→const x = 1
+2→const y = 2
+3→console.log(x + y)
+
+(End of file - total 3 lines)
+```
+
+Every implementation inherits the same serialization — the `serialize` method is defined once in the interface and reused by all backends.
 
 ## Pre-built Implementations
 
