@@ -19,6 +19,7 @@ export type FileEntry = BaseEntry & {
 	type: 'file'
 	contentId: ContentId
 	size: number
+	encoding: 'text' | 'binary'
 }
 
 export type EntryMetadata = DirectoryEntry | FileEntry
@@ -48,6 +49,7 @@ export type EntryStat = {
 	isFile: boolean
 	contentId?: ContentId
 	size?: number
+	encoding?: 'text' | 'binary'
 }
 
 export type EditResult = {

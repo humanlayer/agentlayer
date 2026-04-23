@@ -3,8 +3,10 @@ import { type ContentId, type EditResult, EntryNotFoundError } from './types'
 
 const FILES_KEY = 'files'
 const CONTENT_TEXT_KEY = 'content'
+const CONTENT_BINARY_KEY = 'binary'
 
 type FileRecord = Y.Map<unknown>
+type BinaryRecord = Y.Map<unknown>
 
 export class ContentStore {
 	readonly doc: Y.Doc
@@ -33,6 +35,24 @@ export class ContentStore {
 		}
 	}
 
+	createBinary(content: Uint8Array = new Uint8Array(0)): { contentId: ContentId; record: BinaryRecord; data: Y.Array<number> } {
+		const contentId = crypto.randomUUID()
+		const record = new Y.Map<unknown>()
+		const data = new Y.Array<number>()
+		record.set(CONTENT_BINARY_KEY, data)
+
+		if (content.length > 0) {
+			data.insert(0, Array.from(content))
+		}
+
+		this.files.set(contentId, record)
+		return {
+			contentId,
+			record,
+			data,
+		}
+	}
+
 	delete(contentId: ContentId): void {
 		this.files.delete(contentId)
 	}
@@ -55,8 +75,22 @@ export class ContentStore {
 		return text
 	}
 
+	getBinaryData(contentId: ContentId, pathForErrors: string): Y.Array<number> {
+		const data = this.get(contentId, pathForErrors).get(CONTENT_BINARY_KEY)
+		if (!(data instanceof Y.Array)) {
+			throw new EntryNotFoundError(pathForErrors)
+		}
+
+		return data as Y.Array<number>
+	}
+
 	read(contentId: ContentId, pathForErrors: string): string {
 		return this.getText(contentId, pathForErrors).toString()
+	}
+
+	readBinary(contentId: ContentId, pathForErrors: string): Uint8Array {
+		const data = this.getBinaryData(contentId, pathForErrors)
+		return new Uint8Array(data.toArray())
 	}
 
 	write(contentId: ContentId, pathForErrors: string, content: string): number {
@@ -65,6 +99,18 @@ export class ContentStore {
 			text.delete(0, text.length)
 			if (content.length > 0) {
 				text.insert(0, content)
+			}
+		})
+
+		return content.length
+	}
+
+	writeBinary(contentId: ContentId, pathForErrors: string, content: Uint8Array): number {
+		const data = this.getBinaryData(contentId, pathForErrors)
+		this.doc.transact(() => {
+			data.delete(0, data.length)
+			if (content.length > 0) {
+				data.insert(0, Array.from(content))
 			}
 		})
 
@@ -107,5 +153,9 @@ export class ContentStore {
 
 	size(contentId: ContentId, pathForErrors: string): number {
 		return this.getText(contentId, pathForErrors).toString().length
+	}
+
+	sizeBinary(contentId: ContentId, pathForErrors: string): number {
+		return this.getBinaryData(contentId, pathForErrors).length
 	}
 }

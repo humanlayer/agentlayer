@@ -91,6 +91,7 @@ export class CatalogStore {
 			isFile: result.entry.type === 'file',
 			contentId: result.entry.type === 'file' ? result.entry.contentId : undefined,
 			size: result.entry.type === 'file' ? result.entry.size : undefined,
+			encoding: result.entry.type === 'file' ? result.entry.encoding : undefined,
 		}
 	}
 
@@ -103,8 +104,8 @@ export class CatalogStore {
 		return mkdirInCatalog(this.state, path)
 	}
 
-	createFileEntry(path: string, contentId: string, size: number): string {
-		return createFileInCatalog(this.state, path, contentId, size)
+	createFileEntry(path: string, contentId: string, size: number, encoding: 'text' | 'binary' = 'text'): string {
+		return createFileInCatalog(this.state, path, contentId, size, encoding)
 	}
 
 	rename(fromPath: string, toPath: string): string {

@@ -55,7 +55,7 @@ export class YjsFilesystem {
 		const normalizedPath = this.catalog.normalizePath(path)
 		const created = this.content.create(content)
 		this.comments.initializeForContent(this.content, created.contentId, normalizedPath)
-		return this.catalog.createFileEntry(normalizedPath, created.contentId, content.length)
+		return this.catalog.createFileEntry(normalizedPath, created.contentId, content.length, 'text')
 	}
 
 	readFile(path: string): string {

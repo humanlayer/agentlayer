@@ -3,8 +3,37 @@ import { YjsProvider, type YjsProviderOptions } from '@durable-streams/y-durable
 import { YjsServer } from '@durable-streams/y-durable-streams/server'
 import { Awareness } from 'y-protocols/awareness'
 import * as Y from 'yjs'
+import { YjsFilesystem } from '../../src'
 import { waitForSync } from '../util/wait-for'
 
+/**
+ * Fixture for setting up  4 durable streams filesystems
+ * @param count
+ * @param run
+ */
+export async function withYjsDurableStreamFileSystems(
+	run: (filesystems: [YjsFilesystem, YjsFilesystem, YjsFilesystem, YjsFilesystem]) => Promise<undefined>,
+) {
+	await withYjsDurableStreamServer(async ({ dss, yjss, createProviderWithAwareness }) => {
+		const createFilesystem = async () => {
+			const { provider, awareness } = await createProviderWithAwareness()
+			return new YjsFilesystem({ doc: provider.doc, awareness })
+		}
+		const filesystems: [YjsFilesystem, YjsFilesystem, YjsFilesystem, YjsFilesystem] = await Promise.all([
+			createFilesystem(),
+			createFilesystem(),
+			createFilesystem(),
+			createFilesystem(),
+		] as const)
+
+		await run(filesystems)
+	})
+}
+
+/**
+ * Fixture for setting up a durable stream server, Y.js server, and factory for provider+awareness on top of those
+ * @param run
+ */
 export async function withYjsDurableStreamServer(
 	run: (options: {
 		dss: DurableStreamTestServer
@@ -25,6 +54,12 @@ export async function withYjsDurableStreamServer(
 	})
 }
 
+/**
+ * Factory function that given a Y.js Server creates a new provider and awareness
+ * @param yjss
+ * @param options
+ * @returns
+ */
 const createProviderWithAwareness = async (
 	yjss: YjsServer,
 	options?: Partial<Pick<YjsProviderOptions, 'doc' | 'liveMode' | 'docId' | 'awareness'>> & {

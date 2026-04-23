@@ -289,7 +289,13 @@ export function mkdirInCatalog(state: CatalogState, path: string): EntryId {
 	return entryId
 }
 
-export function createFileInCatalog(state: CatalogState, path: string, contentId: string, size: number): EntryId {
+export function createFileInCatalog(
+	state: CatalogState,
+	path: string,
+	contentId: string,
+	size: number,
+	encoding: 'text' | 'binary' = 'text',
+): EntryId {
 	// Files participate in the same namespace graph as directories, but point at
 	// a separate stable content id so future moves/renames do not recreate text state.
 	refreshCatalogState(state)
@@ -308,7 +314,7 @@ export function createFileInCatalog(state: CatalogState, path: string, contentId
 	const fileName = basename(normalizedPath)
 	const createdAt = Date.now()
 	const entryId = crypto.randomUUID()
-	const entry = createFileEntry(entryId, parentEntryId, fileName, contentId, size, createdAt)
+	const entry = createFileEntry(entryId, parentEntryId, fileName, contentId, size, createdAt, encoding)
 
 	state.doc.transact(() => {
 		state.entries.set(entryId, createEntryRecord(entry))
@@ -463,6 +469,7 @@ function createFileEntry(
 	contentId: string,
 	size: number,
 	timestamp: number,
+	encoding: 'text' | 'binary' = 'text',
 ): FileEntry {
 	return {
 		id: entryId,
@@ -471,6 +478,7 @@ function createFileEntry(
 		type: 'file',
 		contentId,
 		size,
+		encoding,
 		createdAt: timestamp,
 		modifiedAt: timestamp,
 	}
@@ -488,6 +496,7 @@ function createEntryRecord(entry: EntryMetadata): EntryRecord {
 	if (entry.type === 'file') {
 		record.set('contentId', entry.contentId)
 		record.set('size', entry.size)
+		record.set('encoding', entry.encoding)
 	}
 
 	return record
@@ -515,8 +524,13 @@ function parseEntryRecord(record: EntryRecord): EntryMetadata | undefined {
 	if (type === 'file') {
 		const contentId = record.get('contentId')
 		const size = record.get('size')
+		const encoding = record.get('encoding')
 
-		if (typeof contentId !== 'string' || typeof size !== 'number') {
+		if (
+			typeof contentId !== 'string' ||
+			typeof size !== 'number' ||
+			(encoding !== 'text' && encoding !== 'binary' && encoding !== undefined)
+		) {
 			return undefined
 		}
 
@@ -527,6 +541,7 @@ function parseEntryRecord(record: EntryRecord): EntryMetadata | undefined {
 			type,
 			contentId,
 			size,
+			encoding: encoding ?? 'text',
 			createdAt,
 			modifiedAt,
 		}
