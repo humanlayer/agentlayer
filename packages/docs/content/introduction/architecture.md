@@ -1,150 +1,256 @@
 ---
 title: Architecture
-description: Understand the internal architecture of AgentLayer -- how the loop runs, how tool calls are resolved through hooks, how streaming works, and how errors are handled.
+description: How the AgentLayer loop runs, how tools are resolved, and how state flows through the system.
 ---
 
 # Architecture
 
-This page describes the internal architecture of AgentLayer -- how the loop runs, how tool calls are resolved through hooks, how streaming works, and how errors are handled.
+This page describes how AgentLayer works internally — the agent loop, tool resolution pipeline, streaming model, and state management.
 
-## Agent Loop Lifecycle
+## Agent Loop Overview
 
-When you call `agent.run(options)`, the following sequence occurs:
+When you call `agent.run(options)`, a loop executes:
 
 ```mermaid
 flowchart TD
-  A["agent.run"] --> B["new AgentRun"]
-  B --> C["executeLoop"]
-  C --> D["execute dangling tool calls"]
-  D --> E["main loop"]
-  E --> F["check abort signal"]
-  F --> G["run pre-request hooks"]
-  G --> H["call model"]
-  H --> I["push assistant message"]
-  I --> J{"tool calls"}
-  J -- "no" --> K["finish complete"]
-  J -- "yes" --> L["build step"]
-  L --> M["before-execution stop check"]
-  M --> N["resolve tool calls in parallel"]
-  N --> O["merge hook and tool state updates"]
-  O --> P["classify outcomes"]
-  P --> Q{"approval required"}
-  Q -- "yes" --> R["finish approvalRequired"]
-  Q -- "no" --> S{"stop requested"}
-  S -- "yes" --> T["finish stopCondition"]
-  S -- "no" --> U["append results"]
-  U --> V["after-execution stop check"]
-  V --> E
+    A[agent.run] --> B[Create AgentRun]
+    B --> C[Execute dangling tool calls]
+    C --> D{Abort signal?}
+    D -- yes --> E[Finish: interrupted]
+    D -- no --> F[Run pre-request hooks]
+    F --> G[Call model]
+    G --> H[Push assistant message]
+    H --> I{Tool calls?}
+    I -- no --> J[Finish: complete]
+    I -- yes --> K[Check stop conditions before]
+    K --> L{Stop?}
+    L -- yes --> M[Finish: stopCondition]
+    L -- no --> N[Resolve tool calls in parallel]
+    N --> O{Approval needed?}
+    O -- yes --> P[Finish: approvalRequired]
+    O -- no --> Q{Stop requested?}
+    Q -- yes --> R[Finish: stopCondition]
+    Q -- no --> S[Append results]
+    S --> T[Check stop conditions after]
+    T --> D
 ```
 
-### The Preamble: `executeDanglingToolCalls`
+Each iteration is one **step**: call the model, execute tools, check conditions.
 
-When resuming from a previous run, the message history may end with an assistant message that has tool calls but no corresponding tool-result messages. This happens when a prior run paused for approval, hit a step limit mid-execution, or paused inside a sub-agent flow.
+### The Preamble: Dangling Tool Calls
 
-The preamble handles those dangling calls before the main loop starts.
+When resuming from a previous run, the message history might end with tool calls that never executed. This happens when:
 
-### The Main Loop
+- A run paused for approval
+- `maxSteps` was hit mid-execution
+- A sub-agent paused
 
-Each iteration of the main loop is one step:
+The preamble handles these dangling calls before the main loop starts.
 
-1. check abort state
-2. run pre-request hooks
-3. call the model
-4. push assistant messages
-5. inspect tool calls
-6. build a step record
-7. evaluate before-execution stop conditions
-8. resolve tool calls
-9. apply mutations and merge state updates
-10. evaluate after-execution stop conditions
+::: info Source Reference
+See [`executeDanglingToolCalls()`](https://github.com/humanlayer/agentlayer/blob/main/packages/agentlayer-core/src/agent.ts#L1223-L1460) in `agent.ts`.
+:::
 
 ## Tool Resolution Pipeline
 
-Every tool call passes through a multi-stage pipeline. Each stage can short-circuit the pipeline.
+Every tool call passes through a multi-stage pipeline. Each stage can short-circuit:
 
 ```mermaid
-flowchart TD
-  A[Tool call from model] --> B[Approval hooks]
-  B --> C[PreToolUse hooks]
-  C --> D[Execute tool]
-  D --> E[PostToolUse hooks]
-  E --> F[ToolOutcome]
+flowchart LR
+    A[Model emits tool call] --> B[Approval hooks]
+    B --> C[PreToolUse hooks]
+    C --> D[Execute tool]
+    D --> E[PostToolUse hooks]
+    E --> F[ToolOutcome]
 ```
 
-### Hook chain semantics
+### Hook Chain Behavior
 
-All hook types use the same chain pattern:
+- **Approval hooks**: Short-circuit on first non-`next()` result
+- **PreToolUse hooks**: Short-circuit on `toolResult()` or `stop()`
+- **PostToolUse hooks**: Always run all hooks, threading output forward
+- **PreRequest hooks**: Always run all hooks, threading messages forward
 
-- hooks run in array order
-- approval and pre-tool hooks short-circuit on the first non-`next()` result
-- post-tool hooks thread mutated output forward
-- hook state is accumulated across the chain and merged after execution
+### Parallel Tool Calls
 
-### Parallel tool calls
+When the model generates multiple tool calls in one step, they resolve in parallel. Each call independently goes through the full pipeline. Outcomes are then classified:
 
-When the model generates multiple tool calls in one step, they are resolved in parallel. Each call independently goes through the full pipeline. The outcomes are then classified and routed.
-
-## ToolOutcome
-
-After resolution, every tool call produces a `ToolOutcome`:
-
-| Kind | When | What happens |
-|---|---|---|
-| `executed` | Tool ran successfully or with error | Result message appended to context window |
-| `denied` | Approval hook returned `deny()` | Denial message appended as the tool result |
+| Outcome | When | What Happens |
+|---------|------|--------------|
+| `executed` | Tool ran | Result appended to context |
+| `denied` | Approval hook returned `deny()` | Denial message appended |
 | `toolResult` | PreToolUse hook returned synthetic output | Tool never executed |
 | `ask` | Approval hook returned `ask()` | Run pauses for approval |
 | `hookStop` | PreToolUse hook returned `stop()` | Loop finishes |
 
-## AgentRun Streaming Model
+::: info Source Reference
+See [`resolveToolCall()`](https://github.com/humanlayer/agentlayer/blob/main/packages/agentlayer-core/src/agent.ts#L914-L1066) and the `ToolOutcome` type in `agent.ts`.
+:::
 
-`AgentRun` implements `AsyncIterable<AgentEvent>` using a push/pull buffer model.
+## Streaming Model
 
-You can stream events while also awaiting the final result.
+`AgentRun` implements `AsyncIterable<AgentEvent>`. You can stream events while awaiting the final result.
 
-### Event types
+### Event Types
 
 ```ts
 type AgentEvent =
-  | { type: 'message'; message: ModelMessage; agentId?: string; parentToolCallId?: string }
-  | { type: 'approvalRequested'; approval: ApprovalRequest; toolCallId: string; toolName: string; input: Record<string, unknown>; agentId?: string; parentToolCallId?: string }
-  | { type: 'tokenUsage'; usage: TokenUsageEvent; agentId?: string; parentToolCallId?: string }
+  // Complete messages
+  | { type: 'message'; message: ModelMessage }
+  
+  // Approval requests
+  | { type: 'approvalRequested'; approval: ApprovalRequest; toolCallId: string; toolName: string; input: Record<string, unknown> }
+  
+  // Token usage per model call
+  | { type: 'tokenUsage'; usage: TokenUsageEvent }
+  
+  // Step boundaries
+  | { type: 'stepStart'; stepIndex: number }
+  | { type: 'stepFinish'; stepIndex: number; finishReason?: string }
+  
+  // Streaming text
+  | { type: 'textStart'; id: string; stepIndex: number }
+  | { type: 'textDelta'; id: string; text: string; stepIndex: number }
+  | { type: 'textEnd'; id: string; stepIndex: number }
+  
+  // Streaming tool input
+  | { type: 'toolInputStart'; id: string; toolName: string; stepIndex: number }
+  | { type: 'toolInputDelta'; id: string; delta: string; stepIndex: number }
+  | { type: 'toolInputEnd'; id: string; stepIndex: number }
+  
+  // Streaming reasoning (for models with extended thinking)
+  | { type: 'reasoningStart'; id: string; stepIndex: number }
+  | { type: 'reasoningDelta'; id: string; text: string; stepIndex: number }
+  | { type: 'reasoningEnd'; id: string; stepIndex: number }
 ```
+
+### Push/Pull Buffer
+
+`AgentRun` uses a push/pull buffer model internally. Events are pushed by the loop and pulled by consumers via the async iterator.
+
+::: info Source Reference
+See [`AgentRun`](https://github.com/humanlayer/agentlayer/blob/main/packages/agentlayer-core/src/agent-run.ts) for the full implementation.
+:::
 
 ## Context Window Updates
 
-Tools can queue deferred transforms to the message array via `ctx.updateContextWindow(callback)`. These transforms are applied after the tool's result message has been committed to the conversation.
+Tools can modify the context window in two ways:
 
-PreToolUse hooks can also mutate tool-call inputs and patch the context window so the model sees the updated values.
+### 1. Deferred Updates via `updateContextWindow()`
 
-## Contracts vs Implementations
+Tools queue transforms that apply after their result is committed:
 
-This is the key split in the architecture.
+```ts
+execute: async (input, ctx) => {
+  ctx.updateContextWindow((messages) => [
+    ...messages,
+    { role: 'user', content: 'Follow-up instruction from tool' },
+  ])
+  return 'tool output'
+}
+```
 
-Tool interfaces define what the model sees:
+### 2. PreToolUse Hook Mutations
 
-- input schema
-- description
-- serialization behavior
+Hooks can mutate tool inputs and optionally patch the context window so the model sees updated values:
 
-Tool implementations define how work actually happens.
+```ts
+return ctx.next(
+  { ...ctx.input, command: normalizedCommand },
+  { updateContextWindow: true, notifyModel: true }
+)
+```
 
-That means the same model-facing tool interface can be backed by:
-
-- the local filesystem
-- a sandboxed bash runtime
-- your own custom backend
+- `updateContextWindow: true` — Patches the assistant message's tool-call input
+- `notifyModel: true` — Prepends a system note to the tool result explaining the mutation
 
 ## State Model
 
-`AgentState` is designed to be serializable.
+`AgentState` is designed for serialization:
 
-It includes:
+```ts
+interface AgentState {
+  messages: ModelMessage[]
+  pendingToolCalls?: PendingToolCall[]
+  approvalHistory?: ApprovalHistoryEntry[]
+  toolState?: Record<string, unknown>
+  subAgents?: Record<string, AgentState>
+  contextWindowTokens?: number
+}
+```
 
-- messages
-- pending tool calls
-- approval history
-- tool KV state
-- sub-agent state
+| Field | Purpose |
+|-------|---------|
+| `messages` | The conversation history |
+| `pendingToolCalls` | Tool calls awaiting approval or stopped |
+| `approvalHistory` | Past approval decisions |
+| `toolState` | Persistent KV state for tools and hooks |
+| `subAgents` | Nested child agent states |
+| `contextWindowTokens` | Estimated token count |
 
-This lets you pause a run, store the state anywhere, and resume it later without depending on a local on-disk database.
+The recursive `subAgents` structure enables nested pause/resume at arbitrary depth.
+
+::: info Source Reference
+See [`AgentState`](https://github.com/humanlayer/agentlayer/blob/main/packages/agentlayer-core/src/state.ts#L56-L71) in `state.ts`.
+:::
+
+## Interface vs Implementation
+
+This split is fundamental:
+
+**Interfaces** define what the model sees:
+- Input schema
+- Description
+- Serialization behavior
+
+**Implementations** define how work happens:
+- Local filesystem
+- Sandboxed runtime
+- Remote service
+- Custom backend
+
+The same interface can be backed by different implementations without changing what the model is told.
+
+```ts
+// Interface (shared)
+const ReadTool = defineToolInterface({
+  name: 'read',
+  description: 'Read a file',
+  input: z.object({ filePath: z.string() }),
+  output: z.string(),
+})
+
+// Implementation A: Local disk
+const localRead = ReadTool.define(async (input) => {
+  return await Bun.file(input.filePath).text()
+})
+
+// Implementation B: S3
+const s3Read = ReadTool.define(async (input) => {
+  return await s3.getObject({ Key: input.filePath }).then(r => r.Body.transformToString())
+})
+```
+
+::: info Source Reference
+See [`defineToolInterface()`](https://github.com/humanlayer/agentlayer/blob/main/packages/agentlayer-core/src/define-tool.ts#L252-L313) in `define-tool.ts`.
+:::
+
+## Finish Reasons
+
+When the loop ends, `RunResult.finishReason` indicates why:
+
+| Reason | Cause |
+|--------|-------|
+| `complete` | Model returned without tool calls |
+| `maxSteps` | Step limit reached |
+| `stopCondition` | A stop condition fired |
+| `interrupted` | Abort signal triggered |
+| `approvalRequired` | Tool needs approval |
+| `error` | An error occurred |
+
+## Next Steps
+
+- **[Tools](/concepts/tools)** — Deep dive into defining and implementing tools
+- **[Hooks](/concepts/hooks)** — Intercept and transform at every stage
+- **[State](/concepts/state)** — Serialization, persistence, and resume patterns
+- **[Run API](/concepts/run-api)** — Control the loop and handle results

@@ -1,66 +1,82 @@
 ---
-title: Overview
+title: Getting Started
 description: AgentLayer is a model-agnostic toolkit for building LLM-powered coding agents with reusable control flow, tool interfaces, and serializable state.
 ---
 
-# Overview
+# AgentLayer
 
-`AgentLayer` is a model-agnostic toolkit for building LLM-powered coding agents. It wraps any AI SDK compatible model in a stateful, resumable loop with a three-tier hook system, async-iterable streaming, and a tool system that separates tool interfaces from backend implementations.
+AgentLayer is a toolkit for building LLM-powered coding agents. It wraps any AI SDK-compatible model in a stateful, resumable loop with hooks, streaming, and a tool system that separates interfaces from implementations.
 
-## Philosophy
+## Installation
 
-### Model Agnostic
+::: code-group
 
-Works with any language model provider supported by the AI SDK. Swap models with a single line change.
+```bash [bun]
+bun add @humanlayer/agentlayer-core
+```
 
-### Interface / Implementation Separation
+```bash [npm]
+npm install @humanlayer/agentlayer-core
+```
 
-Tool interfaces -- what the model sees -- are decoupled from execution backends -- what actually runs. Define an interface once, implement it for local disk, sandboxed bash, a database-backed filesystem, or a remote service. The model does not know the difference.
+```bash [pnpm]
+pnpm add @humanlayer/agentlayer-core
+```
 
-### Two-Tier Tool Architecture
+:::
 
-The tool system separates concerns into two tiers:
+You'll also need the AI SDK and a provider:
 
-1. **Interfaces** (`@humanlayer/agentlayer-core/interfaces`) -- pure schemas, serialization functions, and transforms. No I/O, no side effects, no runtime dependency.
-2. **Implementations** -- concrete executors that fulfill those interfaces:
-   - **Filesystem tools** (`@humanlayer/agentlayer-filesystem/tools`) -- Bun-native implementations using real filesystem and subprocess access
-   - **Just-bash tools** (`@humanlayer/agentlayer-justbash/tools`) -- sandboxed implementations via `just-bash`
-   - **Your own** -- implement any interface with `.define()` backed by S3, Postgres, a Docker container, or anything else
+```bash
+bun add ai @ai-sdk/anthropic
+```
 
-### Resumable State
+## Your First Agent
 
-`AgentState` captures everything needed to pause and resume an agent: messages, pending tool calls, approval history, tool-specific state, and sub-agent trees. Serialize to JSON, store anywhere, resume later.
-
-### Cooperative Hooks
-
-The hook system intercepts tool calls at multiple stages:
-
-- **Approval hooks** -- gate execution, deny, or escalate to a human
-- **PreToolUse hooks** -- mutate input, short-circuit with synthetic results, or stop the loop
-- **PostToolUse hooks** -- transform output after execution
-- **PreRequest hooks** -- transform the context window before the next model call
-
-### Streaming First
-
-`AgentRun` implements `AsyncIterable<AgentEvent>`. Consume events as they happen -- messages, tool calls, approval requests -- or just `await run.result` for the final output.
-
-## Package Layout
-
-The toolkit is organized into focused packages:
-
-| Package | Purpose |
-|---|---|
-| `@humanlayer/agentlayer-core` | Agent class, hooks, state, stop conditions, tool interfaces, prompts, token usage, and sub-agents |
-| `@humanlayer/agentlayer-filesystem` | Bun-native filesystem and shell-backed tool implementations |
-| `@humanlayer/agentlayer-justbash` | Sandbox-backed tool implementations via `just-bash` |
-| `@humanlayer/yjs-fs` | Y.js CRDT-based collaborative filesystem layer |
-
-## Quick Example
+Here's a minimal working agent:
 
 ```ts
 import { anthropic } from '@ai-sdk/anthropic'
-import { Agent, defineTool, maxSteps, toolCompleted, startState } from '@humanlayer/agentlayer-core'
-import { createBashTool, createReadTool } from '@humanlayer/agentlayer-filesystem/tools'
+import { Agent, defineTool, startState, toolCompleted } from '@humanlayer/agentlayer-core'
+import { z } from 'zod'
+
+// Define a simple tool that signals completion
+const done = defineTool({
+  name: 'done',
+  description: 'Call this when you have completed the task.',
+  input: z.object({ summary: z.string() }),
+  execute: async (input) => `Task completed: ${input.summary}`,
+})
+
+// Create the agent
+const agent = new Agent({
+  model: anthropic('claude-sonnet-4-20250514'),
+  system: 'You are a helpful assistant. When you finish a task, call the done tool.',
+  tools: { done },
+  stopWhen: toolCompleted('done'),
+})
+
+// Run it
+const run = agent.run({
+  state: startState([{ role: 'user', content: 'Say hello and then call done.' }]),
+})
+
+const result = await run.result
+console.log(result.finishReason) // 'stopCondition'
+```
+
+## Adding Real Tools
+
+For a more useful agent, add filesystem tools from `@humanlayer/agentlayer-filesystem`:
+
+```bash
+bun add @humanlayer/agentlayer-filesystem
+```
+
+```ts
+import { anthropic } from '@ai-sdk/anthropic'
+import { Agent, defineTool, startState, toolCompleted } from '@humanlayer/agentlayer-core'
+import { createBashTool, createReadTool, createWriteTool } from '@humanlayer/agentlayer-filesystem/tools'
 import { z } from 'zod'
 
 const done = defineTool({
@@ -72,35 +88,116 @@ const done = defineTool({
 
 const agent = new Agent({
   model: anthropic('claude-sonnet-4-20250514'),
-  system: 'You are a helpful coding assistant.',
+  system: 'You are a coding assistant with access to the filesystem.',
   tools: {
-    bash: createBashTool({ cwd: '/my/project' }),
+    bash: createBashTool({ cwd: process.cwd() }),
     read: createReadTool(),
+    write: createWriteTool(),
     done,
   },
-  stopWhen: [maxSteps(10), toolCompleted('done')],
+  stopWhen: toolCompleted('done'),
+  maxSteps: 20,
 })
 
 const run = agent.run({
-  state: startState([{ role: 'user', content: 'Read package.json and summarize it.' }]),
+  state: startState([{ role: 'user', content: 'Read package.json and tell me the project name.' }]),
 })
 
+// Stream events as they happen
 for await (const event of run) {
-  console.log(event.type, event)
+  if (event.type === 'message') {
+    console.log(event.message)
+  }
 }
 
 const result = await run.result
-console.log(result.finishReason)
+console.log('Finished:', result.finishReason)
 ```
 
-That example shows the minimal shape of an AgentLayer agent: a model, a few tools, a stop condition, and a serializable starting state.
+## Streaming Events
 
-For a more realistic setup with hooks, delegated specialist agents, and resumable approval flows, the next pages are more useful than the architecture page alone.
+`AgentRun` is an async iterable. You can consume events in real-time while also awaiting the final result:
 
-## Read This Next
+```ts
+const run = agent.run({ state, stream: true })
 
-- **[Hooks](/core/hooks)** -- approval hooks, pre-tool hooks, post-tool hooks, pre-request hooks, typed builders, and hook factories
-- **[Subagents](/core/subagents)** -- how child agents are configured, how nested pause and resume works, and how n-depth delegation is composed
-- **[State](/core/state)** -- how `AgentState` is serialized, sanitized, persisted, and resumed
-- **[Motivation](/introduction/motivation)** -- why the toolkit is built this way
-- **[Architecture](/introduction/architecture)** -- loop lifecycle, tool resolution, and state model
+for await (const event of run) {
+  switch (event.type) {
+    case 'message':
+      // A complete message was added to the conversation
+      console.log(event.message)
+      break
+    case 'textDelta':
+      // Streaming text from the model
+      process.stdout.write(event.text)
+      break
+    case 'toolInputDelta':
+      // Streaming tool input as the model generates it
+      break
+    case 'tokenUsage':
+      // Token usage info after each model call
+      console.log(`Tokens: ${event.usage.usage.inputTokens} in, ${event.usage.usage.outputTokens} out`)
+      break
+    case 'approvalRequested':
+      // A tool needs approval before running
+      console.log(`Approval needed for ${event.toolName}`)
+      break
+  }
+}
+
+// Get the final result
+const result = await run.result
+```
+
+## Pause and Resume
+
+Agent state is fully serializable. You can pause a run, save it, and resume later:
+
+```ts
+// Run until approval is needed
+const run1 = agent.run({ state })
+const result1 = await run1.result
+
+if (result1.finishReason === 'approvalRequired') {
+  // Save state to your database
+  await db.save(JSON.stringify(result1.state))
+}
+
+// Later, after approval...
+const savedState = JSON.parse(await db.load())
+const pending = getAllPendingApprovals(savedState)
+
+// Apply the approval decision
+const resumedState = withApprovals(savedState, [
+  { toolCallId: pending[0].pending.toolCallId, approved: true },
+])
+
+// Continue the run
+const run2 = agent.run({ state: resumedState })
+const result2 = await run2.result
+```
+
+## Key Concepts
+
+| Concept | Description |
+|---------|-------------|
+| [Tools](/concepts/tools) | Define what the model can do. Interfaces separate schema from execution. |
+| [Hooks](/concepts/hooks) | Intercept tool calls for approval, mutation, or transformation. |
+| [State](/concepts/state) | Serializable state enables pause/resume and distributed execution. |
+| [Run API](/concepts/run-api) | Control the agent loop, handle streaming, and manage results. |
+| [Subagents](/concepts/subagents) | Delegate tasks to specialized child agents. |
+
+## Packages
+
+| Package | Purpose |
+|---------|---------|
+| `@humanlayer/agentlayer-core` | Agent class, hooks, state, stop conditions, tool interfaces |
+| `@humanlayer/agentlayer-filesystem` | Bun-native filesystem and shell tools |
+| `@humanlayer/agentlayer-justbash` | Sandboxed tools via [just-bash](https://github.com/vercel-labs/just-bash) |
+
+## Next Steps
+
+- **[Motivation](/introduction/motivation)** — Why we built it this way
+- **[Architecture](/introduction/architecture)** — How the agent loop works
+- **[Tools](/concepts/tools)** — Deep dive into the tool system
+- **[Hooks](/concepts/hooks)** — Add approval gates and transform behavior

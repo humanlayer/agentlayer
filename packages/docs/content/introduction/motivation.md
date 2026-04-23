@@ -1,114 +1,241 @@
 ---
-title: Motivation
-description: Why `@humanlayer/agentlayer-core` separates tool interfaces from their implementations and keeps state serializable.
+title: Why AgentLayer?
+description: Why we built a framework for coding agents instead of another coding agent.
 ---
 
 # We have opinions about coding agents
-We've been building agents for a while now: coding agents, human-in-the-loop agents, and outer-loop background agents. 
-It's safe to say that we have [a lot of opinions about coding agents](https://humanlayer.com/blog) - from [creating research/plan/implement](https://github.com/humanlayer/humanlayer) to  talking about [Advanced Context Engineering](https://www.youtube.com/watch?v=VvkhYWFWaKI)
+
+We've been building agents for a while now: coding agents, human-in-the-loop agents, and outer-loop background agents. It's safe to say that we have [a lot of opinions about agents](https://github.com/humanlayer/12-factor-agents) — from [creating research/plan/implement](https://github.com/humanlayer/humanlayer) to talking about [Advanced Context Engineering](https://www.youtube.com/watch?v=VvkhYWFWaKI).
 
 To build good agents, you need good abstractions, but also deep low-level control over the execution flow, the agent's internal state, and most importantly, the **context window**.
 
+## The Problem with Existing Coding Agents
 
-## But this is not a coding agent
-Existing coding agents are usually opinionated about **tools**, **storage**, **context**, and **control flow**. You can write plugins or hooks, but it is hard to get in and mess with the control flow. You can use an agent SDK, but you don't have a stable API for storing & resuming sessions. You can mute tools, but you can't add first-class tools without an MCP. You can configure sub-agents or enable auto-compact, but you can't do surgery on the context window.
+Existing coding agents are opinionated about everything:
 
-**State** is the other big problem. Existing coding agents tend to store state in on-disk databases, session files, or process-local stores. That's fine for interactive local use. It's not fine when you need to run an agent in one process, save its state to a store, and resume it in a different process after a human approves something hours or days later. It's not fine when you need to treat the filesystem as an API, but when you need a different storage backend. It's not fine if you need state to be portable across systems. And if you're building production agents, using an agent SDK that ships you a compiled, closed-source binary doesn't cut it. 
+- **Tools** — You get the tools they ship. Adding a first-class tool means writing an MCP server or forking the codebase.
+- **Storage** — State lives in SQLite files, local JSON, or process-local stores. That's fine for interactive local use.
+- **Context** — You can configure auto-compact or mute tools, but you can't do surgery on the context window mid-run.
+- **Control flow** — You can write plugins or hooks, but getting into the execution loop itself is hard.
 
-Importantly, _everybody has different needs_ here. And as far as agents are concerned, [we prefer building small, sharp tools](https://github.com/humanlayer/12-factor-agents) to solve our specific needs, and then we generalize as necessary.
+**State is the biggest problem.** When you need to run an agent in one process, save its state, and resume in a different process after a human approves something hours later — most agents can't do that. Their state isn't portable.
 
-## This is a framework for building coding agents
-So instead of building a coding agent, we built a framework for building coding agents based on [everything we've learned about agents](https://humanlayer.com/blog) over the past year and a half.
+And if you're building production agents, using an SDK that ships a compiled binary doesn't cut it. You need to see and control the code.
 
+## This Is a Framework, Not a Coding Agent
 
-## And you should bring your own opinions
-And while we have lots of opinions about coding agents, this framework doesn't force you into them. Bring your prompts, your provider, your control flow, and your tools. The state is JSON-serializable, pausable, resumable, and recursive.
+So instead of building another coding agent, we built a framework for building coding agents.
 
-Things like...
+You bring:
+- Your prompts
+- Your model provider
+- Your tools
+- Your control flow
 
-* **Auto-Compact** -  Love it? we have a hook for it. Hate it? don't use it. 
-* **Sub-agents** - infinite-depth, recursively serialized into the agent's JSON-serializable state. Use ours, build your own, or don't use them, or build an RLM - it's totally up to you.
-* **Retrieval**  - `grep` maxi? great, we have a tool for it. Prefer more powerful, expressive search for massive codebases? It's easy to write and plugin your own tool.
-* **Control flow** - Hooks are just code that can alter control flow, suspend or pause the agent loop, read/write a KV store that's part of the agent's serializable state, and can temporarily (or permanently) alter the agent's context window.
-* **Forking** - love Pi's tree mode or Claude Code's undo/rewind feature? State is fully serializable and trivially rewindable & forkable
-* **Context Window Management** - tools and hooks can edit the agent's context window for deterministic or agentic context search and pruning. 
+We provide:
+- A stateful, resumable agent loop
+- JSON-serializable state that travels anywhere
+- A hook system for intercepting and transforming behavior
+- Tool interfaces separated from implementations
 
+## Bring Your Own Opinions
 
-## Interface != Implementation
+We have [lots of opinions about coding agents](https://humanlayer.com/blog), but AgentLayer doesn't force them on you.
 
-This is the key architectural insight: separate what the model sees from where the data comes from.
+| Feature | Our Opinion | Your Choice |
+|---------|-------------|-------------|
+| Auto-compact | Love it | Use the hook, or don't |
+| Sub-agents | Infinite-depth with recursive state | Use ours, build your own, or skip them |
+| Retrieval | `grep` is great | Write your own search tool |
+| Forking | Claude Code-style undo/rewind | State is serializable — fork trivially |
 
-`ReadTool` defines the interface -- the schema, the description, the serialization format. The executor defines the implementation. Same interface, different backends:
+## The Key Insight: Interface ≠ Implementation
+
+This is the architectural insight that makes everything else work.
+
+A tool has two parts:
+1. **Interface** — What the model sees: input schema, description, and how results are serialized
+2. **Implementation** — What actually runs: the executor that does the work
+
+The interface owns the **model contract**. The implementation owns the **runtime behavior**.
+
+### What Lives in the Interface
+
+Take `ReadTool`. The interface defines:
 
 ```ts
-// Local disk
-ReadTool.define(async (input) => readFile(input.filePath, 'utf8'))
-
-// S3
-ReadTool.define(async (input) => s3.getObject({ Key: input.filePath }).then(r => r.Body.transformToString()))
-
-// Sandboxed just-bash
-ReadTool.define(async (input) => bash.exec(`cat "${input.filePath}"`))
-
-// Database-as-filesystem
-ReadTool.define(async (input) => db.query('SELECT content FROM files WHERE path = ?', [input.filePath]))
+const ReadTool = defineToolInterface({
+  name: 'read',
+  description: 'Read a file with line numbers',
+  input: z.object({
+    file_path: z.string(),
+    offset: z.number().optional(),
+    limit: z.number().optional().default(2000),
+  }),
+  output: z.string(),
+  serialize: (raw: string, input: ReadInput) => {
+    // Add line numbers to each line
+    const lines = raw.split('\n')
+    const offset = input.offset ?? 1
+    const numbered = lines
+      .slice(offset - 1, offset - 1 + (input.limit ?? 2000))
+      .map((line, i) => `${offset + i}→${line}`)
+      .join('\n')
+    
+    // Add continuation hint if truncated
+    if (lines.length > (input.limit ?? 2000)) {
+      return `${numbered}\n\n(Showing lines ${offset}-${offset + lines.length - 1}. Use offset=${offset + lines.length} to continue.)`
+    }
+    return numbered
+  },
+})
 ```
 
-The model doesn't know the difference. The serialization comes from the interface. You do not need to fork the loop to change the backend. Just implement the interface.
+The `serialize` function is the key. It transforms raw executor output into what the model actually sees. Every implementation of `ReadTool` — whether backed by the local filesystem, S3, a database, or a sandbox — produces the same model-visible format: line-numbered content with continuation hints.
 
-Separate the brain from the hands.
+### What Lives in the Implementation
 
-## Stateless & Serializable
+The implementation just returns raw content. It doesn't know about line numbers or pagination hints:
+
+```ts
+// Local disk — just read the file
+const localRead = ReadTool.define(async (input) => {
+  return await Bun.file(input.file_path).text()
+})
+
+// S3 — same interface, different storage
+const s3Read = ReadTool.define(async (input) => {
+  const obj = await s3.getObject({ Key: input.file_path })
+  return await obj.Body!.transformToString()
+})
+
+// Sandboxed bash — same interface, isolated environment
+const sandboxRead = ReadTool.define(async (input) => {
+  return await sandbox.exec(`cat "${input.file_path}"`)
+})
+
+// Database — same interface, structured storage
+const dbRead = ReadTool.define(async (input) => {
+  const row = await db.query('SELECT content FROM files WHERE path = ?', [input.file_path])
+  return row.content
+})
+```
+
+The model doesn't know the difference. Swap backends without changing what the model sees.
+
+### Another Example: Grep
+
+`GrepTool` returns structured data but serializes it as a human-readable format:
+
+```ts
+const GrepTool = defineToolInterface({
+  name: 'grep',
+  input: z.object({ pattern: z.string(), path: z.string().optional() }),
+  output: z.array(z.object({ file: z.string(), line: z.number(), content: z.string() })),
+  serialize: (matches: GrepMatch[]) => {
+    if (matches.length === 0) return 'No matches found.'
+    
+    // Group by file for readability
+    const grouped = new Map<string, GrepMatch[]>()
+    for (const m of matches) {
+      const existing = grouped.get(m.file) ?? []
+      existing.push(m)
+      grouped.set(m.file, existing)
+    }
+    
+    const lines: string[] = []
+    for (const [file, fileMatches] of grouped) {
+      lines.push(file)
+      for (const m of fileMatches) {
+        lines.push(`  ${m.line}: ${m.content}`)
+      }
+    }
+    return lines.join('\n')
+  },
+})
+```
+
+The executor returns `GrepMatch[]`. The serializer turns it into:
+
+```
+src/agent.ts
+  42: const result = await run.result
+  87: if (result.finishReason === 'error') {
+src/hooks.ts
+  15: return ctx.next()
+```
+
+Every grep implementation — ripgrep, git grep, custom AST search — produces the same model-visible output.
+
+### Why This Matters
+
+This split means you can:
+
+- **Swap backends** without touching prompts or agent logic
+- **Share serialization** across all implementations automatically
+- **Test implementations** against the same interface contract
+- **Build new backends** (sandbox, remote, mock) without changing what the model sees
+
+## Stateless and Serializable
 
 This is the differentiator.
 
-State is a JSON blob -- `AgentState` with messages, pending tool calls, approval history, tool-specific state, and sub-agent trees. No SQLite required. No JSON files on disk required. It's a plain object you can `JSON.stringify()` and store wherever you want.
-
-An agent can ask for approval, shut down before the tool call executes, then come back minutes, hours, days, or weeks later with an approval and resume. The state is portable -- run in a serverless function, save to Postgres, resume in a different process. Run in CI. No expensive process sitting idle waiting for a human response.
+`AgentState` is a JSON blob containing messages, pending tool calls, approval history, tool-specific state, and sub-agent trees. No SQLite. No JSON files on disk. It's a plain object you can `JSON.stringify()` and store anywhere.
 
 ```ts
-// Agent hits an approval gate -- serialize and shut down
+// Agent needs approval — serialize and shut down
 const result = await run.result
 if (result.finishReason === 'approvalRequired') {
-  await db.save(result.state)
+  await db.save(JSON.stringify(result.state))
+  process.exit(0)
 }
 
-// Later, after a human approves
-const state = await db.load()
+// Hours later, after approval
+const state = JSON.parse(await db.load())
 const resumed = withApprovals(state, [
   { toolCallId: 'xyz', approved: true },
 ])
 const run = agent.run({ state: resumed })
 ```
 
-This matters because many coding agents are only resumable while their process and local state store are still alive. Here the state is just data.
+This matters because:
+- Run in a serverless function, save to Postgres, resume in a different process
+- No expensive process sitting idle waiting for human approval
+- State is portable across machines and environments
 
-## The Harness, Designed for Harness Engineering
+## Hooks: The Control Flow API
 
-The quality of a coding agent is determined by its harness -- the tools, prompts, hooks, and control flow surrounding the model. The toolkit is that harness.
+Hooks let you change behavior without rewriting the loop:
 
-Lightweight opinions with eject hatches:
+- **Approval hooks** — Gate execution, deny, or escalate to a human
+- **PreToolUse hooks** — Mutate inputs, short-circuit with cached results, stop the loop
+- **PostToolUse hooks** — Transform outputs, truncate, log
+- **PreRequest hooks** — Reshape the context window before the next model call
 
-- tool interfaces define schemas and serialization, but you can swap implementations freely
-- hook pipelines let you gate, mutate, or transform tool behavior
-- stop conditions let you control when and why the loop halts
-- sub-agents let you build context firewalls and specialized execution paths
+Everything is imperative TypeScript. Not hidden runtime behavior. Not configuration-by-convention. Code.
 
-Hooks at every stage of the tool resolution pipeline:
+## Three Primitives for Composition
 
-- **Approval hooks** -- gate execution, deny, or escalate to a human
-- **PreToolUse hooks** -- mutate inputs, short-circuit with synthetic results, stop the loop
-- **PostToolUse hooks** -- transform outputs, truncate, log
-- **PreRequest hooks** -- mutate the context window before it goes to the model
+There are three primitives that matter for building agents:
 
-Everything is imperative, type-safe TypeScript. Not hidden runtime behavior. Not configuration-by-convention. Code.
+1. **Tool modules** — Which tools each agent and sub-agent gets
+2. **Instruction modules** — System prompts, skills, per-run addendums
+3. **Context windows** — Sub-agents as context firewalls, truncation hooks, context transforms
 
-## Tool Modules x Instruction Modules x Context Windows
+AgentLayer keeps these orthogonal. You compose them in code: this agent gets these tools, these instructions, and manages its context this way.
 
-There are three primitives that matter for agent composition:
+## When to Use AgentLayer
 
-- **Tool modules** -- configure which tools each agent and sub-agent gets
-- **Instruction modules** -- system prompts, skills, per-run addendums
-- **Context windows** -- sub-agents as context firewalls, truncation hooks, context transforms
+Use AgentLayer when you need:
 
-The toolkit makes these concerns orthogonal. You compose them in code: this agent gets these tools, these instructions, and manages its context this way.
+- **Portable, resumable state** — Pause in one process, resume in another
+- **Custom tool backends** — Same interface, different implementations
+- **Fine-grained control** — Hooks at every stage of execution
+- **Human-in-the-loop** — Built-in approval flows that survive process restarts
+- **Sub-agents** — Recursive delegation with nested pause/resume
+
+## When Not to Use AgentLayer
+
+If you just want to run Claude Code or Cursor on your codebase, use those. They're great tools.
+
+AgentLayer is for when you're building your own agent and need more control than those tools provide.

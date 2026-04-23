@@ -5,7 +5,7 @@ import { withMermaid } from 'vitepress-plugin-mermaid'
 export default withMermaid(
 	defineConfig({
 		title: 'AgentLayer',
-		description: 'AgentLayer is the best way to build coding agents for complex codebases.',
+		description: 'A model-agnostic toolkit for building LLM-powered coding agents.',
 		markdown: {
 			theme: {
 				light: 'min-light',
@@ -23,33 +23,76 @@ export default withMermaid(
 			search: {
 				provider: 'local',
 			},
-			nav: [],
+			nav: [
+				{ text: 'Guide', link: '/' },
+				{ text: 'GitHub', link: 'https://github.com/humanlayer/agentlayer' },
+			],
 			sidebar: [
 				{
-					text: 'Introduction',
+					text: 'Getting Started',
 					items: [
-						{ text: 'Motivation', link: '/introduction/motivation' },
-						{ text: 'Introduction', link: '/' },
+						{ text: 'Overview', link: '/' },
+						{ text: 'Why AgentLayer?', link: '/introduction/motivation' },
 						{ text: 'Architecture', link: '/introduction/architecture' },
 					],
 				},
 				{
-					text: 'Core Concepts',
+					text: 'Concepts',
 					items: [
-						{ text: 'Tools', link: '/core/tools' },
-						{ text: 'Hooks', link: '/core/hooks' },
-						{ text: 'State', link: '/core/state' },
-						{ text: 'Run API', link: '/core/run-api' },
+						{ text: 'Tools', link: '/concepts/tools' },
+						{ text: 'Hooks', link: '/concepts/hooks' },
+						{ text: 'Run API', link: '/concepts/run-api' },
+						{ text: 'State', link: '/concepts/state' },
+						{ text: 'Subagents', link: '/concepts/subagents' },
 					],
 				},
 				{
-					text: 'Examples',
+					text: 'agentlayer-core',
+					collapsed: true,
 					items: [
-						{ text: 'Markdown Extension Examples', link: '/examples/markdown-examples' },
-						{ text: 'Runtime API Examples', link: '/examples/api-examples' },
+						{ text: 'Overview', link: '/packages/core/' },
+						{ text: 'Agent', link: '/packages/core/agent' },
+						{ text: 'Tool Definition', link: '/packages/core/tool-definition' },
+						{ text: 'Tool Interfaces', link: '/packages/core/tool-interfaces' },
+						{ text: 'Hooks', link: '/packages/core/hooks' },
+						{ text: 'Prompts', link: '/packages/core/prompts' },
+						{ text: 'Stop Conditions', link: '/packages/core/stop-conditions' },
+						{ text: 'Token Usage', link: '/packages/core/token-usage' },
+					],
+				},
+				{
+					text: 'agentlayer-filesystem',
+					collapsed: true,
+					items: [
+						{ text: 'Overview', link: '/packages/filesystem/' },
+						{ text: 'Tools', link: '/packages/filesystem/tools' },
+						{ text: 'Toolsets', link: '/packages/filesystem/toolsets' },
+						{ text: 'Skills', link: '/packages/filesystem/skills' },
+						{ text: 'Subagents', link: '/packages/filesystem/subagents' },
+						{ text: 'Hooks', link: '/packages/filesystem/hooks' },
+					],
+				},
+				{
+					text: 'agentlayer-justbash',
+					collapsed: true,
+					items: [
+						{ text: 'Overview', link: '/packages/justbash/' },
+						{ text: 'Tools', link: '/packages/justbash/tools' },
+						{ text: 'Prompts', link: '/packages/justbash/prompts' },
+					],
+				},
+				{
+					text: 'Guides',
+					collapsed: true,
+					items: [
+						{ text: 'Building Your First Agent', link: '/guides/first-agent' },
+						{ text: 'Custom Tools', link: '/guides/custom-tools' },
+						{ text: 'Hook Patterns', link: '/guides/hook-patterns' },
+						{ text: 'Multi-Model Support', link: '/guides/multi-model' },
 					],
 				},
 			],
+			socialLinks: [{ icon: 'github', link: 'https://github.com/humanlayer/agentlayer' }],
 		},
 		mermaid: {},
 		mermaidPlugin: {
