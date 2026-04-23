@@ -53,18 +53,9 @@ export class YjsFilesystem {
 
 	createFile(path: string, content = ''): string {
 		const normalizedPath = this.catalog.normalizePath(path)
-		const created = this.content.create()
-		this.comments.initialize(created.record)
-		const entryId = this.catalog.createFileEntry(normalizedPath, created.contentId, 0)
-
-		if (content.length > 0) {
-			this.doc.transact(() => {
-				created.text.insert(0, content)
-				this.catalog.updateFileSize(entryId, content.length)
-			})
-		}
-
-		return entryId
+		const created = this.content.create(content)
+		this.comments.initializeForContent(this.content, created.contentId, normalizedPath)
+		return this.catalog.createFileEntry(normalizedPath, created.contentId, content.length)
 	}
 
 	readFile(path: string): string {
@@ -87,22 +78,22 @@ export class YjsFilesystem {
 
 	addComment(path: string, anchor: CommentAnchor, body: string, author: string): string {
 		const { entry, path: normalizedPath } = this.catalog.requireFile(path)
-		return this.comments.add(this.content.get(entry.contentId, normalizedPath), anchor, body, author)
+		return this.comments.addForContent(this.content, entry.contentId, normalizedPath, anchor, body, author)
 	}
 
 	getComments(path: string): FileComment[] {
 		const { entry, path: normalizedPath } = this.catalog.requireFile(path)
-		return this.comments.list(this.content.get(entry.contentId, normalizedPath))
+		return this.comments.listForContent(this.content, entry.contentId, normalizedPath)
 	}
 
 	replyToComment(path: string, commentId: string, body: string, author: string): string {
 		const { entry, path: normalizedPath } = this.catalog.requireFile(path)
-		return this.comments.reply(this.content.get(entry.contentId, normalizedPath), commentId, body, author)
+		return this.comments.replyForContent(this.content, entry.contentId, normalizedPath, commentId, body, author)
 	}
 
 	resolveComment(path: string, commentId: string, author: string): void {
 		const { entry, path: normalizedPath } = this.catalog.requireFile(path)
-		this.comments.resolve(this.content.get(entry.contentId, normalizedPath), commentId, author)
+		this.comments.resolveForContent(this.content, entry.contentId, normalizedPath, commentId, author)
 	}
 
 	setAwareness(awareness: Awareness | null): void {
@@ -123,8 +114,13 @@ export class YjsFilesystem {
 
 	setLocalSelection(path: string, anchorOffset: number, headOffset: number): void {
 		const { entry, path: normalizedPath } = this.catalog.requireFile(path)
-		const text = this.content.getText(entry.contentId, normalizedPath)
-		this.presence.setLocalSelection(text, anchorOffset, headOffset)
+		this.presence.setLocalSelectionForContent(
+			this.content,
+			entry.contentId,
+			normalizedPath,
+			anchorOffset,
+			headOffset,
+		)
 	}
 
 	clearLocalSelection(): void {
@@ -133,8 +129,7 @@ export class YjsFilesystem {
 
 	getLocalSelection(path: string): ResolvedPresenceSelection | undefined {
 		const { entry, path: normalizedPath } = this.catalog.requireFile(path)
-		const text = this.content.getText(entry.contentId, normalizedPath)
-		return this.presence.getLocalSelection(text)
+		return this.presence.getLocalSelectionForContent(this.content, entry.contentId, normalizedPath)
 	}
 
 	rename(fromPath: string, toPath: string): void {

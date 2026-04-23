@@ -10,6 +10,8 @@ import {
 	setLocalSelection,
 	updateLocalPresenceState,
 } from '../presence'
+import type { ContentId } from '../types'
+import type { ContentStore } from './content-store'
 
 export class PresenceStore {
 	private awareness: Awareness | null
@@ -58,6 +60,16 @@ export class PresenceStore {
 		setLocalSelection(this.awareness, text, anchorOffset, headOffset)
 	}
 
+	setLocalSelectionForContent(
+		contentStore: ContentStore,
+		contentId: ContentId,
+		pathForErrors: string,
+		anchorOffset: number,
+		headOffset: number,
+	): void {
+		this.setLocalSelection(contentStore.getText(contentId, pathForErrors), anchorOffset, headOffset)
+	}
+
 	clearLocalSelection(): void {
 		if (!this.awareness) {
 			return
@@ -72,5 +84,13 @@ export class PresenceStore {
 		}
 
 		return getLocalSelection(this.awareness, text)
+	}
+
+	getLocalSelectionForContent(
+		contentStore: ContentStore,
+		contentId: ContentId,
+		pathForErrors: string,
+	): ResolvedPresenceSelection | undefined {
+		return this.getLocalSelection(contentStore.getText(contentId, pathForErrors))
 	}
 }
