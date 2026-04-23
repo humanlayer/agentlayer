@@ -31,6 +31,7 @@ export interface CodelayerAgentOptions {
 	rpi?: boolean
 	tars?: boolean
 	exaApiKey?: string
+	context7ApiKey?: string
 	skillTool?: Tool<any, any>
 	additionalTools?: Record<string, Tool<any, any>>
 	subagentTool?: Tool<any, any>
@@ -92,6 +93,7 @@ export async function createCodelayerAgent(opts: CodelayerAgentOptions): Promise
 		rpi = false,
 		tars = false,
 		exaApiKey,
+		context7ApiKey,
 		skillTool,
 		additionalTools = {},
 		subagentTool,
@@ -110,6 +112,7 @@ export async function createCodelayerAgent(opts: CodelayerAgentOptions): Promise
 			cwd,
 			model,
 			exaApiKey,
+			context7ApiKey,
 			skillTool,
 			additionalTools,
 			hooks,

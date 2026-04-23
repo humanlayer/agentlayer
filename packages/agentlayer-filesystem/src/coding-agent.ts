@@ -6,12 +6,24 @@ import {
 	createSubagentsTool,
 	createWebFetchTool,
 	doomLoop,
+	TodoWriteTool,
 	type PostToolUseHook,
 	type PreRequestHook,
 	type PreToolUseHook,
 	type SubAgentConfig,
 	type Tool,
 } from '@humanlayer/agentlayer-core'
+import type { CodeSearchInput } from '@humanlayer/agentlayer-core/interfaces'
+import { CodeSearchTool } from '@humanlayer/agentlayer-core/interfaces'
+import {
+	createBashSpecialistAgent,
+	createCodebaseAnalyzerAgent,
+	createCodebaseLocatorAgent,
+	createCodebasePatternFinderAgent,
+	createImplementerAgent,
+	createLibraryResearcherAgent,
+	createWebSearchResearcherAgent,
+} from '@humanlayer/rpi'
 import {
 	type DeduplicateReadsOptions,
 	deduplicateReads,
@@ -41,21 +53,6 @@ import { createReadTool } from './tools/read'
 import { createSkillToolFromDirs, createSkillToolFromRepoDirs, type SkillDirEntry } from './tools/skill'
 import { createWebSearchTool } from './tools/web-search'
 import { createWriteTool } from './tools/write'
-
-const CODEBASE_LOCATOR_PROMPT = `You locate files, directories, and code areas relevant to a task.
-Use glob, grep, and list to identify where code lives without doing deep implementation analysis.`
-
-const CODEBASE_ANALYZER_PROMPT = `You analyze how code works today.
-Read the relevant files and explain behavior with precise file references.`
-
-const CODEBASE_PATTERN_FINDER_PROMPT = `You find similar implementations and usage examples in the codebase.
-Prioritize concrete patterns that can be followed directly.`
-
-const WEB_SEARCH_RESEARCHER_PROMPT = `You research up-to-date technical information from the web.
-Prioritize concise answers grounded in official documentation and relevant examples.`
-
-const BASH_AGENT_PROMPT = `You are a specialized bash execution agent.
-Focus on terminal operations, command execution, builds, tests, git, and scripts.`
 
 export interface AgentOutputTruncationOptions {
 	maxLines?: number
@@ -146,10 +143,101 @@ export interface CreateCodingAgentAuxToolsetOptions {
 	skills?: Skill[]
 	allowMissingSkills?: boolean
 	exaApiKey?: string
+	context7ApiKey?: string
 	webSearchTool?: Tool<any, any>
 	webFetchTool?: Tool<any, any>
 	additionalTools?: Record<string, Tool<any, any>>
 	onChildEvent?: (event: AgentEvent) => void
+}
+
+const DEFAULT_CODE_SEARCH_TIMEOUT_MS = 30_000
+const EXA_CONTEXT_ENDPOINT = 'https://api.exa.ai/context'
+const CONTEXT7_BASE_URL = 'https://context7.com'
+
+async function fetchExaCodeSearch(input: CodeSearchInput, apiKey: string, timeoutMs: number): Promise<string | null> {
+	try {
+		const query = `${input.query} -- for ${input.packageName} in ${input.language}`
+		const response = await fetch(EXA_CONTEXT_ENDPOINT, {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+				'x-api-key': apiKey,
+			},
+			body: JSON.stringify({ query, tokensNum: 5000 }),
+			signal: AbortSignal.timeout(timeoutMs),
+		})
+
+		if (!response.ok) return null
+		const data = (await response.json()) as { response?: string }
+		return data.response ?? null
+	} catch {
+		return null
+	}
+}
+
+async function fetchContext7CodeSearch(
+	input: CodeSearchInput,
+	apiKey: string,
+	timeoutMs: number,
+): Promise<string | null> {
+	try {
+		const searchUrl = new URL(`${CONTEXT7_BASE_URL}/api/v2/libs/search`)
+		searchUrl.searchParams.set('query', input.query)
+		searchUrl.searchParams.set('libraryName', input.packageName)
+
+		const searchResponse = await fetch(searchUrl, {
+			headers: { Authorization: `Bearer ${apiKey}` },
+			signal: AbortSignal.timeout(timeoutMs),
+		})
+		if (!searchResponse.ok) return null
+
+		const searchData = (await searchResponse.json()) as {
+			results?: Array<{ id: string; trustScore?: number }>
+		}
+		const libraries = searchData.results ?? []
+		if (libraries.length === 0) return null
+
+		const best = libraries.reduce((a, b) => ((b.trustScore ?? 0) > (a.trustScore ?? 0) ? b : a))
+
+		const contextUrl = new URL(`${CONTEXT7_BASE_URL}/api/v2/context`)
+		contextUrl.searchParams.set('query', input.query)
+		contextUrl.searchParams.set('libraryId', best.id)
+
+		const contextResponse = await fetch(contextUrl, {
+			headers: { Authorization: `Bearer ${apiKey}` },
+			signal: AbortSignal.timeout(timeoutMs),
+		})
+		if (!contextResponse.ok) return null
+
+		return await contextResponse.text()
+	} catch {
+		return null
+	}
+}
+
+function createCodeSearchTool(opts: {
+	exaApiKey?: string
+	context7ApiKey?: string
+	timeoutMs?: number
+}): Tool<CodeSearchInput, string> {
+	const timeoutMs = opts.timeoutMs ?? DEFAULT_CODE_SEARCH_TIMEOUT_MS
+
+	return CodeSearchTool.define(async (input) => {
+		const [exaResult, context7Result] = await Promise.all([
+			opts.exaApiKey ? fetchExaCodeSearch(input, opts.exaApiKey, timeoutMs) : Promise.resolve(null),
+			opts.context7ApiKey ? fetchContext7CodeSearch(input, opts.context7ApiKey, timeoutMs) : Promise.resolve(null),
+		])
+
+		const parts: string[] = []
+		if (context7Result) parts.push(`## Context7 Documentation\n\n${context7Result}`)
+		if (exaResult) parts.push(`## Exa Search Results\n\n${exaResult}`)
+
+		if (parts.length === 0) {
+			return `No documentation found for "${input.packageName}" with query: ${input.query}`
+		}
+
+		return parts.join('\n\n---\n\n')
+	}, { description: 'Search library documentation and code examples using Context7 and Exa when available.' })
 }
 
 function resolveSkillDirPath(path: string, cwd: string): string {
@@ -243,10 +331,6 @@ function mergeHooks(
 	}
 }
 
-function buildSystem(baseSystem: string[], agentPrompt?: string): string[] {
-	return [...(agentPrompt ? [agentPrompt] : []), ...baseSystem]
-}
-
 function createChildAgent(opts: {
 	model: LanguageModel
 	tools: Record<string, Tool<any, any>>
@@ -314,51 +398,42 @@ export async function createCodingSubagentTool(opts: CreateCodingSubagentToolOpt
 		providerOptions: opts.providerOptions,
 	})
 
-	const bashAgent = createChildAgent({
+	const bashAgent = createBashSpecialistAgent({
 		model: opts.model,
 		tools: { bash: createBashTool({ cwd: opts.cwd }) },
-		system: buildSystem(baseSystem, BASH_AGENT_PROMPT),
+		system: baseSystem,
 		hooks,
 		stopWhen,
 		providerOptions: opts.providerOptions,
 	})
 
-	const locatorAgent = createChildAgent({
-		model: opts.model,
-		tools: {
-			glob: createGlobTool({ cwd: opts.cwd }),
-			grep: createGrepTool({ cwd: opts.cwd }),
-			list: createListTool({ cwd: opts.cwd }),
-		},
-		system: buildSystem(baseSystem, CODEBASE_LOCATOR_PROMPT),
-		hooks,
-		stopWhen,
-		providerOptions: opts.providerOptions,
-	})
+	const implementerTools: Record<string, Tool<any, any>> =
+		family === 'codex'
+			? {
+				...(await createCodexCodingAgentToolset({
+					cwd: opts.cwd,
+					skillTool,
+					exaApiKey: opts.exaApiKey,
+					additionalTools: opts.additionalTools,
+					allowMissingSkills: opts.allowMissingSkills,
+				})),
+				todo_write: TodoWriteTool,
+			}
+			: {
+				...(await createClaudeCodingAgentToolset({
+					cwd: opts.cwd,
+					skillTool,
+					exaApiKey: opts.exaApiKey,
+					additionalTools: opts.additionalTools,
+					allowMissingSkills: opts.allowMissingSkills,
+				})),
+				todo_write: TodoWriteTool,
+			}
 
-	const analyzerAgent = createChildAgent({
+	const implementerAgent = createImplementerAgent({
 		model: opts.model,
-		tools: {
-			read: createReadTool({ cwd: opts.cwd }),
-			glob: createGlobTool({ cwd: opts.cwd }),
-			grep: createGrepTool({ cwd: opts.cwd }),
-			list: createListTool({ cwd: opts.cwd }),
-		},
-		system: buildSystem(baseSystem, CODEBASE_ANALYZER_PROMPT),
-		hooks,
-		stopWhen,
-		providerOptions: opts.providerOptions,
-	})
-
-	const patternFinderAgent = createChildAgent({
-		model: opts.model,
-		tools: {
-			read: createReadTool({ cwd: opts.cwd }),
-			glob: createGlobTool({ cwd: opts.cwd }),
-			grep: createGrepTool({ cwd: opts.cwd }),
-			list: createListTool({ cwd: opts.cwd }),
-		},
-		system: buildSystem(baseSystem, CODEBASE_PATTERN_FINDER_PROMPT),
+		tools: implementerTools,
+		system: baseSystem,
 		hooks,
 		stopWhen,
 		providerOptions: opts.providerOptions,
@@ -373,14 +448,38 @@ export async function createCodingSubagentTool(opts: CreateCodingSubagentToolOpt
 	if (opts.exaApiKey) {
 		webResearcherTools.web_search = createWebSearchTool({ exaApiKey: opts.exaApiKey })
 	}
-	const webResearcherAgent = createChildAgent({
+	const webResearcherAgent = createWebSearchResearcherAgent({
 		model: opts.model,
 		tools: webResearcherTools,
-		system: buildSystem(baseSystem, WEB_SEARCH_RESEARCHER_PROMPT),
+		system: baseSystem,
 		hooks,
 		stopWhen,
 		providerOptions: opts.providerOptions,
 	})
+
+	const libraryResearcherTools: Record<string, Tool<any, any>> = {
+		web_fetch: createWebFetchTool(),
+	}
+	if (opts.exaApiKey || opts.context7ApiKey) {
+		libraryResearcherTools.codesearch = createCodeSearchTool({
+			exaApiKey: opts.exaApiKey,
+			context7ApiKey: opts.context7ApiKey,
+		})
+	}
+	if (opts.exaApiKey) {
+		libraryResearcherTools.web_search = createWebSearchTool({ exaApiKey: opts.exaApiKey })
+	}
+	const libraryResearcherAgent =
+		opts.exaApiKey || opts.context7ApiKey
+			? createLibraryResearcherAgent({
+				model: opts.model,
+				tools: libraryResearcherTools,
+				system: baseSystem,
+				hooks,
+				stopWhen,
+				providerOptions: opts.providerOptions,
+			})
+			: undefined
 
 	const agents: SubAgentConfig[] = [
 		{
@@ -395,19 +494,60 @@ export async function createCodingSubagentTool(opts: CreateCodingSubagentToolOpt
 			agent: bashAgent,
 		},
 		{
+			name: 'implementer-agent',
+			description:
+				'Implements approved plans phase by phase with code changes, verification, and todo tracking. Use when an RPI skill asks for an implementer agent.',
+			agent: implementerAgent,
+		},
+		{
 			name: 'codebase-locator',
 			description: 'Locates files, directories, and components relevant to a task.',
-			agent: locatorAgent,
+			agent: createCodebaseLocatorAgent({
+				model: opts.model,
+				tools: {
+					glob: createGlobTool({ cwd: opts.cwd }),
+					grep: createGrepTool({ cwd: opts.cwd }),
+					list: createListTool({ cwd: opts.cwd }),
+				},
+				system: baseSystem,
+				hooks,
+				stopWhen,
+				providerOptions: opts.providerOptions,
+			}),
 		},
 		{
 			name: 'codebase-analyzer',
 			description: 'Explains how code works with concrete file references.',
-			agent: analyzerAgent,
+			agent: createCodebaseAnalyzerAgent({
+				model: opts.model,
+				tools: {
+					read: createReadTool({ cwd: opts.cwd }),
+					glob: createGlobTool({ cwd: opts.cwd }),
+					grep: createGrepTool({ cwd: opts.cwd }),
+					list: createListTool({ cwd: opts.cwd }),
+				},
+				system: baseSystem,
+				hooks,
+				stopWhen,
+				providerOptions: opts.providerOptions,
+			}),
 		},
 		{
 			name: 'codebase-pattern-finder',
 			description: 'Finds similar implementations and reusable patterns in the codebase.',
-			agent: patternFinderAgent,
+			agent: createCodebasePatternFinderAgent({
+				model: opts.model,
+				tools: {
+					read: createReadTool({ cwd: opts.cwd }),
+					glob: createGlobTool({ cwd: opts.cwd }),
+					grep: createGrepTool({ cwd: opts.cwd }),
+					list: createListTool({ cwd: opts.cwd }),
+				},
+				system: baseSystem,
+				hooks,
+				stopWhen,
+				providerOptions: opts.providerOptions,
+			}),
 		},
 		{
 			name: 'web-search-researcher',
@@ -415,6 +555,14 @@ export async function createCodingSubagentTool(opts: CreateCodingSubagentToolOpt
 			agent: webResearcherAgent,
 		},
 	]
+
+	if (libraryResearcherAgent) {
+		agents.push({
+			name: 'library-researcher',
+			description: 'Researches library and package documentation with code and docs search.',
+			agent: libraryResearcherAgent,
+		})
+	}
 
 	return createSubagentsTool({ agents, onChildEvent: opts.onChildEvent })
 }

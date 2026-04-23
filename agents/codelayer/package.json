@@ -13,16 +13,17 @@
   "exports": {
     ".": "./src/index.ts"
   },
-  "devDependencies": {
-    "@ai-sdk/anthropic": "catalog:",
-    "@ai-sdk/openai": "^3.0.48",
-    "@ai-sdk/provider": "catalog:",
-    "@humanlayer/agentlayer-core": "workspace:*",
-    "@humanlayer/agentlayer-filesystem": "workspace:*",
-    "@types/bun": "latest",
-    "ai": "catalog:",
-    "commander": "^14.0.3",
-    "zod": "catalog:"
+	"devDependencies": {
+		"@ai-sdk/anthropic": "catalog:",
+		"@ai-sdk/openai": "^3.0.48",
+		"@ai-sdk/provider": "catalog:",
+		"@humanlayer/agentlayer-core": "workspace:*",
+		"@humanlayer/agentlayer-filesystem": "workspace:*",
+		"@humanlayer/rpi": "workspace:*",
+		"@types/bun": "latest",
+		"ai": "catalog:",
+		"commander": "^14.0.3",
+		"zod": "catalog:"
   },
   "peerDependencies": {
     "typescript": "^5"

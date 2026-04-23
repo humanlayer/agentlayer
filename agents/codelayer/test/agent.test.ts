@@ -58,6 +58,19 @@ describe('createCodelayerAgent', () => {
 		expect(config.system?.length).toBeGreaterThan(0)
 	})
 
+	test('propagates context7 support into the subagent tool inventory', async () => {
+		const agent = await createCodelayerAgent({
+			model: createMockModel('claude-sonnet-4-5'),
+			cwd: '/tmp',
+			context7ApiKey: 'context7-test-key',
+		})
+		const config = getAgentConfig(agent)
+		const subagent = config.tools?.agent as { description?: string } | undefined
+
+		expect(subagent?.description).toContain('library-researcher')
+		expect(subagent?.description).toContain('implementer-agent')
+	})
+
 	test('creates an rlm codex agent without bash and with apply_patch', async () => {
 		const agent = await createCodelayerAgent({
 			model: createMockModel('gpt-5.4'),
