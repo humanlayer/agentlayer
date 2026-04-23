@@ -16,34 +16,29 @@
 				"default": "./dist/index.js"
 			},
 			"./presence": {
-				"types": "./dist/presence.d.ts",
-				"import": "./dist/presence.js",
-				"default": "./dist/presence.js"
+				"types": "./dist/filesystem/presence.d.ts",
+				"import": "./dist/filesystem/presence.js",
+				"default": "./dist/filesystem/presence.js"
 			},
 			"./durable-streams/shared": {
-				"types": "./dist/durable-streams/shared.d.ts",
-				"import": "./dist/durable-streams/shared.js",
-				"default": "./dist/durable-streams/shared.js"
+				"types": "./dist/durable-streams/shared/index.d.ts",
+				"import": "./dist/durable-streams/shared/index.js",
+				"default": "./dist/durable-streams/shared/index.js"
 			},
 			"./durable-streams/client": {
-				"types": "./dist/durable-streams/client.d.ts",
-				"import": "./dist/durable-streams/client.js",
-				"default": "./dist/durable-streams/client.js"
+				"types": "./dist/durable-streams/client/index.d.ts",
+				"import": "./dist/durable-streams/client/index.js",
+				"default": "./dist/durable-streams/client/index.js"
 			},
 			"./durable-streams/server": {
-				"types": "./dist/durable-streams/server.d.ts",
-				"import": "./dist/durable-streams/server.js",
-				"default": "./dist/durable-streams/server.js"
+				"types": "./dist/durable-streams/server/index.d.ts",
+				"import": "./dist/durable-streams/server/index.js",
+				"default": "./dist/durable-streams/server/index.js"
 			},
 			"./durable-streams/single-stream-client": {
-				"types": "./dist/durable-streams/single-stream-client.d.ts",
-				"import": "./dist/durable-streams/single-stream-client.js",
-				"default": "./dist/durable-streams/single-stream-client.js"
-			},
-			"./durable-streams/per-doc-client": {
-				"types": "./dist/durable-streams/per-doc-client.d.ts",
-				"import": "./dist/durable-streams/per-doc-client.js",
-				"default": "./dist/durable-streams/per-doc-client.js"
+				"types": "./dist/durable-streams/client/single-root-doc.d.ts",
+				"import": "./dist/durable-streams/client/single-root-doc.js",
+				"default": "./dist/durable-streams/client/single-root-doc.js"
 			}
 		}
 	},
@@ -80,14 +75,24 @@
 		"yjs": "13.6.30",
 		"y-protocols": "1.0.7"
 	},
+	"peerDependenciesMeta": {
+		"@durable-streams/client": {
+			"optional": true
+		},
+		"@durable-streams/server": {
+			"optional": true
+		},
+		"@durable-streams/y-durable-streams": {
+			"optional": true
+		}
+	},
 	"exports": {
 		".": "./src/index.ts",
-		"./presence": "./src/presence.ts",
-		"./durable-streams/shared": "./src/durable-streams/shared.ts",
-		"./durable-streams/client": "./src/durable-streams/client.ts",
-		"./durable-streams/server": "./src/durable-streams/server.ts",
-		"./durable-streams/single-stream-client": "./src/durable-streams/single-stream-client.ts",
-		"./durable-streams/per-doc-client": "./src/durable-streams/per-doc-client.ts"
+		"./presence": "./src/filesystem/presence.ts",
+		"./durable-streams/shared": "./src/durable-streams/shared/index.ts",
+		"./durable-streams/client": "./src/durable-streams/client/index.ts",
+		"./durable-streams/server": "./src/durable-streams/server/index.ts",
+		"./durable-streams/single-stream-client": "./src/durable-streams/client/single-root-doc.ts"
 	},
 	"dependencies": {},
 	"author": {
