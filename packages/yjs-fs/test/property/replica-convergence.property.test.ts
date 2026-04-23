@@ -2,8 +2,8 @@ import { describe, expect, test } from 'bun:test'
 import { YjsFilesystem } from '@humanlayer/yjs-fs'
 import fc from 'fast-check'
 import * as Y from 'yjs'
-import { snapshotFilesystem } from './util/snapshot'
-import { syncBothWays } from './util/sync'
+import { snapshotFilesystem } from '../util/snapshot'
+import { syncBothWays } from '../util/sync'
 
 type Replica = 'a' | 'b'
 

@@ -7,7 +7,7 @@ export type {
 	DurableStreamsContentBindingChange,
 	DurableStreamsContentBindingTarget,
 	DurableStreamsTransportMode,
-} from './shared/index'
+} from './types'
 export {
 	getAwarenessBindingTarget,
 	getRootBindingTarget,
@@ -15,4 +15,4 @@ export {
 	listDurableStreamsBindingTargets,
 	observeContentBindingTargets,
 	sortBindingDescriptors,
-} from './shared/index'
+} from './types'

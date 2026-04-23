@@ -5,9 +5,9 @@ import {
 	initializeComments,
 	replyToCommentRecord,
 	resolveCommentRecord,
-} from '../comments'
-import type { CommentAnchor, ContentId, FileComment } from '../types'
+} from './comments'
 import type { ContentStore } from './content-store'
+import type { CommentAnchor, ContentId, FileComment } from './types'
 
 type FileRecord = Y.Map<unknown>
 

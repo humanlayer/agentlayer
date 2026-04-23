@@ -1,6 +1,6 @@
 import { describe, test } from 'bun:test'
 import fc from 'fast-check'
-import { assertFilesystemMatchesModel, createCommandContext, namespaceCommandArbitrary } from './model/commands'
+import { assertFilesystemMatchesModel, createCommandContext, namespaceCommandArbitrary } from '../model/commands'
 
 const PROPERTY_SEED = 421337
 

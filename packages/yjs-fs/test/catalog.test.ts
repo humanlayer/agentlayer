@@ -20,7 +20,7 @@ import {
 	normalizePath,
 	renameInCatalog,
 	updateFileMetadata,
-} from '../src/catalog'
+} from '../src/filesystem/catalog'
 
 describe('catalog module', () => {
 	test('normalizes absolute paths and rejects unsupported segments', () => {

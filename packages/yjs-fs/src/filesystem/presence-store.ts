@@ -1,5 +1,6 @@
 import type { Awareness } from 'y-protocols/awareness'
 import type * as Y from 'yjs'
+import type { ContentStore } from './content-store'
 import {
 	clearLocalSelection,
 	getLocalPresenceState,
@@ -9,9 +10,8 @@ import {
 	setLocalPresenceState,
 	setLocalSelection,
 	updateLocalPresenceState,
-} from '../presence'
-import type { ContentId } from '../types'
-import type { ContentStore } from './content-store'
+} from './presence'
+import type { ContentId } from './types'
 
 export class PresenceStore {
 	private awareness: Awareness | null

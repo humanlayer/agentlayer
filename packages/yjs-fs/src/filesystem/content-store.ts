@@ -1,5 +1,5 @@
 import * as Y from 'yjs'
-import { type ContentId, type EditResult, EntryNotFoundError } from '../types'
+import { type ContentId, type EditResult, EntryNotFoundError } from './types'
 
 const FILES_KEY = 'files'
 const CONTENT_TEXT_KEY = 'content'

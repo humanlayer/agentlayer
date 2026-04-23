@@ -16,7 +16,7 @@ export type {
 	PresenceState,
 	PresenceUser,
 	ResolvedPresenceSelection,
-} from './presence'
+} from './filesystem/presence'
 export {
 	clearLocalSelection,
 	colorFromId,
@@ -27,11 +27,7 @@ export {
 	setLocalPresenceState,
 	setLocalSelection,
 	updateLocalPresenceState,
-} from './presence'
-export type {
-	DurableStreamsClientOptions,
-	DurableStreamsServerOptions,
-} from './surface'
+} from './filesystem/presence'
 export type {
 	CommentAnchor,
 	CommentReply,
@@ -46,7 +42,7 @@ export type {
 	FileComment,
 	FileEntry,
 	LookupResult,
-} from './types'
+} from './filesystem/types'
 export {
 	AlreadyExistsError,
 	DirectoryNotEmptyError,
@@ -56,4 +52,8 @@ export {
 	NotFileError,
 	RootMutationError,
 	YjsFsError,
-} from './types'
+} from './filesystem/types'
+export type {
+	DurableStreamsClientOptions,
+	DurableStreamsServerOptions,
+} from './surface'

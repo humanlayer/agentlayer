@@ -6,14 +6,22 @@ import {
 	createSubagentsTool,
 	createWebFetchTool,
 	doomLoop,
-	TodoWriteTool,
 	type PostToolUseHook,
 	type PreRequestHook,
 	type PreToolUseHook,
 	type SubAgentConfig,
+	TodoWriteTool,
 	type Tool,
 } from '@humanlayer/agentlayer-core'
-import type { CodeSearchInput } from '@humanlayer/agentlayer-core/interfaces'
+import {
+	type DeduplicateReadsOptions,
+	deduplicateReads,
+	type StripThinkingOptions,
+	stripThinkingTokens,
+	type TruncateOldBashResultsOptions,
+	truncateOldBashResults,
+} from '@humanlayer/agentlayer-core/hooks'
+import type { CodeSearchInput, Skill } from '@humanlayer/agentlayer-core/interfaces'
 import { CodeSearchTool } from '@humanlayer/agentlayer-core/interfaces'
 import {
 	createBashSpecialistAgent,
@@ -24,15 +32,6 @@ import {
 	createLibraryResearcherAgent,
 	createWebSearchResearcherAgent,
 } from '@humanlayer/rpi'
-import {
-	type DeduplicateReadsOptions,
-	deduplicateReads,
-	type StripThinkingOptions,
-	stripThinkingTokens,
-	type TruncateOldBashResultsOptions,
-	truncateOldBashResults,
-} from '@humanlayer/agentlayer-core/hooks'
-import type { Skill } from '@humanlayer/agentlayer-core/interfaces'
 import type { LanguageModel } from 'ai'
 import { createFileStateTrackingHook, createReadBeforeWriteHook, createWastedReadHook } from './hooks/file-state'
 import {
@@ -222,22 +221,27 @@ function createCodeSearchTool(opts: {
 }): Tool<CodeSearchInput, string> {
 	const timeoutMs = opts.timeoutMs ?? DEFAULT_CODE_SEARCH_TIMEOUT_MS
 
-	return CodeSearchTool.define(async (input) => {
-		const [exaResult, context7Result] = await Promise.all([
-			opts.exaApiKey ? fetchExaCodeSearch(input, opts.exaApiKey, timeoutMs) : Promise.resolve(null),
-			opts.context7ApiKey ? fetchContext7CodeSearch(input, opts.context7ApiKey, timeoutMs) : Promise.resolve(null),
-		])
+	return CodeSearchTool.define(
+		async (input) => {
+			const [exaResult, context7Result] = await Promise.all([
+				opts.exaApiKey ? fetchExaCodeSearch(input, opts.exaApiKey, timeoutMs) : Promise.resolve(null),
+				opts.context7ApiKey
+					? fetchContext7CodeSearch(input, opts.context7ApiKey, timeoutMs)
+					: Promise.resolve(null),
+			])
 
-		const parts: string[] = []
-		if (context7Result) parts.push(`## Context7 Documentation\n\n${context7Result}`)
-		if (exaResult) parts.push(`## Exa Search Results\n\n${exaResult}`)
+			const parts: string[] = []
+			if (context7Result) parts.push(`## Context7 Documentation\n\n${context7Result}`)
+			if (exaResult) parts.push(`## Exa Search Results\n\n${exaResult}`)
 
-		if (parts.length === 0) {
-			return `No documentation found for "${input.packageName}" with query: ${input.query}`
-		}
+			if (parts.length === 0) {
+				return `No documentation found for "${input.packageName}" with query: ${input.query}`
+			}
 
-		return parts.join('\n\n---\n\n')
-	}, { description: 'Search library documentation and code examples using Context7 and Exa when available.' })
+			return parts.join('\n\n---\n\n')
+		},
+		{ description: 'Search library documentation and code examples using Context7 and Exa when available.' },
+	)
 }
 
 function resolveSkillDirPath(path: string, cwd: string): string {
@@ -407,9 +411,8 @@ export async function createCodingSubagentTool(opts: CreateCodingSubagentToolOpt
 		providerOptions: opts.providerOptions,
 	})
 
-	const implementerTools: Record<string, Tool<any, any>> =
-		family === 'codex'
-			? {
+	const implementerTools: Record<string, Tool<any, any>> = family === 'codex'
+		? {
 				...(await createCodexCodingAgentToolset({
 					cwd: opts.cwd,
 					skillTool,
@@ -419,7 +422,7 @@ export async function createCodingSubagentTool(opts: CreateCodingSubagentToolOpt
 				})),
 				todo_write: TodoWriteTool,
 			}
-			: {
+		: {
 				...(await createClaudeCodingAgentToolset({
 					cwd: opts.cwd,
 					skillTool,
@@ -472,13 +475,13 @@ export async function createCodingSubagentTool(opts: CreateCodingSubagentToolOpt
 	const libraryResearcherAgent =
 		opts.exaApiKey || opts.context7ApiKey
 			? createLibraryResearcherAgent({
-				model: opts.model,
-				tools: libraryResearcherTools,
-				system: baseSystem,
-				hooks,
-				stopWhen,
-				providerOptions: opts.providerOptions,
-			})
+					model: opts.model,
+					tools: libraryResearcherTools,
+					system: baseSystem,
+					hooks,
+					stopWhen,
+					providerOptions: opts.providerOptions,
+				})
 			: undefined
 
 	const agents: SubAgentConfig[] = [

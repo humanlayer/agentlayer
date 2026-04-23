@@ -23,6 +23,9 @@ Run it for a single package: `bun run --cwd packages/... typecheck`
 
 Run biome formatter (only can be run for the whole repo at once): `bun run biome`
 
+**Run all checks (typecheck, biome, tests) in parallel**: `bun check`
+_IMPORTANT_: `bun check` is the preferred way of doing repo verification.
+
 We use `bun:test`. When in doubt, read the [docs](https://bun.com/docs/test)
 
 ## Open Source Contribution Workflow

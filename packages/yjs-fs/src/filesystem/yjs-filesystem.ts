@@ -1,11 +1,11 @@
 import type { Awareness } from 'y-protocols/awareness'
 import * as Y from 'yjs'
-import type { PresenceState, ResolvedPresenceSelection } from '../presence'
-import type { CommentAnchor, EditResult, EntryDirent, EntryStat, FileComment, LookupResult } from '../types'
 import { CatalogStore } from './catalog-store'
 import { CommentStore } from './comment-store'
 import { ContentStore } from './content-store'
+import type { PresenceState, ResolvedPresenceSelection } from './presence'
 import { PresenceStore } from './presence-store'
+import type { CommentAnchor, EditResult, EntryDirent, EntryStat, FileComment, LookupResult } from './types'
 
 export type YjsFilesystemOptions = {
 	doc?: Y.Doc

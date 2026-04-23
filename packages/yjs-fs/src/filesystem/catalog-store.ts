@@ -12,7 +12,7 @@ import {
 	normalizePath,
 	renameInCatalog,
 	updateFileMetadata,
-} from '../catalog'
+} from './catalog'
 import {
 	type EntryDirent,
 	type EntryMetadata,
@@ -22,7 +22,7 @@ import {
 	type LookupResult,
 	NotDirectoryError,
 	NotFileError,
-} from '../types'
+} from './types'
 
 export class CatalogStore {
 	readonly doc: Y.Doc
