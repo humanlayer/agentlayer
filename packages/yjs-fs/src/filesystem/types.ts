@@ -128,6 +128,18 @@ export class NotFileError extends YjsFsError {
 	}
 }
 
+export class NotBinaryFileError extends YjsFsError {
+	constructor(path: string) {
+		super('NOT_BINARY_FILE', `Path is not a binary file: ${path}`)
+	}
+}
+
+export class NotTextFileError extends YjsFsError {
+	constructor(path: string) {
+		super('NOT_TEXT_FILE', `Path is not a text file: ${path}`)
+	}
+}
+
 export class DirectoryNotEmptyError extends YjsFsError {
 	constructor(path: string) {
 		super('DIRECTORY_NOT_EMPTY', `Directory is not empty: ${path}`)

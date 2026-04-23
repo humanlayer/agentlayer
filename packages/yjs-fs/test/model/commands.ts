@@ -11,6 +11,7 @@ import {
 	listModelComments,
 	type ModelComment,
 	modelAddComment,
+	modelCreateBinaryFile,
 	modelCreateFile,
 	modelDelete,
 	modelEditFile,
@@ -19,9 +20,11 @@ import {
 	modelRename,
 	modelReplyToComment,
 	modelResolveComment,
+	modelWriteBinaryFile,
 	modelWriteFile,
 	type NamespaceModel,
 	readModel,
+	readModelBinary,
 	statModel,
 } from './model'
 
@@ -54,7 +57,9 @@ export function namespaceCommandArbitrary(): fc.Arbitrary<NamespaceCommand> {
 	return fc.oneof(
 		createDirectoryCommandArbitrary(),
 		createFileCommandArbitrary(),
+		createBinaryFileCommandArbitrary(),
 		writeFileCommandArbitrary(),
+		writeBinaryFileCommandArbitrary(),
 		editFileCommandArbitrary(),
 		addCommentCommandArbitrary(),
 		replyToCommentCommandArbitrary(),
@@ -82,11 +87,18 @@ export function assertFilesystemMatchesModel(context: CommandContext): void {
 		if (expectedStat.type === 'file') {
 			expect(actualStat.contentId).toBe(expectedStat.contentId)
 			expect(actualStat.size).toBe(expectedStat.size)
+			expect(actualStat.encoding).toBe(expectedStat.encoding)
 
-			const actualContent = context.filesystem.readFile(path)
-			const expectedContent = readModel(context.model, path)
-			expect(actualContent).toBe(expectedContent)
-			assertCommentsMatchModel(context, path)
+			if (expectedStat.encoding === 'binary') {
+				const actualContent = context.filesystem.readBinaryFile(path)
+				const expectedContent = readModelBinary(context.model, path)
+				expect(actualContent).toEqual(expectedContent)
+			} else {
+				const actualContent = context.filesystem.readFile(path)
+				const expectedContent = readModel(context.model, path)
+				expect(actualContent).toBe(expectedContent)
+				assertCommentsMatchModel(context, path)
+			}
 		}
 	}
 
@@ -145,6 +157,27 @@ function createFileCommandArbitrary(): fc.Arbitrary<NamespaceCommand> {
 		}))
 }
 
+function createBinaryFileCommandArbitrary(): fc.Arbitrary<NamespaceCommand> {
+	return fc
+		.record({
+			path: pathArbitrary('binary'),
+			content: fc.uint8Array({ minLength: 0, maxLength: 100 }),
+		})
+		.map(({ path, content }) => ({
+			label: `createBinaryFile(${path})`,
+			run(context) {
+				if (!canCreateAtPath(context.model, path)) {
+					return
+				}
+
+				modelCreateBinaryFile(context.model, path, content)
+				const entryId = context.filesystem.createBinaryFile(path, content)
+				const stat = context.filesystem.stat(path)
+				bindActualEntryIdentity(context.model, path, entryId, stat.contentId)
+			},
+		}))
+}
+
 function writeFileCommandArbitrary(): fc.Arbitrary<NamespaceCommand> {
 	return fc
 		.record({
@@ -154,7 +187,12 @@ function writeFileCommandArbitrary(): fc.Arbitrary<NamespaceCommand> {
 		.map(({ path, content }) => ({
 			label: `writeFile(${path})`,
 			run(context) {
-				if (!modelExists(context.model, path) || statModel(context.model, path).type !== 'file') {
+				if (!modelExists(context.model, path)) {
+					return
+				}
+
+				const stat = statModel(context.model, path)
+				if (stat.type !== 'file' || stat.encoding === 'binary') {
 					return
 				}
 
@@ -164,11 +202,40 @@ function writeFileCommandArbitrary(): fc.Arbitrary<NamespaceCommand> {
 		}))
 }
 
+function writeBinaryFileCommandArbitrary(): fc.Arbitrary<NamespaceCommand> {
+	return fc
+		.record({
+			path: pathArbitrary('write-bin'),
+			content: fc.uint8Array({ minLength: 0, maxLength: 100 }),
+		})
+		.map(({ path, content }) => ({
+			label: `writeBinaryFile(${path})`,
+			run(context) {
+				if (!modelExists(context.model, path)) {
+					return
+				}
+
+				const stat = statModel(context.model, path)
+				if (stat.type !== 'file' || stat.encoding !== 'binary') {
+					return
+				}
+
+				modelWriteBinaryFile(context.model, path, content)
+				context.filesystem.writeBinaryFile(path, content)
+			},
+		}))
+}
+
 function editFileCommandArbitrary(): fc.Arbitrary<NamespaceCommand> {
 	return pathArbitrary('edit').map((path) => ({
 		label: `editFile(${path})`,
 		run(context) {
-			if (!modelExists(context.model, path) || statModel(context.model, path).type !== 'file') {
+			if (!modelExists(context.model, path)) {
+				return
+			}
+
+			const stat = statModel(context.model, path)
+			if (stat.type !== 'file' || stat.encoding === 'binary') {
 				return
 			}
 
@@ -199,7 +266,7 @@ function addCommentCommandArbitrary(): fc.Arbitrary<NamespaceCommand> {
 		.map(({ path, author, body }) => ({
 			label: `addComment(${path})`,
 			run(context) {
-				if (!isFilePath(context.model, path)) {
+				if (!isTextFilePath(context.model, path)) {
 					return
 				}
 
@@ -226,7 +293,7 @@ function replyToCommentCommandArbitrary(): fc.Arbitrary<NamespaceCommand> {
 		.map(({ path, author, body }) => ({
 			label: `replyToComment(${path})`,
 			run(context) {
-				if (!isFilePath(context.model, path)) {
+				if (!isTextFilePath(context.model, path)) {
 					return
 				}
 
@@ -251,7 +318,7 @@ function resolveCommentCommandArbitrary(): fc.Arbitrary<NamespaceCommand> {
 		.map(({ path, author }) => ({
 			label: `resolveComment(${path})`,
 			run(context) {
-				if (!isFilePath(context.model, path)) {
+				if (!isTextFilePath(context.model, path)) {
 					return
 				}
 
@@ -378,8 +445,13 @@ function parentExists(model: NamespaceModel, path: string): boolean {
 	return modelExists(model, dirname(path))
 }
 
-function isFilePath(model: NamespaceModel, path: string): boolean {
-	return modelExists(model, path) && statModel(model, path).type === 'file'
+function isTextFilePath(model: NamespaceModel, path: string): boolean {
+	if (!modelExists(model, path)) {
+		return false
+	}
+
+	const stat = statModel(model, path)
+	return stat.type === 'file' && stat.encoding !== 'binary'
 }
 
 function firstComment(model: NamespaceModel, path: string): ModelComment | undefined {

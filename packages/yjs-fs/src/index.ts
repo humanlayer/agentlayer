@@ -48,8 +48,10 @@ export {
 	DirectoryNotEmptyError,
 	EntryNotFoundError,
 	InvalidPathError,
+	NotBinaryFileError,
 	NotDirectoryError,
 	NotFileError,
+	NotTextFileError,
 	RootMutationError,
 	YjsFsError,
 } from './filesystem/types'

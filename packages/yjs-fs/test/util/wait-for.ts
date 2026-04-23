@@ -36,11 +36,7 @@ export async function waitForDocText(doc: Y.Doc, name: string, timeoutMs: number
 	await waitForCondition(() => doc.getText(name).toJSON().length > 0, `doc text ${name}`, timeoutMs)
 }
 
-export async function waitForStateVectorSync(
-	doc1: Y.Doc,
-	doc2: Y.Doc,
-	timeoutMs: number = DEFAULT_TIMEOUT_MS,
-) {
+export async function waitForStateVectorSync(doc1: Y.Doc, doc2: Y.Doc, timeoutMs: number = DEFAULT_TIMEOUT_MS) {
 	await waitForCondition(
 		() => {
 			const sv1 = Y.encodeStateVector(doc1)

@@ -13,7 +13,8 @@ type FileSnapshot = {
 	entryId: string
 	contentId?: string
 	size?: number
-	content: string
+	encoding?: 'text' | 'binary'
+	content: string | number[]
 }
 
 export function snapshotFilesystem(filesystem: YjsFilesystem): FilesystemSnapshot {
@@ -46,6 +47,7 @@ function snapshotFile(filesystem: YjsFilesystem, path: string): FileSnapshot {
 		entryId: stat.entryId,
 		contentId: stat.contentId,
 		size: stat.size,
-		content: filesystem.readFile(path),
+		encoding: stat.encoding,
+		content: stat.encoding === 'binary' ? Array.from(filesystem.readBinaryFile(path)) : filesystem.readFile(path),
 	}
 }

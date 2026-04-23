@@ -25,6 +25,8 @@ type NamespaceNode = {
 	actualContentId?: string
 	contentId?: string
 	content?: string
+	binaryContent?: Uint8Array
+	encoding?: 'text' | 'binary'
 	comments?: ModelComment[]
 	children?: Set<string>
 }
@@ -104,7 +106,7 @@ export function modelCreateFile(
 	const entryId = `file-${model.fileSequence}`
 	const contentId = `content-${model.fileSequence}`
 	model.fileSequence += 1
-	model.nodes.set(entryId, { entryId, type: 'file', contentId, content, comments: [] })
+	model.nodes.set(entryId, { entryId, type: 'file', contentId, content, encoding: 'text', comments: [] })
 	model.pathsById.set(entryId, path)
 	model.idByPath.set(path, entryId)
 	parent.children?.add(entryId)
@@ -112,8 +114,46 @@ export function modelCreateFile(
 }
 
 export function modelWriteFile(model: NamespaceModel, path: string, content: string): void {
-	const node = requiredFileNode(model, path)
+	const node = requiredTextFileNode(model, path)
 	node.content = content
+}
+
+export function modelCreateBinaryFile(
+	model: NamespaceModel,
+	path: string,
+	content: Uint8Array,
+): { entryId: string; contentId: string } {
+	const parentPath = dirname(path)
+	const parentId = requiredId(model, parentPath)
+	const parent = requiredNode(model, parentId)
+
+	if (parent.type !== 'directory') {
+		throw new Error(`Parent is not a directory: ${parentPath}`)
+	}
+
+	if (model.idByPath.has(path)) {
+		throw new Error(`Path already exists: ${path}`)
+	}
+
+	const entryId = `file-${model.fileSequence}`
+	const contentId = `content-${model.fileSequence}`
+	model.fileSequence += 1
+	model.nodes.set(entryId, {
+		entryId,
+		type: 'file',
+		contentId,
+		binaryContent: content,
+		encoding: 'binary',
+	})
+	model.pathsById.set(entryId, path)
+	model.idByPath.set(path, entryId)
+	parent.children?.add(entryId)
+	return { entryId, contentId }
+}
+
+export function modelWriteBinaryFile(model: NamespaceModel, path: string, content: Uint8Array): void {
+	const node = requiredBinaryFileNode(model, path)
+	node.binaryContent = content
 }
 
 export function bindActualEntryIdentity(
@@ -131,7 +171,7 @@ export function bindActualEntryIdentity(
 }
 
 export function modelEditFile(model: NamespaceModel, path: string, oldText: string, newText: string): void {
-	const node = requiredFileNode(model, path)
+	const node = requiredTextFileNode(model, path)
 	const content = node.content ?? ''
 	const firstIndex = content.indexOf(oldText)
 
@@ -153,7 +193,7 @@ export function modelAddComment(
 	body: string,
 	author: string,
 ): string {
-	const node = requiredFileNode(model, path)
+	const node = requiredTextFileNode(model, path)
 	const commentId = `comment-${model.commentSequence++}`
 	const comments = node.comments ?? []
 
@@ -221,7 +261,7 @@ export function modelResolveComment(model: NamespaceModel, path: string, comment
 }
 
 export function listModelComments(model: NamespaceModel, path: string): ModelComment[] {
-	return [...(requiredFileNode(model, path).comments ?? [])]
+	return [...(requiredTextFileNode(model, path).comments ?? [])]
 }
 
 export function modelRename(model: NamespaceModel, fromPath: string, toPath: string): void {
@@ -293,13 +333,19 @@ export function listModel(
 export function statModel(
 	model: NamespaceModel,
 	path: string,
-): { type: 'directory' | 'file'; contentId?: string; size?: number } {
+): { type: 'directory' | 'file'; contentId?: string; size?: number; encoding?: 'text' | 'binary' } {
 	const node = requiredNode(model, requiredId(model, path))
 
 	return {
 		type: node.type,
 		contentId: node.actualContentId,
-		size: node.type === 'file' ? (node.content ?? '').length : undefined,
+		size:
+			node.type === 'file'
+				? node.encoding === 'binary'
+					? (node.binaryContent?.length ?? 0)
+					: (node.content ?? '').length
+				: undefined,
+		encoding: node.type === 'file' ? (node.encoding ?? 'text') : undefined,
 	}
 }
 
@@ -308,7 +354,11 @@ export function actualEntryIdForPath(model: NamespaceModel, path: string): strin
 }
 
 export function readModel(model: NamespaceModel, path: string): string {
-	return requiredFileNode(model, path).content ?? ''
+	return requiredTextFileNode(model, path).content ?? ''
+}
+
+export function readModelBinary(model: NamespaceModel, path: string): Uint8Array {
+	return requiredBinaryFileNode(model, path).binaryContent ?? new Uint8Array(0)
 }
 
 function requiredId(model: NamespaceModel, path: string): string {
@@ -342,7 +392,7 @@ function requiredPath(model: NamespaceModel, entryId: string): string {
 }
 
 function requiredComment(model: NamespaceModel, path: string, commentId: string): ModelComment {
-	const comment = requiredFileNode(model, path).comments?.find((candidate) => candidate.id === commentId)
+	const comment = requiredTextFileNode(model, path).comments?.find((candidate) => candidate.id === commentId)
 	if (!comment) {
 		throw new Error(`Missing comment: ${commentId}`)
 	}
@@ -358,6 +408,32 @@ function requiredFileNode(model: NamespaceModel, path: string): NamespaceNode & 
 	}
 
 	return node as NamespaceNode & { type: 'file'; contentId: string }
+}
+
+function requiredTextFileNode(
+	model: NamespaceModel,
+	path: string,
+): NamespaceNode & { type: 'file'; contentId: string; encoding?: 'text' } {
+	const node = requiredFileNode(model, path)
+
+	if (node.encoding === 'binary') {
+		throw new Error(`Not a text file: ${path}`)
+	}
+
+	return node as NamespaceNode & { type: 'file'; contentId: string; encoding?: 'text' }
+}
+
+function requiredBinaryFileNode(
+	model: NamespaceModel,
+	path: string,
+): NamespaceNode & { type: 'file'; contentId: string; encoding: 'binary' } {
+	const node = requiredFileNode(model, path)
+
+	if (node.encoding !== 'binary') {
+		throw new Error(`Not a binary file: ${path}`)
+	}
+
+	return node as NamespaceNode & { type: 'file'; contentId: string; encoding: 'binary' }
 }
 
 function dirname(path: string): string {

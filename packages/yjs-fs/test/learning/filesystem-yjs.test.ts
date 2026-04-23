@@ -5,9 +5,9 @@ import { withYjsDurableStreamFileSystems, withYjsDurableStreamServer } from './f
 
 describe('Y.js Filesystem Learning Tests', async () => {
 	test('Fixture tests', async () => {
-		await withYjsDurableStreamServer(async ({ dss, yjss, createProviderWithAwareness }) => {
-			const { awareness: awareness1, provider: provider1 } = await createProviderWithAwareness()
-			const { awareness: awareness2, provider: provider2 } = await createProviderWithAwareness()
+		await withYjsDurableStreamServer(async ({ createProviderWithAwareness }) => {
+			const { provider: provider1 } = await createProviderWithAwareness()
+			const { provider: provider2 } = await createProviderWithAwareness()
 
 			provider1.doc.getText('test').insert(0, 'abc')
 			expect(provider1.doc.getText('test').toJSON()).toEqual('abc')
@@ -19,7 +19,7 @@ describe('Y.js Filesystem Learning Tests', async () => {
 	})
 
 	test('Basic Filesystem Operations', async () => {
-		await withYjsDurableStreamServer(async ({ dss, yjss, createProviderWithAwareness }) => {
+		await withYjsDurableStreamServer(async ({ createProviderWithAwareness }) => {
 			const { awareness: awareness1, provider: provider1 } = await createProviderWithAwareness()
 			const { awareness: awareness2, provider: provider2 } = await createProviderWithAwareness()
 
@@ -90,7 +90,7 @@ describe('Y.js Filesystem Learning Tests', async () => {
 			const newText = 'README\nThis is the README for humans, not for agents\n'
 
 			// Try a bad edit that won't be in the file
-			expect(() => fs2.editFile(filePath, oldText + 'doesnotexistinfile', newText)).toThrowError()
+			expect(() => fs2.editFile(filePath, `${oldText}doesnotexistinfile`, newText)).toThrowError()
 
 			// Try a good edit
 			expect(() => fs2.editFile(filePath, oldText, newText)).not.toThrowError()
@@ -109,7 +109,6 @@ describe('Y.js Filesystem Learning Tests', async () => {
 			expect(comment).toBeDefined()
 
 			const newFileContent = fs1.readFile(filePath)
-			console.log(newFileContent)
 
 			// Assert the anchor index is differnet than the old one due to the operations
 			expect(comment.anchorIndex).not.toEqual(commentAnchor.index)

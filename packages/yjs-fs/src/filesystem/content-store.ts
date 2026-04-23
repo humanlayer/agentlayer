@@ -35,7 +35,11 @@ export class ContentStore {
 		}
 	}
 
-	createBinary(content: Uint8Array = new Uint8Array(0)): { contentId: ContentId; record: BinaryRecord; data: Y.Array<number> } {
+	createBinary(content: Uint8Array = new Uint8Array(0)): {
+		contentId: ContentId
+		record: BinaryRecord
+		data: Y.Array<number>
+	} {
 		const contentId = crypto.randomUUID()
 		const record = new Y.Map<unknown>()
 		const data = new Y.Array<number>()

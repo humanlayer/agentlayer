@@ -10,7 +10,9 @@ type Replica = 'a' | 'b'
 type Operation =
 	| { kind: 'mkdir'; replica: Replica; path: string }
 	| { kind: 'createFile'; replica: Replica; path: string; content: string }
+	| { kind: 'createBinaryFile'; replica: Replica; path: string; content: Uint8Array }
 	| { kind: 'writeFile'; replica: Replica; path: string; content: string }
+	| { kind: 'writeBinaryFile'; replica: Replica; path: string; content: Uint8Array }
 	| { kind: 'editFile'; replica: Replica; path: string }
 	| { kind: 'rename'; replica: Replica; fromPath: string; toPath: string }
 	| { kind: 'unlink'; replica: Replica; path: string }
@@ -65,14 +67,26 @@ function applyOperation(operation: Operation, fsA: YjsFilesystem, fsB: YjsFilesy
 			}
 			break
 		}
+		case 'createBinaryFile': {
+			if (canCreateAtPath(filesystem, operation.path)) {
+				filesystem.createBinaryFile(operation.path, operation.content)
+			}
+			break
+		}
 		case 'writeFile': {
-			if (isFile(filesystem, operation.path)) {
+			if (isTextFile(filesystem, operation.path)) {
 				filesystem.writeFile(operation.path, operation.content)
 			}
 			break
 		}
+		case 'writeBinaryFile': {
+			if (isBinaryFile(filesystem, operation.path)) {
+				filesystem.writeBinaryFile(operation.path, operation.content)
+			}
+			break
+		}
 		case 'editFile': {
-			if (!isFile(filesystem, operation.path)) {
+			if (!isTextFile(filesystem, operation.path)) {
 				break
 			}
 
@@ -131,10 +145,24 @@ function operationArbitrary(): fc.Arbitrary<Operation> {
 		fc
 			.record({
 				replica: replicaArbitrary(),
+				path: pathArbitrary('binary'),
+				content: fc.uint8Array({ minLength: 0, maxLength: 100 }),
+			})
+			.map(({ replica, path, content }) => ({ kind: 'createBinaryFile' as const, replica, path, content })),
+		fc
+			.record({
+				replica: replicaArbitrary(),
 				path: pathArbitrary('write'),
 				content: fc.string({ maxLength: 12 }),
 			})
 			.map(({ replica, path, content }) => ({ kind: 'writeFile' as const, replica, path, content })),
+		fc
+			.record({
+				replica: replicaArbitrary(),
+				path: pathArbitrary('write-bin'),
+				content: fc.uint8Array({ minLength: 0, maxLength: 100 }),
+			})
+			.map(({ replica, path, content }) => ({ kind: 'writeBinaryFile' as const, replica, path, content })),
 		fc
 			.record({ replica: replicaArbitrary(), path: pathArbitrary('edit') })
 			.map(({ replica, path }) => ({ kind: 'editFile' as const, replica, path })),
@@ -174,9 +202,14 @@ function isDirectory(filesystem: YjsFilesystem, path: string): boolean {
 	return lookup?.entry.type === 'directory'
 }
 
-function isFile(filesystem: YjsFilesystem, path: string): boolean {
+function isTextFile(filesystem: YjsFilesystem, path: string): boolean {
 	const lookup = filesystem.lookup(path)
-	return lookup?.entry.type === 'file'
+	return lookup?.entry.type === 'file' && lookup.entry.encoding !== 'binary'
+}
+
+function isBinaryFile(filesystem: YjsFilesystem, path: string): boolean {
+	const lookup = filesystem.lookup(path)
+	return lookup?.entry.type === 'file' && lookup.entry.encoding === 'binary'
 }
 
 function dirname(path: string): string {
