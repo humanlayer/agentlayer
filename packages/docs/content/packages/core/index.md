@@ -35,23 +35,26 @@ import { truncate, ... } from '@humanlayer/agentlayer-core/utils'
 ## Quick Example
 
 ```ts
-import { Agent, defineTool } from '@humanlayer/agentlayer-core'
+import { Agent, defineTool, startState } from '@humanlayer/agentlayer-core'
+import { anthropic } from '@ai-sdk/anthropic'
 import { z } from 'zod'
 
 const greet = defineTool({
   name: 'greet',
   description: 'Greet a person',
   input: z.object({ name: z.string() }),
-  execute: async ({ input }) => `Hello, ${input.name}!`
+  execute: async (input) => `Hello, ${input.name}!`
 })
 
 const agent = new Agent({
-  model: 'claude-sonnet-4-20250514',
-  tools: [greet],
+  model: anthropic('claude-sonnet-4-20250514'),
+  tools: { greet },
   system: 'You are a friendly assistant.'
 })
 
-for await (const event of agent.run('Say hello to Alice')) {
+const state = startState([{ role: 'user', content: 'Say hello to Alice' }])
+
+for await (const event of agent.run({ state })) {
   console.log(event)
 }
 ```

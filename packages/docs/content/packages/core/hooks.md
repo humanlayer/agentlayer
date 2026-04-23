@@ -15,140 +15,304 @@ Hooks let you intercept and modify agent behavior at four key points in the exec
 
 ### createPreToolUseHook()
 
+Creates a hook that runs before tool execution for specific tools.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `tool` | [`ToolRef`](#what-is-a-toolref) `\| ToolRef[]` | Tool(s) to match. Use `as const` for arrays. |
+| `hook` | `(ctx: TypedPreToolUseHookContext) => PreToolUseResult` | Hook callback with typed `ctx.input` |
+
 ```ts
-import { createPreToolUseHook, hookNext, hookDeny } from '@humanlayer/agentlayer-core/hooks'
+import { createPreToolUseHook } from '@humanlayer/agentlayer-core/hooks'
+import { BashTool } from '@humanlayer/agentlayer-core/interfaces'
 
-const logToolCalls = createPreToolUseHook(async (ctx) => {
-  console.log(`Tool: ${ctx.tool.name}, Input:`, ctx.input)
-  return hookNext()  // Continue execution
-})
-
-const blockDangerousCommands = createPreToolUseHook(async (ctx) => {
-  if (ctx.tool.name === 'Bash' && ctx.input.command.includes('rm -rf')) {
-    return hookDeny('Dangerous command blocked')
-  }
-  return hookNext()
+const logBashCalls = createPreToolUseHook(BashTool, async (ctx) => {
+  console.log(`Running:`, ctx.input.command)
+  return ctx.next()
 })
 ```
 
 ### createPostToolUseHook()
 
-```ts
-import { createPostToolUseHook, hookNext, hookToolResult } from '@humanlayer/agentlayer-core/hooks'
+Creates a hook that runs after tool execution for specific tools.
 
-const truncateLongResults = createPostToolUseHook(async (ctx) => {
-  if (ctx.result.length > 10000) {
-    return hookToolResult(ctx.result.slice(0, 10000) + '\n... truncated')
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `tool` | [`ToolRef`](#what-is-a-toolref) `\| ToolRef[]` | Tool(s) to match |
+| `hook` | `(ctx: TypedPostToolUseHookContext) => PostToolUseResult` | Hook callback. Must return `ctx.done()` |
+
+```ts
+import { createPostToolUseHook } from '@humanlayer/agentlayer-core/hooks'
+import { BashTool } from '@humanlayer/agentlayer-core/interfaces'
+
+const truncateLongResults = createPostToolUseHook(BashTool, async (ctx) => {
+  if (ctx.output.length > 10000) {
+    return ctx.done(ctx.output.slice(0, 10000) + '\n... truncated')
   }
-  return hookNext()
+  return ctx.done()
 })
 ```
 
 ### createApprovalHook()
 
-```ts
-import { createApprovalHook, hookNext, hookDeny, hookAsk } from '@humanlayer/agentlayer-core/hooks'
+Creates a hook that controls approval for specific tools.
 
-const requireApprovalForWrites = createApprovalHook(async (ctx) => {
-  if (ctx.tool.name === 'Write') {
-    return hookAsk({
-      message: `Allow writing to ${ctx.input.file_path}?`,
-      toolUseId: ctx.toolUseId,
-    })
-  }
-  return hookNext()  // Auto-approve other tools
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `tool` | [`ToolRef`](#what-is-a-toolref) `\| ToolRef[]` | Tool(s) to match |
+| `hook` | `(ctx: TypedApprovalHookContext) => ApprovalHookResult` | Hook callback |
+
+```ts
+import { createApprovalHook } from '@humanlayer/agentlayer-core/hooks'
+import { WriteTool } from '@humanlayer/agentlayer-core/interfaces'
+
+const requireApprovalForWrites = createApprovalHook(WriteTool, async (ctx) => {
+  return ctx.ask({
+    message: `Allow writing to ${ctx.input.file_path}?`,
+  })
 })
 ```
 
 ### createPreRequestHook()
 
+Creates a hook that runs before each LLM request. Unlike other hooks, this does **not** take a tool parameter.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `hook` | `(ctx: PreRequestHookContext) => PreRequestResult` | Hook callback |
+
 ```ts
 import { createPreRequestHook } from '@humanlayer/agentlayer-core/hooks'
 
 const addTimestamp = createPreRequestHook(async (ctx) => {
-  return {
-    type: 'transform',
-    systemAdditions: [`Current time: ${new Date().toISOString()}`]
-  }
+  const newMessages = [
+    ...ctx.messages,
+    { role: 'system', content: `Current time: ${new Date().toISOString()}` }
+  ]
+  return ctx.transform(newMessages)
 })
 ```
 
 ## Typed Hooks
 
-Create hooks that only run for specific tools:
+Create hooks that only run for specific tools. The `create*Hook` factories take a **`ToolRef`** as the first argument.
+
+### What is a ToolRef?
+
+A `ToolRef` is any object with `{ name: string, input: ZodSchema, output?: ZodSchema }`. This includes:
+
+1. **A `ToolInterface`** (from `defineToolInterface`)
+2. **A `Tool`** (from `defineTool` or `interface.define()`)
+3. **An array of either** (use `as const` for best type inference)
 
 ```ts
-import { createPreToolUseHook, isToolCall } from '@humanlayer/agentlayer-core/hooks'
-import { BashTool } from '@humanlayer/agentlayer-core/interfaces'
+interface ToolRef<TInput = any, TOutput = any> {
+  name: string
+  input: z.ZodType<TInput>
+  output?: z.ZodType<TOutput>
+}
+```
 
-const bashOnlyHook = createPreToolUseHook(
-  BashTool,  // Type filter
-  async (ctx) => {
-    // ctx.input is typed as BashInput
-    console.log('Running:', ctx.input.command)
-    return hookNext()
-  }
-)
+### Examples
 
-// Or use isToolCall for runtime checks
-const conditionalHook = createPreToolUseHook(async (ctx) => {
-  if (isToolCall(ctx, BashTool)) {
-    // ctx.input is narrowed to BashInput
-  }
-  return hookNext()
+```ts
+import { createPreToolUseHook, createPostToolUseHook, createApprovalHook, isToolCall } from '@humanlayer/agentlayer-core/hooks'
+import { BashTool, ReadTool, WriteTool } from '@humanlayer/agentlayer-core/interfaces'
+
+// 1. Single ToolInterface - ctx.input is typed as BashInput
+const bashOnlyHook = createPreToolUseHook(BashTool, async (ctx) => {
+  console.log('Running:', ctx.input.command)
+  return ctx.next()
+})
+
+// 2. Single Tool (from defineTool)
+const greetTool = defineTool({
+  name: 'greet',
+  input: z.object({ name: z.string() }),
+  execute: async (input) => `Hello, ${input.name}!`,
+})
+
+const logGreets = createPreToolUseHook(greetTool, (ctx) => {
+  console.log('Greeting:', ctx.input.name)  // Typed as { name: string }
+  return ctx.next()
+})
+
+// 3. Array of tools - ctx.input is union of inputs
+// IMPORTANT: Use `as const` for proper type inference
+const fileHook = createPreToolUseHook([ReadTool, WriteTool] as const, async (ctx) => {
+  // ctx.input is ReadInput | WriteInput
+  console.log('File operation:', ctx.toolName)
+  return ctx.next()
 })
 ```
+
+### NOT supported: plain strings
+
+```ts
+// ❌ This does NOT work - strings are not accepted
+createPreToolUseHook('read', (ctx) => { ... })
+
+// ✅ Use the ToolInterface instead
+createPreToolUseHook(ReadTool, (ctx) => { ... })
+```
+
+### Using isToolCall() for Type Narrowing
+
+For generic hooks or when handling multiple tools, use `isToolCall()` to narrow types at runtime:
+
+```ts
+const genericHook: PreToolUseHook = (ctx) => {
+  // ctx.input is Record<string, unknown> here
+  
+  if (isToolCall(ctx, ReadTool)) {
+    // ctx.input is now ReadInput (narrowed)
+    console.log('Reading:', ctx.input.file_path)
+  }
+  
+  if (isToolCall(ctx, BashTool)) {
+    // ctx.input is now BashInput (independently narrowed)
+    console.log('Running:', ctx.input.command)
+  }
+  
+  return ctx.next()
+}
+```
+
+`isToolCall()` works with both `PreToolUseHookContext` and `PostToolUseHookContext`.
+
+### Auto Pass-Through Behavior
+
+When you create a typed hook, non-matching tools are automatically passed through:
+- **preToolUse/approval**: Calls `ctx.next()` for non-matching tools
+- **postToolUse**: Calls `ctx.done()` for non-matching tools
 
 ## Hook Results
 
 ### PreToolUse Results
 
 ```ts
+// Use context methods
+ctx.next()                              // Continue to next hook/execution
+ctx.next(updatedInput)                  // Continue with modified input
+ctx.next(updatedInput, { updateContextWindow: true })  // Also patch context
+ctx.toolResult(output)                  // Skip execution, return this result
+ctx.toolResult(output, { isError: true })  // Return as error (won't trigger stop)
+ctx.stop({ reason: '...' })             // Stop the entire agent run
+
+// Or use hook functions directly
 hookNext()                    // Continue to next hook/execution
-hookNext({ input: modified }) // Continue with modified input
-hookDeny(reason)              // Block execution, return reason to model
-hookStop(reason)              // Stop the entire agent run
+hookNext(updatedInput)        // Continue with modified input
 hookToolResult(result)        // Skip execution, return this result
+hookStop({ reason: '...' })   // Stop the entire agent run
 ```
 
 ### PostToolUse Results
 
 ```ts
-hookNext()                    // Continue with original result
-hookToolResult(modified)      // Replace the result
-hookStop(reason)              // Stop the agent run
-hookDone(result)              // Stop and return final result
+// PostToolUse hooks can ONLY return DoneResult
+ctx.done()                    // Continue with original result
+ctx.done(mutatedResult)       // Replace the result with mutatedResult
+// Or use hookDone() directly
+hookDone()                    // Continue with original result
+hookDone(mutatedResult)       // Replace the result
 ```
 
 ### Approval Results
 
 ```ts
+// Use context methods (preferred)
+ctx.next()                    // Auto-approve
+ctx.deny(reason)              // Deny the tool call
+ctx.ask({ message: '...' })   // Pause for user approval (takes ApprovalRequestData)
+
+// Or use hook functions directly
 hookNext()                    // Auto-approve
 hookDeny(reason)              // Deny the tool call
-hookAsk({ message, ... })     // Pause for user approval
+hookAsk(approvalRequest)      // Pause for approval (takes full ApprovalRequest)
 ```
 
 ### PreRequest Results
 
 ```ts
-{ type: 'next' }                           // Continue unchanged
-{ type: 'transform', systemAdditions: [] } // Add to system prompt
-{ type: 'transform', messages: [] }        // Replace messages
+// Use context methods or return result objects directly
+ctx.next()                                   // Continue unchanged
+ctx.transform(messages)                      // Replace messages
+ctx.transform(messages, { persist: true })   // Replace and persist to context window
+
+// Result types use 'preRequestNext' and 'preRequestTransform'
+{ type: 'preRequestNext' }                              // Continue unchanged
+{ type: 'preRequestTransform', messages: [], persist: false }  // Replace messages
 ```
 
-## Hook Context
+## Hook Contexts
 
-All hooks receive a context with:
+Each hook type has its own context interface. There is no generic `HookContext` interface.
+
+### PreToolUseHookContext
 
 ```ts
-interface HookContext {
-  tool: Tool
-  toolUseId: string
-  input: unknown
-  
-  // State access
-  getState: (key: string) => unknown
-  setState: (key: string, value: unknown) => void
+interface PreToolUseHookContext extends HookStateAccess {
+  toolName: string
+  toolCallId: string               // Note: toolCallId, not toolUseId
+  input: Record<string, unknown>
+  tool: ToolInfo
+  getContextWindow: () => ReadonlyArray<ModelMessage>
+  next(updatedInput?: Record<string, unknown>, opts?: NextOptions): NextResult
+  toolResult(output: string, opts?: ToolResultOptions): ToolResultResult
+  stop(options?: StopOptions): HookStopResult
+}
+```
+
+### PostToolUseHookContext
+
+```ts
+interface PostToolUseHookContext extends HookStateAccess {
+  toolName: string
+  toolCallId: string
+  input: Record<string, unknown>
+  output: string
+  rawOutput: unknown
+  tool: ToolInfo
+  getContextWindow: () => ReadonlyArray<ModelMessage>
+  done(mutatedResult?: string): DoneResult
+}
+```
+
+### ApprovalHookContext
+
+```ts
+interface ApprovalHookContext {
+  toolName: string
+  toolCallId: string
+  input: Record<string, unknown>
+  tool: ToolInfo
+  getContextWindow: () => ReadonlyArray<ModelMessage>
+  next(): NextResult
+  deny(reason?: string): DenyResult
+  ask(approval: ApprovalRequestData): AskResult
+}
+```
+
+### PreRequestHookContext
+
+```ts
+interface PreRequestHookContext {
+  messages: ReadonlyArray<ModelMessage>    // Note: ReadonlyArray
+  contextWindowTokens: number
+  contextWindowLimit: number | undefined
+  next(): PreRequestNextResult
+  transform(messages: ModelMessage[], opts?: PreRequestTransformOptions): PreRequestTransformResult
+}
+```
+
+### HookStateAccess
+
+PreToolUse and PostToolUse hooks extend `HookStateAccess`:
+
+```ts
+interface HookStateAccess {
+  getState<T>(key: string): T | undefined
+  updateState<T>(key: string, updater: (current: T | undefined) => T): void
 }
 ```
 
@@ -156,19 +320,19 @@ interface HookContext {
 
 ### deduplicateReads()
 
-Prevents reading the same file multiple times.
+Prevents reading the same file multiple times by tracking reads and returning cached content. **Phase:** `preRequest`
 
 ```ts
 import { deduplicateReads } from '@humanlayer/agentlayer-core/hooks'
 
 const hooks = {
-  preToolUse: [deduplicateReads()]
+  preRequest: [deduplicateReads()]
 }
 ```
 
 ### stripThinkingTokens()
 
-Removes `<thinking>` blocks from responses.
+Removes `<thinking>` blocks from responses. **Phase:** `preRequest`
 
 ```ts
 import { stripThinkingTokens } from '@humanlayer/agentlayer-core/hooks'
@@ -180,13 +344,19 @@ const hooks = {
 
 ### truncateOldBashResults()
 
-Truncates old bash output to save context.
+Truncates old bash output to save context. **Phase:** `preRequest`
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `keep` | `number` | `3` | Number of recent bash results to keep in full |
+| `summaryLines` | `number` | `5` | Lines to keep for truncated results |
+| `persist` | `boolean` | `false` | Whether to persist changes to context window |
 
 ```ts
 import { truncateOldBashResults } from '@humanlayer/agentlayer-core/hooks'
 
 const hooks = {
-  preRequest: [truncateOldBashResults({ maxLines: 50 })]
+  preRequest: [truncateOldBashResults({ keep: 3, summaryLines: 5 })]
 }
 ```
 

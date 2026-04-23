@@ -44,36 +44,50 @@ const prompt = getSystemPromptForModel('claude')
 
 ### resolveCodingModelPrompt()
 
-Resolve a prompt key or custom string:
+Resolve a prompt from a model family key, model ID, or LanguageModel object:
 
 ```ts
 import { resolveCodingModelPrompt } from '@humanlayer/agentlayer-core/prompts'
 
-// Use a preset
+// Use a preset key
 const prompt1 = resolveCodingModelPrompt('claude')
 
-// Or a custom string
-const prompt2 = resolveCodingModelPrompt('You are a helpful assistant.')
+// Pass a model ID - will detect the model family
+const prompt2 = resolveCodingModelPrompt('gpt-4o')  // Returns OpenAI prompt
+
+// Pass a LanguageModel object
+const prompt3 = resolveCodingModelPrompt(myLanguageModel)
 ```
+
+Note: Non-key strings are passed to `detectModelFamily()` to determine the appropriate prompt. Custom arbitrary strings are not returned directly.
 
 ### createAgentSystemPrompt()
 
-Build a complete system prompt with environment context:
+Build a complete system prompt with environment context. Returns an array of prompt strings (synchronous):
 
 ```ts
 import { createAgentSystemPrompt } from '@humanlayer/agentlayer-core/prompts'
 
-const system = await createAgentSystemPrompt({
-  cwd: '/project',
+const systemParts: string[] = createAgentSystemPrompt({
   model: 'claude',
-  includeEnvironment: true,
+  repoInstructions: 'Instructions from CLAUDE.md...',
+  environment: '# Environment\n- Working directory: /project\n...',
   systemPromptAdditions: ['Additional context...']
 })
 ```
 
+#### CreateAgentSystemPromptOptions
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `model` | `LanguageModel \| string \| CodingPromptKey` | Yes | Model to resolve prompt for |
+| `repoInstructions` | `string` | No | Pre-formatted repo instructions string |
+| `environment` | `string` | No | Pre-formatted environment context string |
+| `systemPromptAdditions` | `string[]` | No | Additional prompt sections to append |
+
 ## Model Personas
 
-Pre-built system prompts optimized for different models:
+Pre-built system prompt strings optimized for different models:
 
 ```ts
 import {
@@ -85,21 +99,21 @@ import {
   tarsPersona,
 } from '@humanlayer/agentlayer-core/prompts'
 
-// Each returns a string
-const claude = claudePrompt()
-const openai = openaiPrompt()
+// These are string constants, not functions
+console.log(claudePrompt)  // "You are CodeLayer, the best coding agent..."
+console.log(openaiPrompt)  // OpenAI-optimized prompt string
 ```
 
-### Available Personas
+### Available Prompts
 
-| Function | Model Family | Description |
+| Constant | Model Family | Description |
 |----------|-------------|-------------|
-| `claudePrompt()` | Claude | Optimized for Anthropic Claude models |
-| `openaiPrompt()` | GPT-4/o1 | Optimized for OpenAI models |
-| `geminiPrompt()` | Gemini | Optimized for Google Gemini |
-| `codexPrompt()` | Codex | Optimized for code generation |
-| `defaultPrompt()` | Any | Generic coding assistant prompt |
-| `tarsPersona()` | Any | TARS-style personality |
+| `claudePrompt` | Claude | Optimized for Anthropic Claude models |
+| `openaiPrompt` | GPT-4/o1 | Optimized for OpenAI models |
+| `geminiPrompt` | Gemini | Optimized for Google Gemini |
+| `codexPrompt` | Codex | Optimized for code generation |
+| `defaultPrompt` | Any | Generic coding assistant prompt |
+| `tarsPersona` | Any | TARS-style personality |
 
 ## Model Detection
 
@@ -118,7 +132,15 @@ detectModelFamily('gemini-2.0-flash')          // 'gemini'
 ### CodingModelFamily
 
 ```ts
-type CodingModelFamily = 'claude' | 'openai' | 'gemini' | 'codex' | 'default'
+// Excludes 'default' - only the specific model families
+type CodingModelFamily = 'claude' | 'openai' | 'gemini' | 'codex'
+```
+
+### CodingPromptKey
+
+```ts
+// Includes 'default' as a valid key for systemPrompts
+type CodingPromptKey = 'claude' | 'openai' | 'gemini' | 'codex' | 'default'
 ```
 
 ## Environment & Repo Prompts
@@ -131,56 +153,85 @@ Generate environment context:
 import { environmentPrompt } from '@humanlayer/agentlayer-core/prompts'
 
 const env = environmentPrompt({
-  cwd: '/project',
-  platform: 'darwin',
-  date: new Date(),
-  isGitRepo: true
+  cwd: '/project',       // Required
+  isGitRepo: true,       // Required
+  platform: 'darwin',    // Optional, defaults to process.platform
+  date: new Date()       // Optional, defaults to current date
 })
-// "Working directory: /project\nPlatform: darwin\n..."
+// "# Environment\n- Working directory: /project\n- Is git repo: yes\n..."
 ```
+
+#### EnvironmentPromptOptions
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `cwd` | `string` | Yes | Working directory path |
+| `isGitRepo` | `boolean` | Yes | Whether the directory is a git repository |
+| `platform` | `string` | No | Platform identifier (defaults to `process.platform`) |
+| `date` | `Date` | No | Date for context (defaults to current date) |
 
 ### repoInstructionsPrompt()
 
-Load repository instructions (CLAUDE.md, AGENTS.md):
+Format repository instructions with a header. This is a synchronous function that takes pre-read file contents:
 
 ```ts
 import { repoInstructionsPrompt } from '@humanlayer/agentlayer-core/prompts'
 
-const instructions = await repoInstructionsPrompt({
-  cwd: '/project',
-  candidates: ['CLAUDE.md', 'AGENTS.md', 'CONTEXT.md'],
-  allowMissing: true
+// Read the file contents first, then format
+const contents = await fs.readFile('/project/CLAUDE.md', 'utf-8')
+
+const instructions = repoInstructionsPrompt({
+  path: '/project/CLAUDE.md',
+  contents: contents
 })
+// "# Repository Instructions\nUse the following repository-specific instructions from /project/CLAUDE.md.\n\n..."
 ```
+
+#### RepoInstructionsPromptOptions
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `path` | `string` | Yes | Path to the instructions file (for display in prompt) |
+| `contents` | `string` | Yes | Pre-read file contents |
 
 ## Provider Options
 
 ### buildCodingProviderOptions()
 
-Build provider-specific options:
+Build provider-specific options based on the model. Takes a single model parameter:
 
 ```ts
 import { buildCodingProviderOptions } from '@humanlayer/agentlayer-core/prompts'
 
-const options = buildCodingProviderOptions({
-  model: 'claude-sonnet-4-20250514',
-  temperature: 0.7,
-  maxTokens: 4096
-})
+const options = buildCodingProviderOptions('claude-sonnet-4-20250514')
+// Returns: {
+//   anthropic: { thinking: {...}, cacheControl: { type: 'ephemeral' } },
+//   openai: { store: false, reasoningEffort: 'medium', ... }
+// }
+
+// Also accepts a LanguageModel object
+const options2 = buildCodingProviderOptions(myLanguageModel)
 ```
+
+The function returns an object with provider-specific options including:
+- `anthropic`: Thinking mode configuration and cache control
+- `openai`: Reasoning effort settings and storage options
 
 ## System Prompts Object
 
-Access all prompts via the `systemPrompts` object:
+Access all prompts via the `systemPrompts` object. Values are the prompt strings themselves:
 
 ```ts
 import { systemPrompts } from '@humanlayer/agentlayer-core/prompts'
 
-systemPrompts.claude    // claudePrompt()
-systemPrompts.openai    // openaiPrompt()
-systemPrompts.gemini    // geminiPrompt()
-systemPrompts.codex     // codexPrompt()
-systemPrompts.default   // defaultPrompt()
+systemPrompts.claude    // The claudePrompt string
+systemPrompts.openai    // The openaiPrompt string
+systemPrompts.gemini    // The geminiPrompt string
+systemPrompts.codex     // The codexPrompt string
+systemPrompts.default   // The defaultPrompt string
+
+// Example usage
+const prompt = systemPrompts['claude']  // Returns the prompt string directly
 ```
 
 ## Type Exports

@@ -79,11 +79,11 @@ const approvalHook: ApprovalHook = (ctx) => {
 
 ```ts
 interface ApprovalHookContext {
-  toolName: string                      // e.g., 'bash', 'read'
-  toolCallId: string                    // Unique ID for this call
-  input: Record<string, unknown>        // Parsed tool input
-  tool: ToolInfo                        // Tool metadata and schemas
-  getContextWindow(): ReadonlyArray<ModelMessage>
+  toolName: string                                    // e.g., 'bash', 'read'
+  toolCallId: string                                  // Unique ID for this call
+  input: Record<string, unknown>                      // Parsed tool input
+  tool: ToolInfo                                      // Tool metadata and schemas
+  getContextWindow: () => ReadonlyArray<ModelMessage> // Access context window
 }
 ```
 
@@ -166,18 +166,33 @@ const stopOnCondition: PreToolUseHook = (ctx) => {
 
 | Method | Effect |
 |--------|--------|
-| `ctx.next(input?, options?)` | Continue with optional input mutation |
-| `ctx.toolResult(output, isError?)` | Skip execution, return synthetic result |
+| `ctx.next(updatedInput?, opts?)` | Continue with optional input mutation |
+| `ctx.toolResult(output, opts?)` | Skip execution, return synthetic result |
 | `ctx.stop(options?)` | Stop the loop after this call |
 
+Options for `toolResult()`:
+
+| Option | Type | Description |
+|--------|------|-------------|
+| `isError` | `boolean` | Treat result as error (won't trigger toolCompleted stop). Default: false |
+
 ### Hook State
+
+`PreToolUseHookContext` extends `HookStateAccess` to provide state management:
+
+```ts
+interface HookStateAccess {
+  getState<T>(key: string): T | undefined
+  updateState<T>(key: string, updater: (current: T | undefined) => T): void
+}
+```
 
 PreToolUse hooks can persist state across calls:
 
 ```ts
 const countingHook: PreToolUseHook = (ctx) => {
   const count = ctx.getState<number>('bashCount') ?? 0
-  ctx.updateState<number>('bashCount', () => count + 1)
+  ctx.updateState<number>('bashCount', (current) => (current ?? 0) + 1)
   
   if (count > 10) {
     return ctx.stop({ reason: 'Too many bash commands' })
@@ -211,17 +226,22 @@ const truncateOutput: PostToolUseHook = (ctx) => {
 
 ### Context Properties
 
+`PostToolUseHookContext` extends `HookStateAccess` to provide state management:
+
 ```ts
-interface PostToolUseHookContext {
+interface HookStateAccess {
+  getState<T>(key: string): T | undefined
+  updateState<T>(key: string, updater: (current: T | undefined) => T): void
+}
+
+interface PostToolUseHookContext extends HookStateAccess {
   toolName: string
   toolCallId: string
   input: Record<string, unknown>
-  output: string                        // Serialized output (model sees this)
-  rawOutput: unknown                    // Original executor return value
+  output: string                                      // Serialized output (model sees this)
+  rawOutput: unknown                                  // Original executor return value
   tool: ToolInfo
-  getContextWindow(): ReadonlyArray<ModelMessage>
-  getState<T>(key: string): T | undefined
-  updateState<T>(key: string, updater: (current: T | undefined) => T): void
+  getContextWindow: () => ReadonlyArray<ModelMessage> // Access context window
 }
 ```
 
@@ -266,9 +286,9 @@ const compactHook = createPreRequestHook((ctx) => {
 
 ```ts
 interface PreRequestHookContext {
-  messages: ModelMessage[]              // Current context window
-  contextWindowTokens: number           // Estimated token count
-  contextWindowLimit: number | undefined // Model's limit
+  messages: ReadonlyArray<ModelMessage>   // Current context window (read-only)
+  contextWindowTokens: number             // Estimated token count (0 before first call)
+  contextWindowLimit: number | undefined  // Model's limit (undefined if unknown)
 }
 ```
 

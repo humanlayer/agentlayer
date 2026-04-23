@@ -30,6 +30,13 @@ import { Agent } from '@humanlayer/agentlayer-core'
 
 const bash = new Bash()
 
+// createAgentSystemPrompt returns Promise<string[]>
+const systemPromptParts = await createAgentSystemPrompt({
+  bash,
+  cwd: '/workspace',
+  model: 'claude'
+})
+
 const agent = new Agent({
   model: 'claude-sonnet-4-20250514',
   tools: [
@@ -37,11 +44,7 @@ const agent = new Agent({
     createJustBashReadTool(bash),
     createWriteTool(bash)
   ],
-  system: await createAgentSystemPrompt({
-    bash,
-    cwd: '/workspace',
-    model: 'claude'
-  })
+  system: systemPromptParts  // string[] - array of prompt sections
 })
 ```
 

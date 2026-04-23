@@ -42,6 +42,7 @@ export default withMermaid(
 						{ text: 'Tools', link: '/concepts/tools' },
 						{ text: 'Hooks', link: '/concepts/hooks' },
 						{ text: 'Run API', link: '/concepts/run-api' },
+						{ text: 'Output Streaming', link: '/concepts/streaming' },
 						{ text: 'State', link: '/concepts/state' },
 						{ text: 'Subagents', link: '/concepts/subagents' },
 					],

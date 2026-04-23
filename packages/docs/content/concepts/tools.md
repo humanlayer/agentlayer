@@ -89,6 +89,7 @@ function defineTool<TInput, TOutput = string>(config: {
 Creates a reusable tool interface that can have multiple implementations.
 
 ```ts
+// Stateless interface
 function defineToolInterface<TInput, TOutput = string>(config: {
   name: string
   description: string
@@ -97,18 +98,34 @@ function defineToolInterface<TInput, TOutput = string>(config: {
   beforeExecutionTransform?: (input: TInput, ctx: ToolContext) => TInput
   serialize?: (raw: TOutput, input: TInput, ctx: ToolContext) => string
 }): ToolInterface<TInput, TOutput>
+
+// Stateful interface (both stateKey and stateSchema required)
+function defineToolInterface<TInput, TOutput = string, TState = never>(config: {
+  name: string
+  description: string
+  input: z.ZodType<TInput>
+  output?: z.ZodType<TOutput>
+  stateKey: string
+  stateSchema: z.ZodType<TState>
+  beforeExecutionTransform?: (input: TInput, ctx: ToolContext) => TInput
+  serialize?: (raw: TOutput, input: TInput, ctx: ToolContext) => string
+}): ToolInterface<TInput, TOutput, TState>
 ```
 
 The returned interface has a `.define(executor)` method:
 
 ```ts
-interface ToolInterface<TInput, TOutput> {
+interface ToolInterface<TInput, TOutput, TState = never> {
   define(
-    executor: (input: TInput, ctx: ToolContext) => Promise<TOutput>,
+    executor: (input: TInput, ctx: ToolContextFor<TState>) => Promise<TOutput>,
     overrides?: { description?: string }
   ): Tool<TInput, TOutput>
 }
 ```
+
+::: tip ToolContextFor
+`ToolContextFor<TState>` resolves to `ToolContext` for stateless tools (when `TState = never`), or `ToolContext & ToolStateAccessors<TState>` for stateful tools. This ensures stateful interfaces provide `getToolState()` and `updateToolState()` in the executor context.
+:::
 
 ::: info Source Reference
 [`defineToolInterface()`](https://github.com/humanlayer/agentlayer/blob/main/packages/agentlayer-core/src/define-tool.ts#L252-L313) in `define-tool.ts`
@@ -295,9 +312,28 @@ const agent = new Agent({
 `@humanlayer/agentlayer-justbash` provides sandboxed implementations via [just-bash](https://github.com/vercel-labs/just-bash):
 
 ```ts
-import { createJustBashTools } from '@humanlayer/agentlayer-justbash'
+import { 
+  createJustBashTool,
+  createJustBashReadTool,
+  createEditTool,
+  createWriteTool,
+  createGlobTool,
+  createGrepTool,
+  createListTool,
+  createApplyPatchTool,
+  createWebFetchTool,
+  createWebSearchTool,
+  createCodeSearchTool,
+} from '@humanlayer/agentlayer-justbash'
 
-const sandboxedTools = createJustBashTools({ cwd: '/sandbox' })
+const agent = new Agent({
+  tools: {
+    bash: createJustBashTool({ cwd: '/sandbox' }),
+    read: createJustBashReadTool({ cwd: '/sandbox' }),
+    edit: createEditTool({ cwd: '/sandbox' }),
+    // ... etc
+  },
+})
 ```
 
 ## Patterns

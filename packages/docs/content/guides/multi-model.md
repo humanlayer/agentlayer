@@ -12,26 +12,31 @@ AgentLayer supports multiple LLM providers through the AI SDK.
 
 ## Basic Usage
 
+The `model` property in `AgentConfig` expects a `LanguageModel` instance from the AI SDK, not a string. Use provider functions like `anthropic()`, `openai()`, or `google()` to create model instances:
+
 ```ts
 import { Agent } from '@humanlayer/agentlayer-core'
+import { anthropic } from '@ai-sdk/anthropic'
+import { openai } from '@ai-sdk/openai'
+import { google } from '@ai-sdk/google'
 
 // Anthropic Claude
 const claudeAgent = new Agent({
-  model: 'claude-sonnet-4-20250514',
+  model: anthropic('claude-sonnet-4-20250514'),
   tools: [...],
   system: '...'
 })
 
 // OpenAI GPT-4
 const openaiAgent = new Agent({
-  model: 'gpt-4o',
+  model: openai('gpt-4o'),
   tools: [...],
   system: '...'
 })
 
 // Google Gemini
 const geminiAgent = new Agent({
-  model: 'gemini-2.0-flash',
+  model: google('gemini-2.0-flash'),
   tools: [...],
   system: '...'
 })
@@ -64,21 +69,25 @@ const system = await createAgentSystemPrompt({
 
 ## Provider Options
 
-Pass provider-specific options:
+Use `buildCodingProviderOptions` to get model-appropriate provider options. The function takes a model (either a `LanguageModel` instance or a string model ID) and returns optimized provider options for that model family:
 
 ```ts
 import { buildCodingProviderOptions } from '@humanlayer/agentlayer-core/prompts'
+import { anthropic } from '@ai-sdk/anthropic'
+
+const model = anthropic('claude-sonnet-4-20250514')
 
 const agent = new Agent({
-  model: 'claude-sonnet-4-20250514',
+  model,
   tools: [...],
   system: '...',
-  providerOptions: buildCodingProviderOptions({
-    temperature: 0.7,
-    maxTokens: 4096
-  })
+  providerOptions: buildCodingProviderOptions(model)
 })
 ```
+
+This automatically configures model-specific options like:
+- **Anthropic**: Extended thinking (adaptive for 4.6+, enabled with budget for 4.5), cache control
+- **OpenAI**: Reasoning effort, reasoning summary, store settings
 
 ## Choosing Tools by Model
 
@@ -100,15 +109,34 @@ const codexTools = await createCodexCodingAgentToolset({ cwd })
 ## Dynamic Model Selection
 
 ```ts
-function createAgentForModel(modelId: string) {
-  const family = detectModelFamily(modelId)
+import { anthropic } from '@ai-sdk/anthropic'
+import { openai } from '@ai-sdk/openai'
+import { google } from '@ai-sdk/google'
+import type { LanguageModel } from 'ai'
+
+function getModel(modelId: string): LanguageModel {
+  if (modelId.startsWith('claude') || modelId.startsWith('anthropic')) {
+    return anthropic(modelId)
+  }
+  if (modelId.startsWith('gpt') || modelId.startsWith('o1') || modelId.startsWith('o3')) {
+    return openai(modelId)
+  }
+  if (modelId.startsWith('gemini')) {
+    return google(modelId)
+  }
+  throw new Error(`Unknown model: ${modelId}`)
+}
+
+async function createAgentForModel(modelId: string) {
+  const model = getModel(modelId)
+  const family = detectModelFamily(model)
   
   const toolsetFactory = family === 'codex' || family === 'openai'
     ? createCodexCodingAgentToolset
     : createClaudeCodingAgentToolset
   
   return new Agent({
-    model: modelId,
+    model,
     tools: await toolsetFactory({ cwd: process.cwd() }),
     system: await createAgentSystemPrompt({
       cwd: process.cwd(),
@@ -118,7 +146,7 @@ function createAgentForModel(modelId: string) {
 }
 
 // Usage
-const agent = createAgentForModel(process.env.MODEL || 'claude-sonnet-4-20250514')
+const agent = await createAgentForModel(process.env.MODEL || 'claude-sonnet-4-20250514')
 ```
 
 ## Model Comparison
@@ -136,16 +164,18 @@ const agent = createAgentForModel(process.env.MODEL || 'claude-sonnet-4-20250514
 Use different models for different tasks:
 
 ```ts
+import { anthropic } from '@ai-sdk/anthropic'
+
 // Use cheaper model for exploration
 const explorerAgent = new Agent({
-  model: 'claude-haiku-3-20240307',
+  model: anthropic('claude-haiku-3-20240307'),
   tools: [globTool, grepTool, readTool],
   system: 'You explore codebases to find relevant files.'
 })
 
 // Use capable model for implementation
 const implementerAgent = new Agent({
-  model: 'claude-sonnet-4-20250514',
+  model: anthropic('claude-sonnet-4-20250514'),
   tools: fullToolset,
   system: 'You implement code changes.'
 })
@@ -154,17 +184,22 @@ const implementerAgent = new Agent({
 ## Fallback Models
 
 ```ts
+import { anthropic } from '@ai-sdk/anthropic'
+import { openai } from '@ai-sdk/openai'
+import { google } from '@ai-sdk/google'
+import type { LanguageModel } from 'ai'
+
 async function runWithFallback(prompt: string) {
-  const models = [
-    'claude-sonnet-4-20250514',
-    'gpt-4o',
-    'gemini-1.5-pro'
+  const models: LanguageModel[] = [
+    anthropic('claude-sonnet-4-20250514'),
+    openai('gpt-4o'),
+    google('gemini-1.5-pro')
   ]
   
   for (const model of models) {
     try {
       const agent = new Agent({ model, tools, system })
-      const run = agent.run(prompt)
+      const run = agent.run({ state: { messages: [{ role: 'user', content: prompt }] } })
       
       for await (const event of run) {
         // ...
@@ -172,7 +207,7 @@ async function runWithFallback(prompt: string) {
       
       return await run.result
     } catch (error) {
-      console.error(`${model} failed:`, error.message)
+      console.error(`Model failed:`, error.message)
       continue
     }
   }

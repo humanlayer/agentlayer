@@ -19,11 +19,10 @@ const tools = await createClaudeCodingAgentToolset({
 ```
 
 **Includes:**
-- Bash, Read, Write, Edit, MultiEdit, Glob, Grep, List
+- Bash, Read, Write, Edit, Glob, Grep, List
 - Skill tool (from repo directories)
 - WebFetch, WebSearch (if API key provided)
 - Subagent tools (if configured)
-- TodoWrite
 
 **Options:**
 
@@ -32,9 +31,10 @@ interface CreateCodingAgentToolsetOptions {
   cwd: string
   
   // Skill configuration
-  skillDirs?: string[]
+  skillDirs?: string | string[] | SkillDirEntry[]
   skills?: Skill[]
   skillTool?: Tool
+  allowMissingSkills?: boolean
   
   // Web tools
   exaApiKey?: string
@@ -48,7 +48,7 @@ interface CreateCodingAgentToolsetOptions {
   onChildEvent?: (event: AgentEvent) => void
   
   // Extras
-  additionalTools?: Tool[]
+  additionalTools?: Record<string, Tool<any, any>>
 }
 ```
 
@@ -72,24 +72,24 @@ const tools = await createCodexCodingAgentToolset({
 
 ### createClaudeAgentFilesystemToolset()
 
-Just the core filesystem tools for Claude (no skills, web, or subagents).
+Just the core filesystem tools for Claude (no skills, web, or subagents). Returns a `Record<string, Tool>` object.
 
 ```ts
 import { createClaudeAgentFilesystemToolset } from '@humanlayer/agentlayer-filesystem'
 
 const tools = createClaudeAgentFilesystemToolset({ cwd: process.cwd() })
-// [Bash, Read, Write, Edit, Glob, Grep, List]
+// { bash, read, write, edit, glob, grep, list }
 ```
 
 ### createCodexAgentFilesystemToolset()
 
-Just the core filesystem tools for Codex.
+Just the core filesystem tools for Codex. Returns a `Record<string, Tool>` object.
 
 ```ts
 import { createCodexAgentFilesystemToolset } from '@humanlayer/agentlayer-filesystem'
 
 const tools = createCodexAgentFilesystemToolset({ cwd: process.cwd() })
-// [Bash, Read, ApplyPatch, Glob, Grep, List]
+// { bash, read, apply_patch, glob, grep, list }
 ```
 
 ## Auxiliary Toolset

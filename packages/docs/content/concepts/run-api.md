@@ -44,75 +44,35 @@ interface RunOptions {
 
 ### Streaming Events
 
+`AgentRun` is an `AsyncIterable<AgentEvent>`. Iterate to consume live events from the loop:
+
 ```ts
 const run = agent.run({ state, stream: true })
 
 for await (const event of run) {
   switch (event.type) {
-    case 'message':
-      console.log('Message:', event.message)
-      break
     case 'textDelta':
       process.stdout.write(event.text)
       break
-    case 'toolInputDelta':
-      // Model is generating tool input
-      break
-    case 'tokenUsage':
-      console.log(`Tokens: ${event.usage.usage.inputTokens} in`)
-      break
     case 'approvalRequested':
       console.log(`Approval needed: ${event.toolName}`)
-      break
-    case 'stepStart':
-      console.log(`Step ${event.stepIndex} starting`)
       break
     case 'stepFinish':
       console.log(`Step ${event.stepIndex} finished`)
       break
   }
 }
+
+const result = await run.result
 ```
 
-### Event Types
+There are 14 event types (message-level events, plus streaming deltas for text, tool input, and reasoning). Every event also carries optional `agentId` and `parentToolCallId` fields, which are set when the event comes from a sub-agent.
 
-| Event | When | Key Fields |
-|-------|------|------------|
-| `message` | Complete message added | `message: ModelMessage` |
-| `approvalRequested` | Tool needs approval | `toolCallId`, `toolName`, `input`, `approval` |
-| `tokenUsage` | After each model call | `usage: TokenUsageEvent` |
-| `stepStart` | Step begins | `stepIndex` |
-| `stepFinish` | Step ends | `stepIndex`, `finishReason?` |
-| `textStart` | Text generation starts | `id`, `stepIndex` |
-| `textDelta` | Streaming text | `id`, `text`, `stepIndex` |
-| `textEnd` | Text generation ends | `id`, `stepIndex` |
-| `toolInputStart` | Tool input starts | `id`, `toolName`, `stepIndex` |
-| `toolInputDelta` | Tool input streaming | `id`, `delta`, `stepIndex` |
-| `toolInputEnd` | Tool input ends | `id`, `stepIndex` |
-| `reasoningStart` | Extended thinking starts | `id`, `stepIndex` |
-| `reasoningDelta` | Extended thinking streaming | `id`, `text`, `stepIndex` |
-| `reasoningEnd` | Extended thinking ends | `id`, `stepIndex` |
+See [Output Streaming](/concepts/streaming) for the full event catalog, ordering guarantees, buffering semantics, and the rules for how sub-agent events are merged into the parent stream.
 
 ::: info Source Reference
 [`AgentEvent`](https://github.com/humanlayer/agentlayer/blob/main/packages/agentlayer-core/src/agent-run.ts) in `agent-run.ts`
 :::
-
-### Streaming and Result Together
-
-You can stream events while awaiting the final result:
-
-```ts
-const run = agent.run({ state, stream: true })
-
-// Process events
-for await (const event of run) {
-  handleEvent(event)
-}
-
-// Get final result
-const result = await run.result
-await saveState(result.state)
-```
 
 ## RunResult
 
@@ -369,8 +329,9 @@ interface AgentConfig<TTools> {
   tools: TTools                           // Tool map
   toolChoice?: ToolChoice<TTools>         // Force tool selection
   providerOptions?: ProviderOptions       // Provider-specific options
-  maxSteps?: number                        // Hard step limit
+  maxSteps?: number                       // Hard step limit
   stopWhen?: StopWhen                     // Stop conditions
+  modelProvider?: ModelProvider           // Custom model provider
   contextWindowLimit?: number             // Override auto-detected limit
   hooks?: {
     approval?: ApprovalHook[]
@@ -378,9 +339,15 @@ interface AgentConfig<TTools> {
     postToolUse?: PostToolUseHook[]
     preRequest?: PreRequestHook[]
   }
-  onError?: (error, result) => void       // Error callback
-  onStop?: (result) => void               // Completion callback
-  onApprovalRequested?: (approval, toolCallId, toolName, input) => void
+  // Callbacks — all can be sync or async (return void | Promise<void>)
+  onError?: (error: AgentError, result: RunResult) => void | Promise<void>
+  onStop?: (result: RunResult) => void | Promise<void>
+  onApprovalRequested?: (
+    approval: ApprovalRequest,
+    toolCallId: string,
+    toolName: string,
+    input: Record<string, unknown>
+  ) => void | Promise<void>
 }
 ```
 
@@ -390,6 +357,7 @@ interface AgentConfig<TTools> {
 
 ## Next Steps
 
+- **[Output Streaming](/concepts/streaming)** — Event types, ordering, and sub-agent composition
 - **[State](/concepts/state)** — State structure and persistence
 - **[Hooks](/concepts/hooks)** — How hooks trigger approval and stop
 - **[Subagents](/concepts/subagents)** — Nested pause/resume behavior

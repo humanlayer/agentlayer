@@ -48,10 +48,15 @@ async function main() {
     stopWhen: [maxSteps(50)]
   })
   
+  // Create initial state with the prompt
+  const state = {
+    messages: [{ role: 'user' as const, content: 'List the files in the current directory' }]
+  }
+  
   // Run it
-  for await (const event of agent.run('List the files in the current directory')) {
-    if (event.type === 'text') {
-      process.stdout.write(event.content)
+  for await (const event of agent.run({ state, stream: true })) {
+    if (event.type === 'textDelta') {
+      process.stdout.write(event.text)
     }
   }
 }
@@ -61,39 +66,54 @@ main()
 
 ## Step 2: Handle Events
 
-The agent emits events as it runs:
+The agent emits events as it runs. Use `stream: true` in the run options to receive streaming events:
 
 ```ts
-for await (const event of agent.run(prompt)) {
+const state = {
+  messages: [{ role: 'user' as const, content: prompt }]
+}
+
+for await (const event of agent.run({ state, stream: true })) {
   switch (event.type) {
-    case 'text':
-      // Assistant text output
-      process.stdout.write(event.content)
+    case 'textDelta':
+      // Streaming text output
+      process.stdout.write(event.text)
       break
       
-    case 'tool_use':
+    case 'textStart':
+      // Text block started
+      break
+      
+    case 'textEnd':
+      // Text block completed
+      break
+      
+    case 'toolInputStart':
       // Tool is being called
       console.log(`\n[Tool: ${event.toolName}]`)
       break
       
-    case 'tool_result':
-      // Tool completed
-      console.log(`[Result: ${event.result.slice(0, 100)}...]`)
+    case 'toolInputDelta':
+      // Tool input streaming
       break
       
-    case 'thinking':
-      // Model thinking (extended thinking models)
-      console.log(`[Thinking: ${event.content}]`)
+    case 'toolInputEnd':
+      // Tool input complete
       break
       
-    case 'usage':
+    case 'reasoningDelta':
+      // Model reasoning (extended thinking models)
+      console.log(`[Reasoning: ${event.text}]`)
+      break
+      
+    case 'tokenUsage':
       // Token usage
-      console.log(`[Tokens: ${event.usage.input_tokens} in, ${event.usage.output_tokens} out]`)
+      console.log(`[Tokens: ${event.usage.usage.inputTokens} in, ${event.usage.usage.outputTokens} out]`)
       break
       
-    case 'finish':
-      // Agent finished
-      console.log(`\n[Finished: ${event.reason}]`)
+    case 'stepFinish':
+      // Step finished
+      console.log(`\n[Step finished: ${event.finishReason}]`)
       break
   }
 }
@@ -102,16 +122,17 @@ for await (const event of agent.run(prompt)) {
 ## Step 3: Add Approval for Dangerous Operations
 
 ```ts
-import { createApprovalHook, hookNext, hookAsk } from '@humanlayer/agentlayer-core'
+import { createApprovalHook } from '@humanlayer/agentlayer-core'
 
-const requireWriteApproval = createApprovalHook(async (ctx) => {
-  if (ctx.tool.name === 'Write' || ctx.tool.name === 'Edit') {
-    return hookAsk({
-      message: `Allow ${ctx.tool.name} to ${ctx.input.file_path}?`,
-      toolUseId: ctx.toolUseId
-    })
-  }
-  return hookNext()
+// Get references to the tools you want to gate
+const { Write, Edit } = tools
+
+// createApprovalHook requires a tool (or array of tools) as the first argument
+const requireWriteApproval = createApprovalHook([Write, Edit], async (ctx) => {
+  // Use ctx.ask() to request approval - it takes ApprovalRequestData
+  return ctx.ask({
+    message: `Allow ${ctx.tool.name} to ${ctx.input.file_path}?`
+  })
 })
 
 const agent = new Agent({
@@ -126,7 +147,7 @@ const agent = new Agent({
 ## Step 4: Handle Approval Requests
 
 ```ts
-import { withApprovals } from '@humanlayer/agentlayer-core'
+import { withApprovals, getAllPendingApprovals, type ApprovalDecision } from '@humanlayer/agentlayer-core'
 import * as readline from 'readline'
 
 const rl = readline.createInterface({
@@ -135,37 +156,45 @@ const rl = readline.createInterface({
 })
 
 async function runWithApproval(agent: Agent, prompt: string) {
-  let state = undefined
+  let state = {
+    messages: [{ role: 'user' as const, content: prompt }]
+  }
   
   while (true) {
-    const run = agent.run(prompt, { state })
+    const run = agent.run({ state, stream: true })
     
     for await (const event of run) {
-      if (event.type === 'text') {
-        process.stdout.write(event.content)
+      if (event.type === 'textDelta') {
+        process.stdout.write(event.text)
       }
     }
     
     const result = await run.result
     
-    if (result.finishReason !== 'approval_required') {
+    // Note: finishReason uses camelCase
+    if (result.finishReason !== 'approvalRequired') {
       break
     }
     
-    // Get pending approvals
-    const pending = getAllPendingApprovals(result.state)
+    // getAllPendingApprovals returns Array<{ path: AgentPath; pending: PendingToolCall }>
+    const pendingApprovals = getAllPendingApprovals(result.state)
+    const decisions: ApprovalDecision[] = []
     
-    for (const approval of pending) {
+    for (const { pending } of pendingApprovals) {
       const answer = await new Promise<string>((resolve) => {
-        rl.question(`${approval.message} (y/n): `, resolve)
+        rl.question(`${pending.approval.message} (y/n): `, resolve)
       })
       
-      approval.decision = answer.toLowerCase() === 'y' ? 'approve' : 'deny'
+      // ApprovalDecision uses { toolCallId, approved: true/false }
+      if (answer.toLowerCase() === 'y') {
+        decisions.push({ toolCallId: pending.toolCallId, approved: true })
+      } else {
+        decisions.push({ toolCallId: pending.toolCallId, approved: false })
+      }
     }
     
     // Resume with approvals
-    state = withApprovals(result.state, pending)
-    prompt = ''  // Empty prompt to continue
+    state = withApprovals(result.state, decisions)
   }
   
   rl.close()
@@ -218,9 +247,14 @@ async function main() {
     stopWhen: [maxSteps(50)]
   })
 
-  for await (const event of agent.run('Create a hello world TypeScript file')) {
-    if (event.type === 'text') {
-      process.stdout.write(event.content)
+  // Create initial state with the user message
+  const state = {
+    messages: [{ role: 'user' as const, content: 'Create a hello world TypeScript file' }]
+  }
+
+  for await (const event of agent.run({ state, stream: true })) {
+    if (event.type === 'textDelta') {
+      process.stdout.write(event.text)
     }
   }
 }

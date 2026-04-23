@@ -15,15 +15,17 @@ Sub-agents let one agent delegate work to another through a normal tool call. Th
 
 ```ts
 import { Agent, createSubagentsTool, startState } from '@humanlayer/agentlayer-core'
-import { createReadTool, createGrepTool, createBashTool } from '@humanlayer/agentlayer-filesystem/tools'
+import { createReadTool, createGrepTool, createBashTool } from '@humanlayer/agentlayer-filesystem'
+
+const cwd = process.cwd()
 
 // Create specialized child agents
 const researchAgent = new Agent({
   model,
   system: 'You research code and explain findings.',
   tools: {
-    read: createReadTool(),
-    grep: createGrepTool(),
+    read: createReadTool({ cwd }),
+    grep: createGrepTool({ cwd }),
   },
 })
 
@@ -31,7 +33,7 @@ const bashAgent = new Agent({
   model,
   system: 'You run shell commands.',
   tools: {
-    bash: createBashTool({ cwd: process.cwd() }),
+    bash: createBashTool({ cwd }),
   },
 })
 
@@ -233,10 +235,12 @@ Test coverage: [`grandchild approval test`](https://github.com/humanlayer/agentl
 There's no depth limit. Any child can have its own subagent tool:
 
 ```ts
+const cwd = process.cwd()
+
 // Grandchild agent
 const grandchildAgent = new Agent({
   model,
-  tools: { read: createReadTool() },
+  tools: { read: createReadTool({ cwd }) },
 })
 
 // Child agent with its own subagent tool
@@ -264,24 +268,39 @@ Depth is controlled by composition: each agent decides which children (if any) h
 
 ## Event Streaming
 
-Sub-agent events flow through to the parent's event stream with additional context:
+Sub-agents do not produce an independent event stream — every event from a child (text deltas, tool input, reasoning, messages, approvals, token usage, step boundaries) is **forwarded into the parent's `AgentRun` stream** as it happens. There is one merged stream at the root, regardless of nesting depth.
+
+The `stream` flag on `agent.run()` is propagated to every child automatically, so you only set it at the root.
 
 ```ts
 const run = parentAgent.run({ state, stream: true })
 
 for await (const event of run) {
-  if (event.agentId) {
-    // This event came from a child
-    console.log(`From ${event.agentId}:`, event.type)
-  }
-  if (event.parentToolCallId) {
-    // Can trace back to which subagent call
-    console.log(`Parent call: ${event.parentToolCallId}`)
+  if (event.agentId === undefined) {
+    // Root agent
+  } else {
+    // From a sub-agent — event.parentToolCallId points at the subagent tool call
+    // on the immediate parent that invoked this child.
   }
 }
 ```
 
-Useful for UIs that want a merged stream while preserving structure.
+### Tagging
+
+Each forwarded event carries two identifying fields:
+
+- **`agentId`** — identifies the agent that emitted the event. Root-agent events have `agentId === undefined`. Sub-agent events carry a stable identifier unique to that child for the duration of the run.
+- **`parentToolCallId`** — the `toolCallId` on the *immediate* parent agent that spawned this sub-agent.
+
+Tags are preserved through nesting — a grandchild's events reach the root carrying the grandchild's own `agentId` and a `parentToolCallId` pointing at the child's tool call (not the root's). You can reconstruct the full call tree from the flat stream using the pair `(agentId, parentToolCallId)`.
+
+### What else composes automatically
+
+- **Token usage** — the root's `result.tokenUsage` already aggregates every descendant's tokens. For a live per-agent breakdown, filter `tokenUsage` events on the stream by `agentId`.
+- **Approvals** — `approvalRequested` events from any depth bubble up tagged with their origin. A single `run.resolveApproval(toolCallId, ...)` call at the root resolves approvals anywhere in the tree.
+- **`stepIndex`** — Scoped per agent. The first step of every agent (root, child, grandchild) is `0`. Use `(agentId, stepIndex)` for a globally unique step identifier.
+
+See [Output Streaming](/concepts/streaming) for the full event catalog, ordering rules, and worked examples of multi-level nested streams.
 
 ## Design Patterns
 
@@ -290,19 +309,23 @@ Useful for UIs that want a merged stream while preserving structure.
 Give each specialist only the tools it needs:
 
 ```ts
+import { createReadTool, createGrepTool, createWriteTool, createEditTool, createBashTool } from '@humanlayer/agentlayer-filesystem'
+
+const cwd = process.cwd()
+
 // Research agent: read-only
 const researcher = new Agent({
-  tools: { read: createReadTool(), grep: createGrepTool() },
+  tools: { read: createReadTool({ cwd }), grep: createGrepTool({ cwd }) },
 })
 
 // Writer agent: read + write
 const writer = new Agent({
-  tools: { read: createReadTool(), write: createWriteTool(), edit: createEditTool() },
+  tools: { read: createReadTool({ cwd }), write: createWriteTool({ cwd }), edit: createEditTool({ cwd }) },
 })
 
 // Bash agent: shell access
 const runner = new Agent({
-  tools: { bash: createBashTool() },
+  tools: { bash: createBashTool({ cwd }) },
 })
 ```
 
@@ -339,9 +362,11 @@ const writer = new Agent({
 Control depth by deciding which agents have subagent access:
 
 ```ts
+const cwd = process.cwd()
+
 // Leaf agent — no subagent tool
 const leafAgent = new Agent({
-  tools: { read: createReadTool() },
+  tools: { read: createReadTool({ cwd }) },
 })
 
 // Mid-level agent — can call leaf agents
@@ -369,24 +394,27 @@ Here's a pattern from `@humanlayer/agentlayer-filesystem`:
 
 ```ts
 import { Agent, createSubagentsTool } from '@humanlayer/agentlayer-core'
+import { createReadTool, createWriteTool, createEditTool, createBashTool, createGlobTool, createGrepTool, createListTool } from '@humanlayer/agentlayer-filesystem'
+
+const cwd = process.cwd()
 
 // Create specialist agents
 const codebaseLocator = new Agent({
   model,
   system: 'You find relevant files in the codebase.',
-  tools: { grep, glob, list },
+  tools: { grep: createGrepTool({ cwd }), glob: createGlobTool({ cwd }), list: createListTool({ cwd }) },
 })
 
 const codebaseAnalyzer = new Agent({
   model,
   system: 'You analyze code and explain implementation details.',
-  tools: { read, grep },
+  tools: { read: createReadTool({ cwd }), grep: createGrepTool({ cwd }) },
 })
 
 const patternFinder = new Agent({
   model,
   system: 'You find similar implementations and usage examples.',
-  tools: { read, grep, glob },
+  tools: { read: createReadTool({ cwd }), grep: createGrepTool({ cwd }), glob: createGlobTool({ cwd }) },
 })
 
 const webResearcher = new Agent({
@@ -411,10 +439,10 @@ const codingAgent = new Agent({
   system: 'You are a coding assistant with access to specialists.',
   tools: {
     subagent,
-    read: createReadTool(),
-    write: createWriteTool(),
-    edit: createEditTool(),
-    bash: createBashTool(),
+    read: createReadTool({ cwd }),
+    write: createWriteTool({ cwd }),
+    edit: createEditTool({ cwd }),
+    bash: createBashTool({ cwd }),
   },
 })
 ```
@@ -428,3 +456,4 @@ const codingAgent = new Agent({
 - **[State](/concepts/state)** — How sub-agent state nests and persists
 - **[Hooks](/concepts/hooks)** — Approval hooks that trigger pause
 - **[Run API](/concepts/run-api)** — Resume patterns for nested approvals
+- **[Output Streaming](/concepts/streaming)** — Merged stream semantics across nested agents

@@ -8,10 +8,11 @@ Creates a subagent tool with multiple specialized agent types.
 
 ```ts
 import { createCodingSubagentTool } from '@humanlayer/agentlayer-filesystem'
+import { anthropic } from '@ai-sdk/anthropic'
 
 const agentTool = await createCodingSubagentTool({
   cwd: process.cwd(),
-  model: 'claude-sonnet-4-20250514',
+  model: anthropic('claude-sonnet-4-20250514'),
   onChildEvent: (event) => console.log('Subagent:', event)
 })
 ```
@@ -23,61 +24,69 @@ The tool includes these pre-configured specialist agents:
 | Type | Description |
 |------|-------------|
 | `general-purpose` | General coding tasks, research, multi-step operations |
-| `bash-specialist` | Focused on shell commands and system operations |
+| `bash` | Focused on shell commands and system operations |
 | `codebase-analyzer` | Analyzes implementation details and patterns |
 | `codebase-locator` | Finds files and directories relevant to a task |
-| `pattern-finder` | Finds similar implementations and usage examples |
-| `implementer` | Follows implementation plans phase by phase |
-| `web-researcher` | Searches the web for information |
+| `codebase-pattern-finder` | Finds similar implementations and usage examples |
+| `implementer-agent` | Follows implementation plans phase by phase |
+| `web-search-researcher` | Searches the web for information |
 | `library-researcher` | Researches library documentation |
 
 ## Usage
 
-Agents can spawn subagents for specialized tasks:
-
-```ts
-// In a hook or tool
-const result = await context.runSubagent({
-  type: 'codebase-analyzer',
-  prompt: 'Analyze the authentication flow in src/auth/'
-})
-```
+The model invokes subagents via the `agent` tool with a description, prompt, and optional agent type. Subagents run to completion and return their result to the parent agent.
 
 ## Options
 
+The `CreateCodingSubagentToolOptions` interface extends `CreateAgentFilesystemHooksOptions` and `CreateCodingAgentAuxToolsetOptions`, inheriting their fields.
+
 ```ts
-interface CreateCodingSubagentToolOptions {
-  cwd: string
-  model: string
+import type { LanguageModel } from 'ai'
+
+interface CreateCodingSubagentToolOptions
+  extends CreateAgentFilesystemHooksOptions,
+    CreateCodingAgentAuxToolsetOptions {
+  // The language model instance (from 'ai' package)
+  model: LanguageModel
   
   // Optional system prompt customization
   system?: string | string[]
   systemPromptAdditions?: string[]
   
   // Hooks for subagents
-  hooks?: {
-    approval?: ApprovalHook[]
-    preToolUse?: PreToolUseHook[]
-    postToolUse?: PostToolUseHook[]
-    preRequest?: PreRequestHook[]
-  }
+  hooks?: AgentConfig['hooks']
   
   // Stop conditions
-  stopWhen?: StopConditionDef[]
+  stopWhen?: AgentConfig['stopWhen']
   
   // Provider options
-  providerOptions?: ProviderOptions
-  
-  // Event handling
-  onChildEvent?: (event: AgentEvent) => void
-  
-  // Skill configuration
-  skillDirs?: string[]
+  providerOptions?: AgentConfig['providerOptions']
+}
+
+// Inherited from CreateAgentFilesystemHooksOptions:
+interface CreateAgentFilesystemHooksOptions {
+  cwd: string
+  outputTruncation?: AgentOutputTruncationOptions
+  stripThinking?: StripThinkingOptions
+  deduplicateReads?: DeduplicateReadsOptions
+  truncateOldBashResults?: TruncateOldBashResultsOptions
+}
+
+// Inherited from CreateCodingAgentAuxToolsetOptions:
+interface CreateCodingAgentAuxToolsetOptions {
+  cwd: string
+  agentTool?: Tool<any, any>
+  subagents?: SubAgentConfig[]
+  skillTool?: Tool<any, any>
+  skillDirs?: string | string[] | SkillDirEntry[]
   skills?: Skill[]
-  
-  // Web tools
+  allowMissingSkills?: boolean
   exaApiKey?: string
   context7ApiKey?: string
+  webSearchTool?: Tool<any, any>
+  webFetchTool?: Tool<any, any>
+  additionalTools?: Record<string, Tool<any, any>>
+  onChildEvent?: (event: AgentEvent) => void
 }
 ```
 
@@ -104,7 +113,7 @@ import {
 
 const agentTool = await createCodingSubagentTool({
   cwd: process.cwd(),
-  model: 'claude-opus-4-20250514',  // Use a more capable model for subagents
+  model: anthropic('claude-opus-4-20250514'),  // Use a more capable model for subagents
 })
 
 const tools = await createClaudeCodingAgentToolset({
@@ -123,7 +132,8 @@ const result = await run.result
 const state = result.state
 
 // Subagent state is preserved for resumption
-console.log(state.subagentState)
+// Stored under 'subagents' key in state.toolState
+console.log(state.toolState?.subagents)
 ```
 
 ## Event Streaming
@@ -131,9 +141,11 @@ console.log(state.subagentState)
 Handle events from subagents:
 
 ```ts
+import { anthropic } from '@ai-sdk/anthropic'
+
 const agentTool = await createCodingSubagentTool({
   cwd: process.cwd(),
-  model: 'claude-sonnet-4-20250514',
+  model: anthropic('claude-sonnet-4-20250514'),
   onChildEvent: (event) => {
     if (event.type === 'text') {
       console.log('[Subagent]', event.content)

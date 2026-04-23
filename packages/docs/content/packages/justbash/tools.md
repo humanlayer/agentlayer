@@ -90,8 +90,12 @@ const applyPatchTool = createApplyPatchTool(bash, { cwd: '/workspace' })
 
 **Options:**
 
+The `ApplyPatchOptions` interface is used internally but is not exported from the public API. Only `createApplyPatchTool` is exported. The options shape is:
+
 ```ts
+// Internal interface - not exported from public API
 interface ApplyPatchOptions {
+  /** Working directory for resolving relative paths. If not provided, paths are resolved by bash's cwd. */
   cwd?: string
 }
 ```
@@ -115,8 +119,14 @@ Search the web using the Exa API.
 ```ts
 import { createWebSearchTool } from '@humanlayer/agentlayer-justbash'
 
+// exaApiKey is required - handle the undefined case from process.env
+const exaApiKey = process.env.EXA_API_KEY
+if (!exaApiKey) {
+  throw new Error('EXA_API_KEY environment variable is required')
+}
+
 const webSearchTool = createWebSearchTool(bash, {
-  exaApiKey: process.env.EXA_API_KEY,
+  exaApiKey,
   timeoutSec: 30
 })
 ```
@@ -137,9 +147,10 @@ Search library documentation.
 ```ts
 import { createCodeSearchTool } from '@humanlayer/agentlayer-justbash'
 
+// API keys are optional for createCodeSearchTool
 const codeSearchTool = createCodeSearchTool(bash, {
-  exaApiKey: process.env.EXA_API_KEY,
-  context7ApiKey: process.env.CONTEXT7_API_KEY,
+  exaApiKey: process.env.EXA_API_KEY,      // optional
+  context7ApiKey: process.env.CONTEXT7_API_KEY,  // optional
   timeoutSec: 30
 })
 ```

@@ -5,17 +5,20 @@ Common patterns for using hooks to customize agent behavior.
 ## Logging All Tool Calls
 
 ```ts
-import { createPreToolUseHook, createPostToolUseHook, hookNext } from '@humanlayer/agentlayer-core'
+import { createPreToolUseHook, createPostToolUseHook } from '@humanlayer/agentlayer-core'
+import { ReadTool, WriteTool, EditTool, BashTool, GlobTool, GrepTool } from '@humanlayer/agentlayer-core/interfaces'
 
-const logPreTool = createPreToolUseHook(async (ctx) => {
+const allTools = [ReadTool, WriteTool, EditTool, BashTool, GlobTool, GrepTool] as const
+
+const logPreTool = createPreToolUseHook(allTools, async (ctx) => {
   console.log(`[${new Date().toISOString()}] Tool: ${ctx.tool.name}`)
   console.log('  Input:', JSON.stringify(ctx.input, null, 2))
-  return hookNext()
+  return ctx.next()
 })
 
-const logPostTool = createPostToolUseHook(async (ctx) => {
-  console.log(`  Result: ${ctx.result.slice(0, 200)}...`)
-  return hookNext()
+const logPostTool = createPostToolUseHook(allTools, async (ctx) => {
+  console.log(`  Result: ${ctx.output.slice(0, 200)}...`)
+  return ctx.done()
 })
 
 const agent = new Agent({
@@ -29,7 +32,7 @@ const agent = new Agent({
 ## Blocking Dangerous Commands
 
 ```ts
-import { createPreToolUseHook, hookNext, hookDeny, isToolCall } from '@humanlayer/agentlayer-core'
+import { createPreToolUseHook } from '@humanlayer/agentlayer-core'
 import { BashTool } from '@humanlayer/agentlayer-core/interfaces'
 
 const DANGEROUS_PATTERNS = [
@@ -45,93 +48,111 @@ const blockDangerousCommands = createPreToolUseHook(BashTool, async (ctx) => {
   
   for (const pattern of DANGEROUS_PATTERNS) {
     if (pattern.test(command)) {
-      return hookDeny(`Blocked dangerous command matching ${pattern}`)
+      return ctx.toolResult(`Blocked dangerous command matching ${pattern}`, { isError: true })
     }
   }
   
-  return hookNext()
+  return ctx.next()
 })
 ```
 
 ## Rate Limiting
 
 ```ts
+import { createPreToolUseHook } from '@humanlayer/agentlayer-core'
+import { ReadTool, WriteTool, EditTool, BashTool, GlobTool, GrepTool } from '@humanlayer/agentlayer-core/interfaces'
+
 interface RateLimitState {
   calls: number[]
 }
 
-const rateLimitHook = createPreToolUseHook(async (ctx) => {
-  const state = ctx.getState('rate-limit') as RateLimitState ?? { calls: [] }
+const allTools = [ReadTool, WriteTool, EditTool, BashTool, GlobTool, GrepTool] as const
+
+const rateLimitHook = createPreToolUseHook(allTools, async (ctx) => {
+  const state = ctx.getState<RateLimitState>('rate-limit') ?? { calls: [] }
   const now = Date.now()
   const windowMs = 60000  // 1 minute
   const maxCalls = 30
   
   // Remove old calls
-  state.calls = state.calls.filter(t => now - t < windowMs)
+  const recentCalls = state.calls.filter(t => now - t < windowMs)
   
-  if (state.calls.length >= maxCalls) {
-    return hookDeny(`Rate limit exceeded: ${maxCalls} calls per minute`)
+  if (recentCalls.length >= maxCalls) {
+    return ctx.toolResult(`Rate limit exceeded: ${maxCalls} calls per minute`, { isError: true })
   }
   
-  state.calls.push(now)
-  ctx.setState('rate-limit', state)
+  ctx.updateState<RateLimitState>('rate-limit', (current) => ({
+    calls: [...(current?.calls ?? []).filter(t => now - t < windowMs), now]
+  }))
   
-  return hookNext()
+  return ctx.next()
 })
 ```
 
 ## Caching Results
 
 ```ts
-interface CacheState {
-  cache: Map<string, { result: string; timestamp: number }>
+import { createPreToolUseHook, createPostToolUseHook } from '@humanlayer/agentlayer-core'
+import { ReadTool } from '@humanlayer/agentlayer-core/interfaces'
+
+interface CacheEntry {
+  result: string
+  timestamp: number
 }
 
-const cacheHook = createPreToolUseHook(async (ctx) => {
-  if (ctx.tool.name !== 'Read') return hookNext()
-  
-  const state = ctx.getState('cache') as CacheState ?? { cache: new Map() }
+interface CacheState {
+  cache: Record<string, CacheEntry>
+}
+
+const cacheHook = createPreToolUseHook(ReadTool, async (ctx) => {
+  const state = ctx.getState<CacheState>('cache') ?? { cache: {} }
   const key = JSON.stringify(ctx.input)
-  const cached = state.cache.get(key)
+  const cached = state.cache[key]
   const maxAge = 30000  // 30 seconds
   
   if (cached && Date.now() - cached.timestamp < maxAge) {
-    return hookToolResult(cached.result)
+    return ctx.toolResult(cached.result)
   }
   
-  return hookNext()
+  return ctx.next()
 })
 
-const cacheResultHook = createPostToolUseHook(async (ctx) => {
-  if (ctx.tool.name !== 'Read') return hookNext()
-  
-  const state = ctx.getState('cache') as CacheState ?? { cache: new Map() }
+const cacheResultHook = createPostToolUseHook(ReadTool, async (ctx) => {
   const key = JSON.stringify(ctx.input)
   
-  state.cache.set(key, {
-    result: ctx.result,
-    timestamp: Date.now()
-  })
-  ctx.setState('cache', state)
+  ctx.updateState<CacheState>('cache', (current) => ({
+    cache: {
+      ...(current?.cache ?? {}),
+      [key]: {
+        result: ctx.output,
+        timestamp: Date.now()
+      }
+    }
+  }))
   
-  return hookNext()
+  return ctx.done()
 })
 ```
 
 ## Input Transformation
 
 ```ts
-const expandPathsHook = createPreToolUseHook(async (ctx) => {
+import { createPreToolUseHook } from '@humanlayer/agentlayer-core'
+import { ReadTool, WriteTool, EditTool } from '@humanlayer/agentlayer-core/interfaces'
+
+const fileTools = [ReadTool, WriteTool, EditTool] as const
+
+const expandPathsHook = createPreToolUseHook(fileTools, async (ctx) => {
   if (!('path' in ctx.input) && !('file_path' in ctx.input)) {
-    return hookNext()
+    return ctx.next()
   }
   
   const pathKey = 'path' in ctx.input ? 'path' : 'file_path'
-  let path = ctx.input[pathKey]
+  let path = ctx.input[pathKey] as string
   
   // Expand ~ to home directory
   if (path.startsWith('~')) {
-    path = path.replace('~', process.env.HOME)
+    path = path.replace('~', process.env.HOME ?? '')
   }
   
   // Make relative paths absolute
@@ -139,17 +160,20 @@ const expandPathsHook = createPreToolUseHook(async (ctx) => {
     path = `${process.cwd()}/${path}`
   }
   
-  return hookNext({
-    input: { ...ctx.input, [pathKey]: path }
-  })
+  return ctx.next({ ...ctx.input, [pathKey]: path })
 })
 ```
 
 ## Result Sanitization
 
 ```ts
-const sanitizeSecretsHook = createPostToolUseHook(async (ctx) => {
-  let result = ctx.result
+import { createPostToolUseHook } from '@humanlayer/agentlayer-core'
+import { ReadTool, BashTool, GrepTool } from '@humanlayer/agentlayer-core/interfaces'
+
+const toolsWithOutput = [ReadTool, BashTool, GrepTool] as const
+
+const sanitizeSecretsHook = createPostToolUseHook(toolsWithOutput, async (ctx) => {
+  let result = ctx.output
   
   // Remove API keys
   result = result.replace(/sk-[a-zA-Z0-9]{32,}/g, '[REDACTED_API_KEY]')
@@ -157,84 +181,101 @@ const sanitizeSecretsHook = createPostToolUseHook(async (ctx) => {
   // Remove passwords
   result = result.replace(/password["\s:=]+["']?[^"'\s]+["']?/gi, 'password=[REDACTED]')
   
-  if (result !== ctx.result) {
-    return hookToolResult(result)
+  if (result !== ctx.output) {
+    return ctx.done(result)
   }
   
-  return hookNext()
+  return ctx.done()
 })
 ```
 
 ## Approval with Context
 
 ```ts
-const smartApprovalHook = createApprovalHook(async (ctx) => {
-  // Auto-approve reads
-  if (ctx.tool.name === 'Read' || ctx.tool.name === 'Glob' || ctx.tool.name === 'Grep') {
-    return hookNext()
-  }
-  
-  // Auto-approve safe directories
-  if (ctx.tool.name === 'Write' || ctx.tool.name === 'Edit') {
-    const path = ctx.input.file_path
+import { createApprovalHook, hookAsk } from '@humanlayer/agentlayer-core'
+import { WriteTool, EditTool, BashTool } from '@humanlayer/agentlayer-core/interfaces'
+
+const modifyingTools = [WriteTool, EditTool, BashTool] as const
+
+const smartApprovalHook = createApprovalHook(modifyingTools, async (ctx) => {
+  // Auto-approve safe directories for Write/Edit
+  if (ctx.toolName === 'Write' || ctx.toolName === 'Edit') {
+    const path = ctx.input.file_path as string
     if (path.includes('/tmp/') || path.includes('/test/')) {
-      return hookNext()
+      return ctx.next()
     }
   }
   
   // Require approval for everything else that modifies files
-  if (['Write', 'Edit', 'Bash'].includes(ctx.tool.name)) {
-    return hookAsk({
-      message: `Allow ${ctx.tool.name}?`,
-      toolUseId: ctx.toolUseId
-    })
-  }
-  
-  return hookNext()
+  return hookAsk({
+    id: ctx.toolCallId,
+    toolName: ctx.toolName,
+    toolCallId: ctx.toolCallId,
+    input: ctx.input,
+    message: `Allow ${ctx.toolName}?`
+  })
 })
 ```
 
 ## Adding Context Before Requests
 
 ```ts
+import { createPreRequestHook } from '@humanlayer/agentlayer-core'
+import type { ModelMessage } from 'ai'
+
 const addContextHook = createPreRequestHook(async (ctx) => {
-  return {
-    type: 'transform',
-    systemAdditions: [
-      `Current time: ${new Date().toISOString()}`,
-      `Working directory: ${process.cwd()}`,
-      `Node version: ${process.version}`
-    ]
+  const contextInfo = [
+    `Current time: ${new Date().toISOString()}`,
+    `Working directory: ${process.cwd()}`,
+    `Node version: ${process.version}`
+  ].join('\n')
+  
+  // Prepend a system message with context
+  const systemMessage: ModelMessage = {
+    role: 'system',
+    content: contextInfo
   }
+  
+  return ctx.transform([systemMessage, ...ctx.messages])
 })
 ```
 
 ## Stopping on Errors
 
+Note: Post-tool-use hooks can only return `DoneResult` via `ctx.done()`. To stop the agent on errors, 
+use a pre-tool-use hook that checks state, or handle error detection in the agent loop.
+
 ```ts
+import { createPostToolUseHook, createPreToolUseHook } from '@humanlayer/agentlayer-core'
+import { ReadTool, WriteTool, EditTool, BashTool, GlobTool, GrepTool } from '@humanlayer/agentlayer-core/interfaces'
+
 interface ErrorTrackingState {
   consecutiveErrors: number
 }
 
-const stopOnErrorsHook = createPostToolUseHook(async (ctx) => {
-  const state = ctx.getState('errors') as ErrorTrackingState ?? { consecutiveErrors: 0 }
+const allTools = [ReadTool, WriteTool, EditTool, BashTool, GlobTool, GrepTool] as const
+
+// Track errors in post-tool-use hook
+const trackErrorsHook = createPostToolUseHook(allTools, async (ctx) => {
+  const isError = ctx.output.toLowerCase().includes('error') ||
+                  ctx.output.toLowerCase().includes('failed')
   
-  const isError = ctx.result.toLowerCase().includes('error') ||
-                  ctx.result.toLowerCase().includes('failed')
+  ctx.updateState<ErrorTrackingState>('errors', (current) => ({
+    consecutiveErrors: isError ? (current?.consecutiveErrors ?? 0) + 1 : 0
+  }))
   
-  if (isError) {
-    state.consecutiveErrors++
-    ctx.setState('errors', state)
-    
-    if (state.consecutiveErrors >= 3) {
-      return hookStop('Too many consecutive errors')
-    }
-  } else {
-    state.consecutiveErrors = 0
-    ctx.setState('errors', state)
+  return ctx.done()
+})
+
+// Check error count in pre-tool-use hook and stop if too many
+const stopOnTooManyErrorsHook = createPreToolUseHook(allTools, async (ctx) => {
+  const state = ctx.getState<ErrorTrackingState>('errors')
+  
+  if (state && state.consecutiveErrors >= 3) {
+    return ctx.stop({ reason: 'Too many consecutive errors' })
   }
   
-  return hookNext()
+  return ctx.next()
 })
 ```
 
@@ -244,6 +285,7 @@ const stopOnErrorsHook = createPostToolUseHook(async (ctx) => {
 const agent = new Agent({
   hooks: {
     preToolUse: [
+      stopOnTooManyErrorsHook,  // Check error state first
       rateLimitHook,
       blockDangerousCommands,
       expandPathsHook,
@@ -252,7 +294,7 @@ const agent = new Agent({
     postToolUse: [
       cacheResultHook,
       sanitizeSecretsHook,
-      stopOnErrorsHook
+      trackErrorsHook
     ],
     approval: [
       smartApprovalHook

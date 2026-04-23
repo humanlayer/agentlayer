@@ -243,6 +243,10 @@ for (const { path, pending: p } of pending) {
 
 Returns an array of `{ path: AgentPath, pending: PendingToolCall }`.
 
+::: warning Filtering Behavior
+This function **only returns entries with `type: 'approval'`**. Entries with `type: 'stopped'` or `type: 'subAgent'` are explicitly filtered out. If you need to inspect all pending tool calls regardless of type, access `state.pendingToolCalls` directly.
+:::
+
 ::: info Source Reference
 [`getAllPendingApprovals()`](https://github.com/humanlayer/agentlayer/blob/main/packages/agentlayer-core/src/state.ts#L232-L250) in `state.ts`
 :::

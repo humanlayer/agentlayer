@@ -11,16 +11,22 @@ Creates a complete hooks configuration for filesystem agents.
 ```ts
 import { createAgentFilesystemHooks } from '@humanlayer/agentlayer-filesystem'
 
-const hooks = createAgentFilesystemHooks({
+const { preToolUse, postToolUse, preRequest } = createAgentFilesystemHooks({
   cwd: process.cwd(),
-  maxLines: 500,
-  maxBytes: 50000
+  outputTruncation: {
+    maxLines: 2000,
+    maxBytes: 50 * 1024
+  }
 })
 
 const agent = new Agent({
   model: '...',
   tools: [...],
-  hooks
+  hooks: {
+    preToolUse,
+    postToolUse,
+    preRequest
+  }
 })
 ```
 
@@ -28,17 +34,21 @@ const agent = new Agent({
 
 ```ts
 interface CreateAgentFilesystemHooksOptions {
-  cwd?: string
+  cwd: string  // Required
   
-  // Truncation options
-  maxLines?: number
-  maxBytes?: number
-  maxLineWidth?: number
+  // Output truncation options
+  outputTruncation?: AgentOutputTruncationOptions
   
-  // Feature toggles
-  enableDeduplicateReads?: boolean
-  enableStripThinking?: boolean
-  enableTruncateOldBash?: boolean
+  // Pre-request hook options
+  stripThinking?: StripThinkingOptions
+  deduplicateReads?: DeduplicateReadsOptions
+  truncateOldBashResults?: TruncateOldBashResultsOptions
+}
+
+interface AgentOutputTruncationOptions {
+  maxLines?: number     // Default: 2000
+  maxBytes?: number     // Default: 50 * 1024 (51200)
+  maxLineWidth?: number // Default: undefined (no cap)
 }
 ```
 
@@ -58,14 +68,20 @@ The hook maintains state about file reads:
 
 ```ts
 interface FileStateEntry {
-  path: string
-  readRanges: LineRange[]
-  lastRead: number
+  lastReadHash?: string
+  lastVerifiedHash?: string
+  wastedRead?: WastedReadTracking
+}
+
+interface WastedReadTracking {
+  hash: string
+  totalLines: number
+  ranges: LineRange[]
 }
 
 interface LineRange {
-  start: number
-  end: number
+  startLine: number
+  endLine: number
 }
 ```
 
@@ -90,7 +106,7 @@ Returns both pre and post hooks for complete tracking.
 ```ts
 import { createWastedReadHooks } from '@humanlayer/agentlayer-filesystem'
 
-const { preToolUse, postToolUse } = createWastedReadHooks({ cwd: process.cwd() })
+const { preToolUseHook, postToolUseHook } = createWastedReadHooks({ cwd: process.cwd() })
 ```
 
 ### createReadBeforeWriteHook()
@@ -110,7 +126,7 @@ Returns both pre and post hooks.
 ```ts
 import { createReadBeforeWriteHooks } from '@humanlayer/agentlayer-filesystem'
 
-const { preToolUse, postToolUse } = createReadBeforeWriteHooks({ cwd: process.cwd() })
+const { preToolUseHook, postToolUseHook } = createReadBeforeWriteHooks({ cwd: process.cwd() })
 ```
 
 ## Output Truncation
@@ -129,9 +145,9 @@ import {
 } from '@humanlayer/agentlayer-filesystem'
 
 const options = {
-  maxLines: 500,
-  maxBytes: 50000,
-  maxLineWidth: 200
+  maxLines: 2000,        // Default: 2000
+  maxBytes: 50 * 1024,   // Default: 50 * 1024 (51200)
+  maxLineWidth: 2000     // Default: undefined (no cap), except ReadTruncationHook (default: 2000)
 }
 
 const readHook = createReadTruncationHook(options)
@@ -163,9 +179,10 @@ const hooks = {
 
 ```ts
 interface TruncationOptions {
-  maxLines?: number      // Max lines to keep (default: 500)
-  maxBytes?: number      // Max bytes to keep (default: 50000)
-  maxLineWidth?: number  // Max characters per line (default: 200)
+  maxLines?: number       // Max lines to keep (default: 2000)
+  maxBytes?: number       // Max bytes to keep (default: 50 * 1024 = 51200)
+  maxLineWidth?: number   // Max characters per line (default: undefined, no cap)
+  direction?: 'head' | 'tail'  // Which end to keep (default: 'head')
 }
 ```
 
@@ -187,11 +204,11 @@ const agent = new Agent({
   tools: [...],
   hooks: {
     preToolUse: [
-      wastedRead.preToolUse
+      wastedRead.preToolUseHook
     ],
     postToolUse: [
       createFileStateTrackingHook({ cwd }),
-      wastedRead.postToolUse,
+      wastedRead.postToolUseHook,
       ...saneDefaultOutputTruncationHooks
     ]
   }
@@ -204,7 +221,7 @@ const agent = new Agent({
 import { FILE_STATE_KEY } from '@humanlayer/agentlayer-filesystem'
 
 // Key used for file state in hook state storage
-// FILE_STATE_KEY = 'file-state'
+// FILE_STATE_KEY = 'fileState'
 ```
 
 ## Type Exports

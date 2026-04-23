@@ -197,20 +197,38 @@ import { runProcess } from '@humanlayer/agentlayer-filesystem'
 
 const result = await runProcess('git', ['status'], {
   cwd: '/project',
-  timeout: 30000
+  timeoutMs: 30000
 })
+// result: { stdout: string, stderr: string, exitCode: number, timedOut: boolean }
 ```
+
+**Parameters:**
+- `command`: The command to execute
+- `args`: Array of command arguments
+- `options`: Optional spawn options plus `timeoutMs` for process timeout
+
+**Returns:** `Promise<{ stdout: string; stderr: string; exitCode: number; timedOut: boolean }>`
 
 ### fsGrepFallback()
 
-Fallback grep implementation using Node.js:
+Fallback grep implementation using Node.js (used when `ripgrep` is unavailable):
 
 ```ts
 import { fsGrepFallback } from '@humanlayer/agentlayer-filesystem'
 
-const matches = await fsGrepFallback({
-  pattern: 'TODO',
-  path: '/project/src',
-  glob: '*.ts'
-})
+const matches = await fsGrepFallback(
+  'TODO',           // pattern: regex pattern to search
+  '/project/src',   // searchPath: directory or file to search
+  false,            // disallowSymlinks: skip symlinked directories if true
+  '*.ts'            // include: optional file extension filter (e.g. '*.ts')
+)
+// matches: Array<{ file: string, line: number, content: string }>
 ```
+
+**Parameters:**
+- `pattern`: Regex pattern string to search for
+- `searchPath`: Directory or file path to search in
+- `disallowSymlinks`: When `true`, symlinked directories are not traversed
+- `include`: Optional glob pattern to filter files (e.g. `'*.ts'`)
+
+**Returns:** `Promise<GrepMatch[]>` where `GrepMatch` is `{ file: string; line: number; content: string }`

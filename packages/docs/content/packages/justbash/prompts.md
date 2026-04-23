@@ -4,7 +4,7 @@ System prompt generation for just-bash environments.
 
 ## createAgentSystemPrompt()
 
-Build a complete system prompt with environment context.
+Build a complete system prompt with environment context. Returns a `Promise<string[]>` - an array of prompt sections that can be passed to an agent's `system` option.
 
 ```ts
 import { Bash } from 'just-bash'
@@ -12,12 +12,20 @@ import { createAgentSystemPrompt } from '@humanlayer/agentlayer-justbash'
 
 const bash = new Bash()
 
-const system = await createAgentSystemPrompt({
+// Returns Promise<string[]> - an array of prompt sections
+const systemPromptParts = await createAgentSystemPrompt({
   bash,
   cwd: '/workspace',
   model: 'claude',
   includeEnvironment: true,
   systemPromptAdditions: ['Additional context...']
+})
+
+// Use with an agent
+const agent = new Agent({
+  model: 'claude-sonnet-4-20250514',
+  tools: [...],
+  system: systemPromptParts  // string[] - array of prompt sections
 })
 ```
 
@@ -59,7 +67,9 @@ Automatically detects if the cwd is a git repository.
 **Options:**
 
 ```ts
-interface EnvironmentPromptOptions {
+// Extends CoreEnvironmentPromptOptions from @humanlayer/agentlayer-core/prompts,
+// but makes isGitRepo optional (auto-detected if not provided)
+interface EnvironmentPromptOptions extends Omit<CoreEnvironmentPromptOptions, 'isGitRepo'> {
   cwd: string
   platform?: string
   date?: Date
@@ -98,6 +108,7 @@ The following are re-exported from `@humanlayer/agentlayer-core/prompts`:
 
 ```ts
 import {
+  CodingModelFamily,          // Type for model family classification
   CodingPromptKey,
   buildCodingProviderOptions,
   detectModelFamily,
@@ -123,6 +134,17 @@ import {
 const bash = new Bash()
 const cwd = '/workspace'
 
+// createAgentSystemPrompt returns Promise<string[]>
+const systemPromptParts = await createAgentSystemPrompt({
+  bash,
+  cwd,
+  model: 'claude',
+  systemPromptAdditions: [
+    'This is a sandboxed environment.',
+    'You have access to a virtual filesystem.'
+  ]
+})
+
 const agent = new Agent({
   model: 'claude-sonnet-4-20250514',
   tools: [
@@ -130,14 +152,6 @@ const agent = new Agent({
     createJustBashReadTool(bash),
     createWriteTool(bash)
   ],
-  system: await createAgentSystemPrompt({
-    bash,
-    cwd,
-    model: 'claude',
-    systemPromptAdditions: [
-      'This is a sandboxed environment.',
-      'You have access to a virtual filesystem.'
-    ]
-  })
+  system: systemPromptParts  // string[] - array of prompt sections
 })
 ```

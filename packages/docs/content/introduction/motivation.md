@@ -77,16 +77,18 @@ const ReadTool = defineToolInterface({
     // Add line numbers to each line
     const lines = raw.split('\n')
     const offset = input.offset ?? 1
-    const numbered = lines
-      .slice(offset - 1, offset - 1 + (input.limit ?? 2000))
+    const limit = input.limit ?? 2000
+    const slice = lines.slice(offset - 1, offset - 1 + limit)
+    const totalLines = lines.length
+    const numbered = slice
       .map((line, i) => `${offset + i}→${line}`)
       .join('\n')
     
     // Add continuation hint if truncated
-    if (lines.length > (input.limit ?? 2000)) {
-      return `${numbered}\n\n(Showing lines ${offset}-${offset + lines.length - 1}. Use offset=${offset + lines.length} to continue.)`
+    if (slice.length < totalLines) {
+      return `${numbered}\n\n(Showing lines ${offset}-${offset + slice.length - 1} of ${totalLines}. Use offset=${offset + slice.length} to continue.)`
     }
-    return numbered
+    return `${numbered}\n\n(End of file - total ${totalLines} lines)`
   },
 })
 ```

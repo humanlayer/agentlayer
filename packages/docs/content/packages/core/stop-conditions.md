@@ -33,7 +33,7 @@ maxSteps(100)       // Stop after 100 steps
 
 ### toolCalled()
 
-Stop when a specific tool is called.
+Stop when a specific tool is called, **before** execution. Useful for approval gates where you want to inspect intent without side effects.
 
 ```ts
 import { toolCalled } from '@humanlayer/agentlayer-core'
@@ -44,7 +44,7 @@ toolCalled('submit_answer')    // Stop when 'submit_answer' is called
 
 ### toolCompleted()
 
-Stop when a specific tool completes successfully.
+Stop when a specific tool completes successfully (non-error result).
 
 ```ts
 import { toolCompleted } from '@humanlayer/agentlayer-core'
@@ -54,7 +54,7 @@ toolCompleted('deploy')        // Stop after 'deploy' succeeds
 
 ### structuredOutputCalled()
 
-Stop when the structured output tool is called (for agents that produce structured results).
+Stop when the structured output tool is called (for agents that produce structured results). This is a convenience wrapper around `toolCalled('structured_output')`.
 
 ```ts
 import { structuredOutputCalled } from '@humanlayer/agentlayer-core'
@@ -64,13 +64,13 @@ structuredOutputCalled()
 
 ### doomLoop()
 
-Detect and stop when the agent is stuck repeating the same actions.
+Detect and stop when the agent is stuck repeating the same tool call with identical input.
 
 ```ts
 import { doomLoop } from '@humanlayer/agentlayer-core'
 
-doomLoop()                     // Default: 3 repeated sequences
-doomLoop({ threshold: 5 })     // Custom threshold
+doomLoop()         // Default: 3 identical consecutive calls
+doomLoop(5)        // Custom threshold
 ```
 
 ### consecutiveToolFailures()
@@ -80,7 +80,8 @@ Stop after consecutive tool failures.
 ```ts
 import { consecutiveToolFailures } from '@humanlayer/agentlayer-core'
 
-consecutiveToolFailures(3)     // Stop after 3 consecutive failures
+consecutiveToolFailures(3)              // Stop after 3 consecutive failures
+consecutiveToolFailures(3, 'bash')      // Only count failures for 'bash' tool
 ```
 
 ### totalToolFailures()
@@ -90,7 +91,8 @@ Stop after total tool failures (not necessarily consecutive).
 ```ts
 import { totalToolFailures } from '@humanlayer/agentlayer-core'
 
-totalToolFailures(10)          // Stop after 10 total failures
+totalToolFailures(10)                   // Stop after 10 total failures
+totalToolFailures(5, 'fetch')           // Only count failures for 'fetch' tool
 ```
 
 ## Creating Custom Stop Conditions
@@ -99,14 +101,15 @@ totalToolFailures(10)          // Stop after 10 total failures
 import type { StopConditionDef, Step } from '@humanlayer/agentlayer-core'
 
 const customStop: StopConditionDef = {
-  name: 'token-limit',
-  when: 'after',  // 'before' or 'after' tool execution
+  name: 'too-many-calls',
+  timing: 'afterExecution',
+  message: 'Too many tool calls',
   check: (steps: Step[]) => {
-    const totalTokens = steps.reduce((sum, s) => sum + (s.tokens ?? 0), 0)
-    if (totalTokens > 100000) {
-      return { stop: true, reason: 'Token limit exceeded' }
-    }
-    return { stop: false }
+    const totalCalls = steps.reduce((sum, s) => sum + s.toolCalls.length, 0)
+    return totalCalls > 100
+  },
+  onTriggered: () => {
+    console.log('Custom stop condition triggered!')
   }
 }
 ```
@@ -117,45 +120,58 @@ const customStop: StopConditionDef = {
 
 ```ts
 interface StopConditionDef {
+  /** Identifies the condition (e.g. "maxSteps", "toolCalled:deploy") */
   name: string
-  when: StopTiming
-  check: (steps: Step[]) => StopResult
+  /** The predicate; receives the step history and returns true to stop */
+  check: (steps: Step[]) => boolean
+  /** When to evaluate: before or after tool execution. Defaults to 'afterExecution' */
+  timing?: StopTiming
+  /** Optional human-readable explanation shown when triggered */
+  message?: string
+  /** Optional callback fired when this condition triggers the stop */
+  onTriggered?: () => void
 }
 ```
 
 ### StopTiming
 
 ```ts
-type StopTiming = 'before' | 'after'
+type StopTiming = 'beforeExecution' | 'afterExecution'
 ```
 
-- `before`: Check before tool execution
-- `after`: Check after tool execution
+- `beforeExecution`: Check after the model generates tool calls, before they run
+- `afterExecution`: Check after tool calls have been executed and results recorded (default)
 
 ### StopResult
 
+Returned by `shouldStop` when a condition fires, so the caller knows which one.
+
 ```ts
-type StopResult = 
-  | { stop: false }
-  | { stop: true; reason: string }
+interface StopResult {
+  /** The name of the condition that triggered the stop */
+  name: string
+  /** The human-readable message, if the condition provided one */
+  message?: string
+}
 ```
 
 ### Step
 
+A Step represents one iteration of the agent loop - one model call plus all tool executions that resulted from it.
+
 ```ts
 interface Step {
-  toolName: string
-  toolUseId: string
-  input: unknown
-  result?: StepToolResult
-  tokens?: number
-  timestamp: number
+  /** The tool calls the model generated during this step */
+  toolCalls: Array<TypedToolCall<ToolSet>>
+  /** The results of executing each tool call. Empty before execution. */
+  toolResults: StepToolResult[]
 }
 
 interface StepToolResult {
-  success: boolean
+  toolCallId: string
+  toolName: string
   output: string
-  error?: string
+  isError: boolean
 }
 ```
 
@@ -166,9 +182,9 @@ Utility to run all stop conditions:
 ```ts
 import { shouldStop } from '@humanlayer/agentlayer-core'
 
-const result = shouldStop(stopConditions, steps, 'after')
-if (result.stop) {
-  console.log('Stopping:', result.reason)
+const result = shouldStop(stopConditions, steps, 'afterExecution')
+if (result) {
+  console.log('Stopping:', result.name, result.message)
 }
 ```
 
@@ -191,15 +207,13 @@ To require multiple conditions (AND), create a custom condition:
 ```ts
 const bothConditions: StopConditionDef = {
   name: 'both',
-  when: 'after',
+  timing: 'afterExecution',
+  message: 'Both conditions met',
   check: (steps) => {
     const hasEnoughSteps = steps.length >= 10
-    const hasDoneTool = steps.some(s => s.toolName === 'done')
-    
-    if (hasEnoughSteps && hasDoneTool) {
-      return { stop: true, reason: 'Both conditions met' }
-    }
-    return { stop: false }
+    const lastStep = steps[steps.length - 1]
+    const hasDoneTool = lastStep?.toolResults.some(tr => tr.toolName === 'done' && !tr.isError)
+    return hasEnoughSteps && !!hasDoneTool
   }
 }
 ```

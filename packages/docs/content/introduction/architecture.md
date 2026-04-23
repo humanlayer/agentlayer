@@ -48,7 +48,7 @@ When resuming from a previous run, the message history might end with tool calls
 The preamble handles these dangling calls before the main loop starts.
 
 ::: info Source Reference
-See [`executeDanglingToolCalls()`](https://github.com/humanlayer/agentlayer/blob/main/packages/agentlayer-core/src/agent.ts#L1223-L1460) in `agent.ts`.
+See [`executeDanglingToolCalls()`](https://github.com/humanlayer/agentlayer/blob/main/packages/agentlayer-core/src/agent.ts#L1224-L1460) in `agent.ts`.
 :::
 
 ## Tool Resolution Pipeline
@@ -93,35 +93,42 @@ See [`resolveToolCall()`](https://github.com/humanlayer/agentlayer/blob/main/pac
 
 ### Event Types
 
+Every event variant includes optional `AgentEventMeta` fields for tracing:
+
 ```ts
+type AgentEventMeta = {
+  agentId?: string
+  parentToolCallId?: string
+}
+
 type AgentEvent =
   // Complete messages
-  | { type: 'message'; message: ModelMessage }
+  | ({ type: 'message'; message: ModelMessage } & AgentEventMeta)
   
   // Approval requests
-  | { type: 'approvalRequested'; approval: ApprovalRequest; toolCallId: string; toolName: string; input: Record<string, unknown> }
+  | ({ type: 'approvalRequested'; approval: ApprovalRequest; toolCallId: string; toolName: string; input: Record<string, unknown> } & AgentEventMeta)
   
   // Token usage per model call
-  | { type: 'tokenUsage'; usage: TokenUsageEvent }
+  | ({ type: 'tokenUsage'; usage: TokenUsageEvent } & AgentEventMeta)
   
   // Step boundaries
-  | { type: 'stepStart'; stepIndex: number }
-  | { type: 'stepFinish'; stepIndex: number; finishReason?: string }
+  | ({ type: 'stepStart'; stepIndex: number } & AgentEventMeta)
+  | ({ type: 'stepFinish'; stepIndex: number; finishReason?: string } & AgentEventMeta)
   
   // Streaming text
-  | { type: 'textStart'; id: string; stepIndex: number }
-  | { type: 'textDelta'; id: string; text: string; stepIndex: number }
-  | { type: 'textEnd'; id: string; stepIndex: number }
+  | ({ type: 'textStart'; id: string; stepIndex: number } & AgentEventMeta)
+  | ({ type: 'textDelta'; id: string; text: string; stepIndex: number } & AgentEventMeta)
+  | ({ type: 'textEnd'; id: string; stepIndex: number } & AgentEventMeta)
   
   // Streaming tool input
-  | { type: 'toolInputStart'; id: string; toolName: string; stepIndex: number }
-  | { type: 'toolInputDelta'; id: string; delta: string; stepIndex: number }
-  | { type: 'toolInputEnd'; id: string; stepIndex: number }
+  | ({ type: 'toolInputStart'; id: string; toolName: string; stepIndex: number } & AgentEventMeta)
+  | ({ type: 'toolInputDelta'; id: string; delta: string; stepIndex: number } & AgentEventMeta)
+  | ({ type: 'toolInputEnd'; id: string; stepIndex: number } & AgentEventMeta)
   
   // Streaming reasoning (for models with extended thinking)
-  | { type: 'reasoningStart'; id: string; stepIndex: number }
-  | { type: 'reasoningDelta'; id: string; text: string; stepIndex: number }
-  | { type: 'reasoningEnd'; id: string; stepIndex: number }
+  | ({ type: 'reasoningStart'; id: string; stepIndex: number } & AgentEventMeta)
+  | ({ type: 'reasoningDelta'; id: string; text: string; stepIndex: number } & AgentEventMeta)
+  | ({ type: 'reasoningEnd'; id: string; stepIndex: number } & AgentEventMeta)
 ```
 
 ### Push/Pull Buffer
@@ -216,18 +223,18 @@ The same interface can be backed by different implementations without changing w
 const ReadTool = defineToolInterface({
   name: 'read',
   description: 'Read a file',
-  input: z.object({ filePath: z.string() }),
+  input: z.object({ file_path: z.string() }),
   output: z.string(),
 })
 
 // Implementation A: Local disk
 const localRead = ReadTool.define(async (input) => {
-  return await Bun.file(input.filePath).text()
+  return await Bun.file(input.file_path).text()
 })
 
 // Implementation B: S3
 const s3Read = ReadTool.define(async (input) => {
-  return await s3.getObject({ Key: input.filePath }).then(r => r.Body.transformToString())
+  return await s3.getObject({ Key: input.file_path }).then(r => r.Body.transformToString())
 })
 ```
 

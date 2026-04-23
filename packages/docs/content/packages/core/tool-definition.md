@@ -18,7 +18,7 @@ const readFile = defineTool({
     offset: z.number().optional().describe('Line to start from'),
     limit: z.number().optional().describe('Number of lines to read')
   }),
-  execute: async ({ input, context }) => {
+  execute: async (input, ctx) => {
     const content = await fs.readFile(input.path, 'utf-8')
     return content
   }
@@ -32,8 +32,11 @@ const readFile = defineTool({
 | `name` | `string` | Tool name (used in model calls) |
 | `description` | `string` | Description shown to the model |
 | `input` | `ZodSchema` | Zod schema for input validation |
-| `execute` | `(ctx) => Promise<string>` | Execution function |
-| `state` | `object` | Optional state accessors |
+| `output` | `ZodSchema` | Optional Zod schema for output validation (defaults to `z.string()`) |
+| `execute` | `(input: TInput, ctx: ToolContext) => Promise<TOutput>` | Execution function |
+| `serialize` | `(raw: TOutput, input: TInput) => string` | Optional custom serialization for output |
+| `stateKey` | `string` | Optional key for stateful tools |
+| `stateSchema` | `ZodSchema` | Optional Zod schema for tool state (required with `stateKey`) |
 
 ## defineToolInterface()
 
@@ -52,11 +55,9 @@ export const ReadTool = defineToolInterface({
   })
 })
 
-// Later, create an implementation
-const readTool = ReadTool.implement({
-  execute: async ({ input }) => {
-    return await fs.readFile(input.path, 'utf-8')
-  }
+// Later, create an implementation using .define()
+const readTool = ReadTool.define(async (input, ctx) => {
+  return await fs.readFile(input.path, 'utf-8')
 })
 ```
 
@@ -68,44 +69,62 @@ const readTool = ReadTool.implement({
 
 ## Tool Context
 
-The `execute` function receives a context object:
+The `execute` function receives the validated input as the first argument and a context object as the second:
 
 ```ts
-interface ToolContext<TInput, TState> {
-  input: TInput                    // Validated input
-  toolUseId: string               // Unique ID for this call
+interface ToolContext {
+  // Context window access
+  getContextWindow(): ReadonlyArray<ModelMessage>
+  updateContextWindow(cb: (messages: ModelMessage[]) => ModelMessage[]): void
   
-  // State accessors (if configured)
-  getState: () => TState
-  setState: (state: TState) => void
-  updateState: (partial: Partial<TState>) => void
+  // Token information
+  getContextWindowTokens(): number
+  getContextWindowLimit(): number | undefined
   
-  // Subagent support
-  runSubagent: (config) => SubAgentRunHandle
+  // Cancellation & control
+  signal: AbortSignal
+  stop(options?: StopOptions): HookStopResult
+  
+  // Streaming flag (for sub-agent propagation)
+  stream?: boolean
+  
+  // Sub-agent integration (only available in agent context)
+  toolCallId?: string
+  pauseForSubAgent?: (agentId: string, childState: AgentState) => SubAgentPauseResult
+  getSubAgentState?: (agentId: string) => AgentState | undefined
+  awaitSubAgent?: (childRun: SubAgentRunHandle, agentId: string, parentToolCallId: string) => Promise<SubAgentResult>
 }
 ```
 
 ## Stateful Tools
 
-Tools can maintain state across calls using state accessors:
+Tools can maintain state across calls by declaring `stateKey` and `stateSchema`. The execute function receives `ToolStateAccessors<TState>` merged into the context:
+
+```ts
+interface ToolStateAccessors<TState> {
+  getToolState(): TState | undefined
+  updateToolState(updater: (current: TState | undefined) => TState): void
+}
+```
+
+Example:
 
 ```ts
 interface FileTrackingState {
-  filesRead: Set<string>
+  filesRead: string[]
 }
 
 const trackingReadTool = defineTool({
   name: 'read',
   description: 'Read a file',
   input: z.object({ path: z.string() }),
-  state: {
-    key: 'file-tracking',
-    initial: (): FileTrackingState => ({ filesRead: new Set() })
-  },
-  execute: async ({ input, getState, updateState }) => {
-    const state = getState()
-    state.filesRead.add(input.path)
-    updateState(state)
+  stateKey: 'file-tracking',
+  stateSchema: z.object({ filesRead: z.array(z.string()) }),
+  execute: async (input, ctx) => {
+    const state = ctx.getToolState() ?? { filesRead: [] }
+    ctx.updateToolState(() => ({
+      filesRead: [...state.filesRead, input.path]
+    }))
     
     return await fs.readFile(input.path, 'utf-8')
   }
@@ -130,16 +149,38 @@ import type {
 
 ## executeToolCall()
 
-Low-level function to execute a tool call manually:
+Low-level function to execute a tool call manually. Takes two arguments: a `ToolCallRef` and an `ExecuteToolCallContext`.
 
 ```ts
 import { executeToolCall } from '@humanlayer/agentlayer-core'
 
-const result = await executeToolCall({
-  tool,
-  toolUseId: 'toolu_123',
-  input: { path: '/tmp/file.txt' },
-  toolState: {},
-  subagentState: {},
-})
+interface ToolCallRef {
+  toolCallId: string
+  toolName: string
+  input: unknown
+}
+
+interface ExecuteToolCallContext {
+  tools: Record<string, Tool<any, any>>
+  messages: ReadonlyArray<ModelMessage>
+  signal: AbortSignal
+  toolState?: Record<string, unknown>
+  subAgents?: Record<string, AgentState>
+  agentRun?: AgentRun
+  getContextWindowTokens?: () => number
+  getContextWindowLimit?: () => number | undefined
+}
+
+const result = await executeToolCall(
+  {
+    toolCallId: 'toolu_123',
+    toolName: 'read',
+    input: { path: '/tmp/file.txt' },
+  },
+  {
+    tools: { read: readTool },
+    messages: [],
+    signal: new AbortController().signal,
+  }
+)
 ```

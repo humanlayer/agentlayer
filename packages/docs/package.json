@@ -26,9 +26,9 @@
 		"typescript": "^5"
 	},
 	"scripts": {
-		"docs:dev": "vitepress dev content",
-		"docs:build": "vitepress build content",
-		"docs:preview": "vitepress preview content",
+		"dev": "vitepress dev content",
+		"build": "vitepress build content",
+		"preview": "vitepress preview content",
 		"pulumi:preview": "pulumi preview -s humanlayer/agentlayer-docs/prod --non-interactive",
 		"pulumi:up": "pulumi up -s humanlayer/agentlayer-docs/prod --yes --non-interactive"
 	}

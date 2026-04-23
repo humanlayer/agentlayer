@@ -62,7 +62,7 @@ Searches for skill files in the specified directories and creates a tool that ca
 
 ```ts
 interface CreateSkillToolFromRepoDirsOptions {
-  cwd: string
+  cwd?: string               // Working directory to search from (defaults to process.cwd())
   candidates?: string[]      // Directories to search
   skills?: Skill[]           // Additional skills to include
   allowMissing?: boolean     // Don't error if directories don't exist
@@ -77,7 +77,6 @@ Load skills from explicit directories with optional namespacing.
 import { createSkillToolFromDirs } from '@humanlayer/agentlayer-filesystem'
 
 const skillTool = await createSkillToolFromDirs({
-  cwd: process.cwd(),
   dirs: [
     { path: '.claude/skills' },
     { path: 'shared/skills', namespace: 'shared' }
@@ -89,17 +88,19 @@ With namespacing, skills are invoked as `shared:skill-name`.
 
 **Options:**
 
+The function accepts inline options (no named interface exported):
+
 ```ts
 interface SkillDirEntry {
   path: string
   namespace?: string
 }
 
-interface CreateSkillToolFromDirsOptions {
-  cwd: string
-  dirs: SkillDirEntry[]
-  skills?: Skill[]
-}
+// Function signature:
+createSkillToolFromDirs(opts: {
+  dirs: string | string[] | SkillDirEntry[]  // Directory paths or entries
+  skills?: Skill[]                            // Additional skills to include
+})
 ```
 
 ## Skill Type
@@ -107,8 +108,9 @@ interface CreateSkillToolFromDirsOptions {
 ```ts
 interface Skill {
   name: string
-  description?: string
+  description: string
   content: string
+  baseDir?: string    // Populated when skills are loaded from directories
 }
 ```
 
@@ -150,7 +152,6 @@ Instead of loading from files, provide skills directly:
 import { createSkillToolFromDirs } from '@humanlayer/agentlayer-filesystem'
 
 const skillTool = await createSkillToolFromDirs({
-  cwd: process.cwd(),
   dirs: [],
   skills: [
     {

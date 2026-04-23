@@ -53,11 +53,20 @@ for await (const event of agent.run('List the files in src/')) {
 // Main - everything
 import { ... } from '@humanlayer/agentlayer-filesystem'
 
+// Individual tool factories
+import { ... } from '@humanlayer/agentlayer-filesystem/tools'
+
+// Utility functions
+import { ... } from '@humanlayer/agentlayer-filesystem/utils'
+
 // Just prompts
 import { ... } from '@humanlayer/agentlayer-filesystem/prompts'
 
 // Just hooks
 import { ... } from '@humanlayer/agentlayer-filesystem/hooks'
+
+// Coding agent toolsets and factories
+import { ... } from '@humanlayer/agentlayer-filesystem/coding-agent'
 ```
 
 ## Relationship to agentlayer-core
@@ -69,6 +78,7 @@ This package implements the tool interfaces defined in `agentlayer-core/interfac
 | `ReadTool` | `createReadTool()` |
 | `WriteTool` | `createWriteTool()` |
 | `EditTool` | `createEditTool()` |
+| `MultiEditTool` | `createMultiEditTool()` |
 | `BashTool` | `createBashTool()` |
 | `GlobTool` | `createGlobTool()` |
 | `GrepTool` | `createGrepTool()` |
