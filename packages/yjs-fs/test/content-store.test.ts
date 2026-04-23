@@ -7,6 +7,8 @@ describe('ContentStore', () => {
 		const store = new ContentStore(new Y.Doc())
 		const created = store.create('hello world')
 
+		expect(store.get(created.contentId, '/note.txt')).toBe(created.record)
+		expect(store.getText(created.contentId, '/note.txt')).toBe(created.text)
 		expect(store.read(created.contentId, '/note.txt')).toBe('hello world')
 		expect(store.size(created.contentId, '/note.txt')).toBe(11)
 
@@ -24,5 +26,18 @@ describe('ContentStore', () => {
 
 		store.delete(created.contentId)
 		expect(() => store.read(created.contentId, '/note.txt')).toThrow(EntryNotFoundError)
+	})
+
+	test('rejects missing and ambiguous edits with stable diagnostics', () => {
+		const store = new ContentStore(new Y.Doc())
+		const created = store.create('alpha beta alpha')
+
+		expect(() => store.edit(created.contentId, '/note.txt', 'missing', 'next')).toThrow(
+			'No match found for oldText in /note.txt',
+		)
+		expect(() => store.edit(created.contentId, '/note.txt', 'alpha', 'next')).toThrow(
+			'Found multiple matches for oldText. Provide more surrounding context to make the match unique.',
+		)
+		expect(() => store.get('missing-content', '/missing.txt')).toThrow(EntryNotFoundError)
 	})
 })

@@ -34,6 +34,29 @@ describe('CatalogStore', () => {
 		expect(store.stat('/workspace/specs/plan.md').contentId).toBe('content-1')
 	})
 
+	test('exposes file helpers by entry id and updates metadata', () => {
+		const store = new CatalogStore(new Y.Doc())
+		const workspaceId = store.mkdir('/workspace')
+		const fileId = store.createFileEntry('/workspace/note.txt', 'content-1', 3)
+
+		store.updateFileSize(fileId, 9)
+
+		expect(store.requireDirectory('/workspace').entryId).toBe(workspaceId)
+		expect(store.requireFile('/workspace/note.txt').entryId).toBe(fileId)
+		expect(store.getEntry(fileId)).toMatchObject({
+			id: fileId,
+			type: 'file',
+			contentId: 'content-1',
+			size: 9,
+		})
+		expect(store.getPath(fileId)).toBe('/workspace/note.txt')
+
+		const deleted = store.delete('/workspace/note.txt')
+		expect(deleted).toMatchObject({ id: fileId, type: 'file', contentId: 'content-1', size: 9 })
+		expect(store.lookup('/workspace/note.txt')).toBeUndefined()
+		expect(store.getPath(fileId)).toBeUndefined()
+	})
+
 	test('rejects duplicates and non-empty directory deletion', () => {
 		const store = new CatalogStore(new Y.Doc())
 		store.mkdir('/workspace')
