@@ -1,13 +1,3 @@
-export type { DurableStreamsDevServer } from './durable-streams/server'
-export { defineDurableStreamsServer, startDurableStreamsDevServer } from './durable-streams/server'
-export type {
-	DurableStreamsBindingDescriptor,
-	DurableStreamsBindingTarget,
-	DurableStreamsClient,
-	DurableStreamsClientSession,
-	DurableStreamsContentBindingChange,
-	DurableStreamsTransportMode,
-} from './durable-streams/shared'
 export type { YjsFilesystemOptions } from './filesystem'
 export { CatalogStore, CommentStore, ContentStore, PresenceStore, YjsFilesystem } from './filesystem'
 export type {
@@ -55,7 +45,3 @@ export {
 	RootMutationError,
 	YjsFsError,
 } from './filesystem/types'
-export type {
-	DurableStreamsClientOptions,
-	DurableStreamsServerOptions,
-} from './surface'
