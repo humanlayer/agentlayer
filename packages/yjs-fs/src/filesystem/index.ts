@@ -6,6 +6,7 @@ export {
 	AlreadyExistsError,
 	DirectoryNotEmptyError,
 	EntryNotFoundError,
+	type FilesystemTreeNode,
 	InvalidPathError,
 	NotBinaryFileError,
 	NotDirectoryError,

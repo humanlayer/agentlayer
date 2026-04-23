@@ -9,6 +9,7 @@ import {
 } from '@humanlayer/yjs-fs'
 import * as Y from 'yjs'
 import {
+	buildTree,
 	createCatalogState,
 	createFileInCatalog,
 	deleteEntryInCatalog,
@@ -29,6 +30,43 @@ describe('catalog module', () => {
 		expect(normalizePath('/')).toBe('/')
 		expect(() => normalizePath('/workspace/./docs')).toThrow(InvalidPathError)
 		expect(() => normalizePath('/workspace/../docs')).toThrow(InvalidPathError)
+	})
+
+	test('builds a recursive tree snapshot from any directory', () => {
+		const state = createCatalogState(new Y.Doc())
+		mkdirInCatalog(state, '/workspace')
+		mkdirInCatalog(state, '/workspace/docs')
+		createFileInCatalog(state, '/workspace/docs/plan.md', 'content-1', 5)
+		createFileInCatalog(state, '/workspace/readme.md', 'content-2', 7)
+
+		expect(buildTree(state, '/workspace')).toEqual({
+			entryId: expect.any(String),
+			name: 'workspace',
+			path: '/workspace',
+			type: 'directory',
+			children: [
+				{
+					entryId: expect.any(String),
+					name: 'docs',
+					path: '/workspace/docs',
+					type: 'directory',
+					children: [
+						{
+							entryId: expect.any(String),
+							name: 'plan.md',
+							path: '/workspace/docs/plan.md',
+							type: 'file',
+						},
+					],
+				},
+				{
+					entryId: expect.any(String),
+					name: 'readme.md',
+					path: '/workspace/readme.md',
+					type: 'file',
+				},
+			],
+		})
 	})
 
 	test('creates namespace entries and resolves them by path and id', () => {

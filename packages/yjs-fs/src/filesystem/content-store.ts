@@ -70,6 +70,27 @@ export class ContentStore {
 		return record
 	}
 
+	subscribe(contentId: ContentId, pathForErrors: string, listener: () => void): () => void {
+		const record = this.get(contentId, pathForErrors)
+		let queued = false
+		const notify = () => {
+			if (queued) {
+				return
+			}
+
+			queued = true
+			queueMicrotask(() => {
+				queued = false
+				listener()
+			})
+		}
+
+		record.observeDeep(notify)
+		return () => {
+			record.unobserveDeep(notify)
+		}
+	}
+
 	getText(contentId: ContentId, pathForErrors: string): Y.Text {
 		const text = this.get(contentId, pathForErrors).get(CONTENT_TEXT_KEY)
 		if (!(text instanceof Y.Text)) {

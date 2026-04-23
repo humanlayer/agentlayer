@@ -8,6 +8,7 @@ import {
 	type EntryMetadata,
 	EntryNotFoundError,
 	type FileEntry,
+	type FilesystemTreeNode,
 	InvalidPathError,
 	type LookupResult,
 	NotDirectoryError,
@@ -240,6 +241,12 @@ export function listDirectoryEntries(state: CatalogState, directoryId: EntryId):
 				},
 			]
 		})
+}
+
+export function buildTree(state: CatalogState, path = '/'): FilesystemTreeNode {
+	refreshCatalogState(state)
+	const lookup = lookupRequired(state, normalizePath(path))
+	return buildTreeNode(state, lookup.entryId, lookup.path)
 }
 
 export function mkdirInCatalog(state: CatalogState, path: string): EntryId {
@@ -630,6 +637,35 @@ function getChildrenForDirectory(state: CatalogState, directoryId: EntryId): Arr
 	}
 
 	return children
+}
+
+function buildTreeNode(state: CatalogState, entryId: EntryId, path: string): FilesystemTreeNode {
+	const entry = getEntry(state, entryId)
+
+	if (!entry) {
+		throw new EntryNotFoundError(path)
+	}
+
+	if (entry.type === 'file') {
+		return {
+			entryId,
+			name: path === '/' ? '/' : entry.name,
+			path,
+			type: 'file',
+		}
+	}
+
+	const children = getChildrenForDirectory(state, entryId)
+		.sort(([leftName], [rightName]) => leftName.localeCompare(rightName))
+		.map(([name, childEntryId]) => buildTreeNode(state, childEntryId, joinPath(path, name)))
+
+	return {
+		entryId,
+		name: path === '/' ? '/' : entry.name,
+		path,
+		type: 'directory',
+		children,
+	}
 }
 
 function childLookupKey(directoryId: EntryId, name: string): string {

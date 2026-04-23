@@ -11,6 +11,7 @@ import {
 	type EntryDirent,
 	type EntryStat,
 	type FileComment,
+	type FilesystemTreeNode,
 	type LookupResult,
 	NotBinaryFileError,
 	NotTextFileError,
@@ -56,6 +57,29 @@ export class YjsFilesystem {
 		return this.catalog.list(path)
 	}
 
+	tree(path = '/'): FilesystemTreeNode {
+		return this.catalog.tree(path)
+	}
+
+	subscribe(listener: () => void): () => void {
+		return this.catalog.subscribe(listener)
+	}
+
+	subscribePath(path: string, listener: () => void): () => void {
+		const unsubscribeCatalog = this.catalog.subscribe(listener)
+
+		try {
+			const { entry, path: normalizedPath } = this.catalog.requireFile(path)
+			const unsubscribeContent = this.content.subscribe(entry.contentId, normalizedPath, listener)
+			return () => {
+				unsubscribeContent()
+				unsubscribeCatalog()
+			}
+		} catch {
+			return unsubscribeCatalog
+		}
+	}
+
 	mkdir(path: string): string {
 		return this.catalog.mkdir(path)
 	}
@@ -87,6 +111,18 @@ export class YjsFilesystem {
 			throw new NotBinaryFileError(normalizedPath)
 		}
 		return this.content.readBinary(entry.contentId, normalizedPath)
+	}
+
+	getYTextForFile(path: string): Y.Text {
+		const { entry, path: normalizedPath } = this.catalog.requireFile(path)
+		if (entry.encoding === 'binary') {
+			throw new NotTextFileError(normalizedPath)
+		}
+		return this.content.getText(entry.contentId, normalizedPath)
+	}
+
+	getYText(path: string): Y.Text {
+		return this.getYTextForFile(path)
 	}
 
 	writeFile(path: string, content: string): void {

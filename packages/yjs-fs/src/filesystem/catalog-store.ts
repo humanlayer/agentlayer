@@ -1,5 +1,6 @@
 import type * as Y from 'yjs'
 import {
+	buildTree,
 	type CatalogState,
 	createCatalogState,
 	createFileInCatalog,
@@ -19,6 +20,7 @@ import {
 	EntryNotFoundError,
 	type EntryStat,
 	type FileEntry,
+	type FilesystemTreeNode,
 	type LookupResult,
 	NotDirectoryError,
 	NotFileError,
@@ -98,6 +100,37 @@ export class CatalogStore {
 	list(path = '/'): EntryDirent[] {
 		const result = this.requireDirectory(path)
 		return listDirectoryEntries(this.state, result.entryId)
+	}
+
+	tree(path = '/'): FilesystemTreeNode {
+		return buildTree(this.state, path)
+	}
+
+	subscribe(listener: () => void): () => void {
+		let queued = false
+		const notify = () => {
+			if (queued) {
+				return
+			}
+
+			queued = true
+			queueMicrotask(() => {
+				queued = false
+				listener()
+			})
+		}
+
+		this.state.catalog.observe(notify)
+		this.state.entries.observeDeep(notify)
+		this.state.children.observe(notify)
+		this.state.pathIndex.observe(notify)
+
+		return () => {
+			this.state.catalog.unobserve(notify)
+			this.state.entries.unobserveDeep(notify)
+			this.state.children.unobserve(notify)
+			this.state.pathIndex.unobserve(notify)
+		}
 	}
 
 	mkdir(path: string): string {

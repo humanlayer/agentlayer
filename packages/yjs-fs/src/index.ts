@@ -31,6 +31,7 @@ export type {
 	EntryType,
 	FileComment,
 	FileEntry,
+	FilesystemTreeNode,
 	LookupResult,
 } from './filesystem/types'
 export {

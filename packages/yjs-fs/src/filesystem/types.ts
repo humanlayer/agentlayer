@@ -37,6 +37,14 @@ export type EntryDirent = {
 	type: EntryType
 }
 
+export type FilesystemTreeNode = {
+	entryId: EntryId
+	name: string
+	path: string
+	type: EntryType
+	children?: FilesystemTreeNode[]
+}
+
 export type EntryStat = {
 	entryId: EntryId
 	name: string

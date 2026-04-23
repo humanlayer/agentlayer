@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import { EntryNotFoundError, YjsFilesystem } from '@humanlayer/yjs-fs'
+import { waitFor } from './util/wait-for'
 
 describe('YjsFilesystem comments', () => {
 	test('adds comments, replies, and resolution state to files', () => {
@@ -81,5 +82,22 @@ describe('YjsFilesystem comments', () => {
 			'Comment not found',
 		)
 		expect(() => filesystem.resolveComment('/workspace/note.txt', 'missing', 'alice')).toThrow('Comment not found')
+	})
+
+	test('subscribes to path-level changes for file content and comments', async () => {
+		const filesystem = new YjsFilesystem()
+		filesystem.mkdir('/workspace')
+		filesystem.createFile('/workspace/note.txt', 'hello world')
+
+		let notifications = 0
+		const unsubscribe = filesystem.subscribePath('/workspace/note.txt', () => {
+			notifications += 1
+		})
+
+		filesystem.writeFile('/workspace/note.txt', 'updated')
+		filesystem.addComment('/workspace/note.txt', { index: 0, length: 1 }, 'x', 'alice')
+
+		await waitFor(() => notifications >= 2)
+		unsubscribe()
 	})
 })
