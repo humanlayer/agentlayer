@@ -10,7 +10,7 @@ export const FilesystemProvider: React.FC<PropsWithChildren> = ({ children }) =>
 	const createSession = useCallback(async () => {
 		const doc = new Y.Doc()
 		const awareness = new Awareness(doc)
-		const filesystem = new YjsFilesystem({ doc, awareness })
+		const docId = new URLSearchParams(window.location.search).get('doc') ?? 'default-workspace'
 
 		const serviceName = 'yjs-fs-editor'
 		const yServerOrigin = import.meta.env.Y_SERVER_ORIGIN ?? 'https://localhost:4000'
@@ -18,12 +18,13 @@ export const FilesystemProvider: React.FC<PropsWithChildren> = ({ children }) =>
 			doc,
 			awareness,
 			baseUrl: `${yServerOrigin}/v1/yjs/${serviceName}`,
-			docId: 'workspace-123',
+			docId,
 			connect: false,
 			liveMode: 'long-poll',
 		})
 
 		await provider.connect()
+		const filesystem = new YjsFilesystem({ doc, awareness })
 
 		return {
 			filesystem,

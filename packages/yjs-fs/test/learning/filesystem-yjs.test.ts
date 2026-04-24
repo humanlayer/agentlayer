@@ -55,6 +55,32 @@ describe('Y.js Filesystem Learning Tests', async () => {
 		})
 	})
 
+	test('Fresh provider hydrates persisted filesystem state after reconnect', async () => {
+		await withYjsDurableStreamServer(async ({ createProviderWithAwareness }) => {
+			const docId = crypto.randomUUID()
+			const filePath = '/persisted-after-reconnect.txt'
+			const fileContent = 'this should load in a brand new doc session'
+
+			const { awareness: awareness1, provider: provider1 } = await createProviderWithAwareness({ docId })
+			const fs1 = new YjsFilesystem({ doc: provider1.doc, awareness: awareness1 })
+
+			expect(fs1.list('/')).toBeEmpty()
+			fs1.createFile(filePath, fileContent)
+			expect(fs1.readFile(filePath)).toEqual(fileContent)
+
+			await provider1.flush()
+			provider1.destroy()
+
+			const { awareness: awareness2, provider: provider2 } = await createProviderWithAwareness({ docId })
+			const fs2 = new YjsFilesystem({ doc: provider2.doc, awareness: awareness2 })
+
+			expect(fs2.list('/').map((entry) => entry.path)).toContain(filePath)
+			expect(fs2.readFile(filePath)).toEqual(fileContent)
+
+			provider2.destroy()
+		})
+	})
+
 	test('Basic Comment Operations', async () => {
 		await withYjsDurableStreamFileSystems(async ([fs1, fs2]) => {
 			// Create a file on the filesystem

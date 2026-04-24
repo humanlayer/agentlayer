@@ -17,7 +17,11 @@ export function Layout({ activePath }: LayoutProps) {
 
 	const handleFileSelect = (path: string) => {
 		const pathWithoutLeadingSlash = path.startsWith('/') ? path.slice(1) : path
-		navigate({ to: '/files/$', params: { _splat: pathWithoutLeadingSlash } })
+		navigate({
+			to: '/files/$',
+			params: { _splat: pathWithoutLeadingSlash },
+			search: (prev) => prev,
+		})
 	}
 
 	return (
