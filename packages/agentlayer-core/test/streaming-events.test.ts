@@ -86,7 +86,12 @@ describe('streaming events', () => {
 		const reasoningPart: LanguageModelV3Reasoning = {
 			type: 'reasoning',
 			text: 'Thinking...',
-			providerMetadata: undefined,
+			providerMetadata: {
+				openai: {
+					itemId: 'rs_stream_123',
+					reasoningEncryptedContent: 'enc_stream_123',
+				},
+			},
 		}
 		const agent = new Agent({
 			model: mockStreamingModel([mockResponse([reasoningPart])]),
@@ -120,7 +125,18 @@ describe('streaming events', () => {
 		expect(result.newMessages).toHaveLength(1)
 		expect(result.newMessages[0]).toMatchObject({
 			role: 'assistant',
-			content: [{ type: 'reasoning', text: 'Thinking...' }],
+			content: [
+				{
+					type: 'reasoning',
+					text: 'Thinking...',
+					providerOptions: {
+						openai: {
+							itemId: 'rs_stream_123',
+							reasoningEncryptedContent: 'enc_stream_123',
+						},
+					},
+				},
+			],
 		})
 		expect(result.state.messages).toEqual([userMessage('think'), result.newMessages[0]!])
 	})

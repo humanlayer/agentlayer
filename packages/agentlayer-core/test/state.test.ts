@@ -661,4 +661,43 @@ describe('sanitizeStateForPersistence()', () => {
 		// Original should be unchanged
 		expect((state.messages[0] as any).providerOptions?.openai?.itemId).toBe('test123')
 	})
+
+	test('preserves reasoning providerMetadata while stripping ephemeral providerOptions', () => {
+		const state: AgentState = {
+			messages: [
+				{
+					role: 'assistant',
+					content: [
+						{
+							type: 'reasoning',
+							text: 'Thinking...',
+							providerMetadata: {
+								openai: {
+									itemId: 'rs_meta_123',
+									reasoningEncryptedContent: 'enc_123',
+								},
+							},
+							providerOptions: {
+								openai: {
+									itemId: 'rs_opt_123',
+									phase: 'final_answer',
+								},
+							},
+						},
+					],
+				},
+			],
+		}
+
+		const sanitized = sanitizeStateForPersistence(state)
+
+		const assistantMsg = sanitized.messages[0]! as any
+		const reasoningPart = assistantMsg.content[0]
+		expect(reasoningPart.providerOptions?.openai?.itemId).toBeUndefined()
+		expect(reasoningPart.providerOptions?.openai?.phase).toBeUndefined()
+		expect(reasoningPart.providerMetadata?.openai).toEqual({
+			itemId: 'rs_meta_123',
+			reasoningEncryptedContent: 'enc_123',
+		})
+	})
 })

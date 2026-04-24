@@ -133,4 +133,38 @@ describe('buildCodexRequestBody', () => {
 			},
 		])
 	})
+
+	test('serializes assistant reasoning from provider metadata for persisted follow-up turns', () => {
+		const body = buildCodexRequestBody(
+			{
+				prompt: [
+					{
+						role: 'assistant',
+						content: [
+							{
+								type: 'reasoning',
+								text: 'Persisted thought',
+								providerMetadata: {
+									openai: {
+										itemId: 'rs_persisted',
+										reasoningEncryptedContent: 'enc_persisted',
+									},
+								},
+							},
+						],
+					},
+				],
+			},
+			'gpt-5.4',
+		)
+
+		expect(body.input).toEqual([
+			{
+				type: 'reasoning',
+				id: 'rs_persisted',
+				encrypted_content: 'enc_persisted',
+				summary: [{ type: 'summary_text', text: 'Persisted thought' }],
+			},
+		])
+	})
 })

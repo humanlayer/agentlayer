@@ -69,17 +69,17 @@ function toStreamParts(part: LanguageModelV3Content): LanguageModelV3StreamPart[
 		case 'text': {
 			const id = crypto.randomUUID()
 			return [
-				{ type: 'text-start', id },
+				{ type: 'text-start', id, providerMetadata: part.providerMetadata },
 				{ type: 'text-delta', id, delta: part.text },
-				{ type: 'text-end', id },
+				{ type: 'text-end', id, providerMetadata: part.providerMetadata },
 			]
 		}
 		case 'reasoning': {
 			const id = crypto.randomUUID()
 			return [
-				{ type: 'reasoning-start', id },
+				{ type: 'reasoning-start', id, providerMetadata: part.providerMetadata },
 				{ type: 'reasoning-delta', id, delta: part.text },
-				{ type: 'reasoning-end', id },
+				{ type: 'reasoning-end', id, providerMetadata: part.providerMetadata },
 			]
 		}
 		case 'tool-call':

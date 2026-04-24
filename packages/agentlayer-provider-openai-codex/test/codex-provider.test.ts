@@ -414,4 +414,56 @@ describe('codex provider wrapper', () => {
 		expect(await result.reasoningText).toBe('Think aloud.')
 		expect(await result.text).toBe('Final answer.')
 	})
+
+	test('streamText response messages preserve encrypted reasoning metadata for agent state', async () => {
+		const store = createMemoryAuthStore({
+			[CODEX_PROVIDER_ID]: { kind: 'api', apiKey: 'api-key-123' },
+		})
+		const model = createCodexLanguageModel({
+			modelId: 'gpt-5.4',
+			authStore: store,
+			fetch: async () =>
+				createSseResponse([
+					{ type: 'response.created', response: { id: 'resp_state_reason', created_at: 1700000005, model: 'gpt-5.4' } },
+					{ type: 'response.output_item.added', output_index: 0, item: { type: 'reasoning', id: 'rs_state', encrypted_content: 'enc-state' } },
+					{ type: 'response.reasoning_summary_part.added', item_id: 'rs_state', summary_index: 0 },
+					{ type: 'response.reasoning_summary_text.delta', item_id: 'rs_state', summary_index: 0, delta: 'Stored thought.' },
+					{ type: 'response.output_item.done', output_index: 0, item: { type: 'reasoning', id: 'rs_state', encrypted_content: 'enc-state' } },
+					{ type: 'response.output_item.added', output_index: 1, item: { type: 'message', id: 'msg_state', phase: 'final_answer' } },
+					{ type: 'response.output_text.delta', item_id: 'msg_state', delta: 'Saved answer.' },
+					{ type: 'response.output_item.done', output_index: 1, item: { type: 'message', id: 'msg_state', phase: 'final_answer' } },
+					{ type: 'response.completed', response: { usage: { input_tokens: 2, output_tokens: 4 } } },
+				]),
+		})
+
+		const result = streamText({
+			model,
+			prompt: 'Persist this.',
+			providerOptions: {
+				openai: {
+					store: false,
+					reasoningSummary: 'auto',
+					include: ['reasoning.encrypted_content'],
+				},
+			},
+		})
+
+		const response = await result.response
+		expect(response.messages).toHaveLength(1)
+		expect(response.messages[0]).toMatchObject({
+			role: 'assistant',
+			content: [
+				{
+					type: 'reasoning',
+					text: 'Stored thought.',
+					providerOptions: { openai: { itemId: 'rs_state', reasoningEncryptedContent: 'enc-state' } },
+				},
+				{
+					type: 'text',
+					text: 'Saved answer.',
+					providerOptions: { openai: { itemId: 'msg_state', phase: 'final_answer' } },
+				},
+			],
+		})
+	})
 })
