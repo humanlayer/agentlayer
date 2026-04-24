@@ -48,7 +48,9 @@ describe.skipIf(
 
 			expect((await result.reasoning).at(0)!.text).toBeString()
 
+			console.log('\n\nreasoning\n----\n')
 			console.log(await result.reasoning)
+			console.log('\n\ntext\n----\n')
 			console.log(await result.text)
 		},
 		{ timeout: 20_000 },
