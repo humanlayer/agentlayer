@@ -6,8 +6,8 @@ export type ProviderType = 'anthropic' | 'openai' | 'codex'
 
 export const DEFAULT_MODELS: Record<ProviderType, string> = {
 	anthropic: 'claude-opus-4-5',
-	openai: 'gpt-5.4',
-	codex: 'gpt-5.4',
+	openai: 'gpt-5.5',
+	codex: 'gpt-5.5',
 }
 
 function requireEnv(name: string): string {
