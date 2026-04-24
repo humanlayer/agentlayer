@@ -7,11 +7,27 @@ type FileTreePaneProps = {
 	onFileSelect: (path: string) => void
 }
 
-function flattenTreePaths(node: { path: string; children?: Array<{ path: string; children?: any[] }> }): string[] {
+// Convert filesystem path (with leading /) to Trees path (without leading /)
+function toTreePath(fsPath: string): string {
+	return fsPath.startsWith('/') ? fsPath.slice(1) : fsPath
+}
+
+// Convert Trees path back to filesystem path
+function toFsPath(treePath: string): string {
+	return treePath.startsWith('/') ? treePath : `/${treePath}`
+}
+
+function flattenFilePaths(node: {
+	path: string
+	type: 'file' | 'directory'
+	children?: Array<{ path: string; type: 'file' | 'directory'; children?: any[] }>
+}): string[] {
 	const paths: string[] = []
 	for (const child of node.children ?? []) {
-		paths.push(child.path)
-		paths.push(...flattenTreePaths(child))
+		if (child.type === 'file') {
+			paths.push(toTreePath(child.path))
+		}
+		paths.push(...flattenFilePaths(child))
 	}
 	return paths
 }
@@ -27,27 +43,27 @@ export function FileTreePane({ onFileSelect }: FileTreePaneProps) {
 	const { model } = useFileTree({
 		paths: [],
 		search: true,
-		initialExpandedPaths: ['/'],
+		icons: { set: 'complete', colored: true },
 		renaming: {
-			canRename: (item) => item.path !== '/',
+			canRename: () => true,
 			onRename: ({ sourcePath, destinationPath }) => {
 				try {
-					filesystem.rename(sourcePath, destinationPath)
+					filesystem.rename(toFsPath(sourcePath), toFsPath(destinationPath))
 				} catch (err) {
 					console.error('Failed to rename:', err)
 				}
 			},
 		},
 		dragAndDrop: {
-			canDrag: (draggedPaths) => !draggedPaths.includes('/'),
+			canDrag: () => true,
 			canDrop: ({ target }) => target.directoryPath !== undefined,
 			onDropComplete: ({ draggedPaths, target }) => {
-				const targetDir = target.directoryPath || '/'
+				const targetDir = target.directoryPath ?? ''
 				for (const sourcePath of draggedPaths) {
 					const name = sourcePath.split('/').pop() || ''
-					const destPath = targetDir === '/' ? `/${name}` : `${targetDir}/${name}`
+					const destPath = targetDir ? `${targetDir}/${name}` : name
 					try {
-						filesystem.rename(sourcePath, destPath)
+						filesystem.rename(toFsPath(sourcePath), toFsPath(destPath))
 					} catch (err) {
 						console.error('Failed to move:', err)
 					}
@@ -56,14 +72,13 @@ export function FileTreePane({ onFileSelect }: FileTreePaneProps) {
 		},
 		onSelectionChange: (selectedPaths) => {
 			if (selectedPaths.length === 1) {
-				const path = selectedPaths[0]
+				const fsPath = toFsPath(selectedPaths[0])
 				try {
-					const stat = filesystem.stat(path)
+					const stat = filesystem.stat(fsPath)
 					if (stat.isFile) {
-						onFileSelect(path)
+						onFileSelect(fsPath)
 					}
 				} catch (err: unknown) {
-					// Path doesn't exist
 					console.error('Error: path does not exist', err)
 				}
 			}
@@ -71,8 +86,9 @@ export function FileTreePane({ onFileSelect }: FileTreePaneProps) {
 	})
 
 	// Observe Y.js catalog for changes and update tree
+	// Trees auto-generates directories from file paths, so only pass files
 	useEffect(() => {
-		const paths = flattenTreePaths(tree)
+		const paths = flattenFilePaths(tree)
 		model.resetPaths(paths)
 	}, [tree, model])
 
@@ -82,11 +98,10 @@ export function FileTreePane({ onFileSelect }: FileTreePaneProps) {
 		const parent =
 			selectedPaths.length === 1
 				? (() => {
+						const fsPath = toFsPath(selectedPaths[0])
 						try {
-							const stat = filesystem.stat(selectedPaths[0])
-							return stat.isDirectory
-								? selectedPaths[0]
-								: selectedPaths[0].split('/').slice(0, -1).join('/') || '/'
+							const stat = filesystem.stat(fsPath)
+							return stat.isDirectory ? fsPath : fsPath.split('/').slice(0, -1).join('/') || '/'
 						} catch {
 							return '/'
 						}
@@ -101,11 +116,10 @@ export function FileTreePane({ onFileSelect }: FileTreePaneProps) {
 		const parent =
 			selectedPaths.length === 1
 				? (() => {
+						const fsPath = toFsPath(selectedPaths[0])
 						try {
-							const stat = filesystem.stat(selectedPaths[0])
-							return stat.isDirectory
-								? selectedPaths[0]
-								: selectedPaths[0].split('/').slice(0, -1).join('/') || '/'
+							const stat = filesystem.stat(fsPath)
+							return stat.isDirectory ? fsPath : fsPath.split('/').slice(0, -1).join('/') || '/'
 						} catch {
 							return '/'
 						}
@@ -118,12 +132,11 @@ export function FileTreePane({ onFileSelect }: FileTreePaneProps) {
 
 	const handleDelete = useCallback(() => {
 		if (selectedPaths.length === 0) return
-		const path = selectedPaths[0]
-		if (path === '/') return
+		const fsPath = toFsPath(selectedPaths[0])
 
-		if (confirm(`Delete ${path}?`)) {
+		if (confirm(`Delete ${fsPath}?`)) {
 			try {
-				filesystem.unlink(path)
+				filesystem.unlink(fsPath)
 			} catch (err) {
 				console.error('Failed to delete:', err)
 				alert(`Failed to delete: ${err}`)
@@ -131,14 +144,38 @@ export function FileTreePane({ onFileSelect }: FileTreePaneProps) {
 		}
 	}, [selectedPaths, filesystem])
 
+	const ensureParentDirectories = useCallback(
+		(path: string) => {
+			const parts = path.split('/').filter(Boolean)
+			parts.pop()
+			let current = ''
+			for (const part of parts) {
+				current = `${current}/${part}`
+				try {
+					const stat = filesystem.stat(current)
+					if (!stat.isDirectory) {
+						throw new Error(`${current} exists but is not a directory`)
+					}
+				} catch {
+					filesystem.mkdir(current)
+				}
+			}
+		},
+		[filesystem],
+	)
+
 	const handleCreateItem = useCallback(() => {
 		if (!newItemName.trim()) return
 
 		const fullPath = newItemParent === '/' ? `/${newItemName}` : `${newItemParent}/${newItemName}`
 
 		try {
+			ensureParentDirectories(fullPath)
 			if (newItemType === 'folder') {
-				filesystem.mkdir(fullPath)
+				// Create .gitkeep so the folder shows up (Trees infers dirs from file paths)
+				const gitkeepPath = `${fullPath}/.gitkeep`
+				ensureParentDirectories(gitkeepPath)
+				filesystem.createFile(gitkeepPath, '')
 			} else {
 				filesystem.createFile(fullPath, '')
 				onFileSelect(fullPath)
@@ -149,7 +186,7 @@ export function FileTreePane({ onFileSelect }: FileTreePaneProps) {
 			console.error('Failed to create:', err)
 			alert(`Failed to create: ${err}`)
 		}
-	}, [newItemType, newItemName, newItemParent, filesystem, onFileSelect])
+	}, [newItemType, newItemName, newItemParent, filesystem, onFileSelect, ensureParentDirectories])
 
 	return (
 		<div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -191,15 +228,15 @@ export function FileTreePane({ onFileSelect }: FileTreePaneProps) {
 				</button>
 				<button
 					onClick={handleDelete}
-					disabled={selectedPaths.length === 0 || selectedPaths[0] === '/'}
+					disabled={selectedPaths.length === 0}
 					style={{
 						padding: '4px 8px',
 						fontSize: '12px',
 						border: '1px solid #ccc',
 						borderRadius: '4px',
 						backgroundColor: 'white',
-						cursor: selectedPaths.length === 0 || selectedPaths[0] === '/' ? 'not-allowed' : 'pointer',
-						opacity: selectedPaths.length === 0 || selectedPaths[0] === '/' ? 0.5 : 1,
+						cursor: selectedPaths.length === 0 ? 'not-allowed' : 'pointer',
+						opacity: selectedPaths.length === 0 ? 0.5 : 1,
 					}}
 					title="Delete"
 				>
@@ -227,7 +264,7 @@ export function FileTreePane({ onFileSelect }: FileTreePaneProps) {
 								if (e.key === 'Enter') handleCreateItem()
 								if (e.key === 'Escape') setNewItemType(null)
 							}}
-							placeholder={newItemType === 'folder' ? 'folder-name' : 'file.ts'}
+							placeholder={newItemType === 'folder' ? 'path/to/folder' : 'path/to/file.ts'}
 							autoFocus
 							style={{
 								flex: 1,
