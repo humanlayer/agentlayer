@@ -1,5 +1,6 @@
 import { setTimeout as sleep } from 'node:timers/promises'
 import { describe, expect, test } from 'bun:test'
+import { generateText, streamText } from 'ai'
 import { createMemoryAuthStore } from '@humanlayer/agentlayer-provider-auth'
 import {
 	buildCodexHeaders,
@@ -283,5 +284,134 @@ describe('codex provider wrapper', () => {
 		expect(headers.authorization).toBe('Bearer server-key')
 		expect(headers['x-test']).toBe('ok')
 		expect(headers['user-agent']).toBe(buildCodexUserAgent('2.0.0'))
+	})
+
+	test('generateText reconstructs reasoning summaries for non-stream callers', async () => {
+		const store = createMemoryAuthStore({
+			[CODEX_PROVIDER_ID]: { kind: 'api', apiKey: 'api-key-123' },
+		})
+		const model = createCodexLanguageModel({
+			modelId: 'gpt-5.4',
+			authStore: store,
+			fetch: async () =>
+				createSseResponse([
+					{ type: 'response.created', response: { id: 'resp_reason', created_at: 1700000003, model: 'gpt-5.4' } },
+					{ type: 'response.output_item.added', output_index: 0, item: { type: 'reasoning', id: 'rs_1', encrypted_content: 'enc-final' } },
+					{ type: 'response.reasoning_summary_part.added', item_id: 'rs_1', summary_index: 0 },
+					{ type: 'response.reasoning_summary_text.delta', item_id: 'rs_1', summary_index: 0, delta: 'First thought.' },
+					{ type: 'response.reasoning_summary_part.done', item_id: 'rs_1', summary_index: 0 },
+					{ type: 'response.reasoning_summary_part.added', item_id: 'rs_1', summary_index: 1 },
+					{ type: 'response.reasoning_summary_text.delta', item_id: 'rs_1', summary_index: 1, delta: 'Second thought.' },
+					{ type: 'response.output_item.done', output_index: 0, item: { type: 'reasoning', id: 'rs_1', encrypted_content: 'enc-final' } },
+					{ type: 'response.output_item.added', output_index: 1, item: { type: 'message', id: 'msg_3', phase: 'final_answer' } },
+					{ type: 'response.output_text.delta', item_id: 'msg_3', delta: 'Answer.' },
+					{ type: 'response.output_item.done', output_index: 1, item: { type: 'message', id: 'msg_3', phase: 'final_answer' } },
+					{ type: 'response.completed', response: { usage: { input_tokens: 3, output_tokens: 5 } } },
+				]),
+		})
+
+		const result = await generateText({
+			model,
+			prompt: 'Think through this.',
+			providerOptions: {
+				openai: {
+					store: false,
+					reasoningSummary: 'auto',
+					include: ['reasoning.encrypted_content'],
+				},
+			},
+		})
+
+		expect(result.reasoning).toEqual([
+			{
+				type: 'reasoning',
+				text: 'First thought.',
+				providerMetadata: { openai: { itemId: 'rs_1', reasoningEncryptedContent: 'enc-final' } },
+			},
+			{
+				type: 'reasoning',
+				text: 'Second thought.',
+				providerMetadata: { openai: { itemId: 'rs_1', reasoningEncryptedContent: 'enc-final' } },
+			},
+		])
+		expect(result.reasoningText).toBe('First thought.Second thought.')
+		expect(result.text).toBe('Answer.')
+	})
+
+	test('streamText fullStream emits reasoning events before final text', async () => {
+		const store = createMemoryAuthStore({
+			[CODEX_PROVIDER_ID]: { kind: 'api', apiKey: 'api-key-123' },
+		})
+		const model = createCodexLanguageModel({
+			modelId: 'gpt-5.4',
+			authStore: store,
+			fetch: async () =>
+				createSseResponse([
+					{ type: 'response.created', response: { id: 'resp_stream_reason', created_at: 1700000004, model: 'gpt-5.4' } },
+					{ type: 'response.output_item.added', output_index: 0, item: { type: 'reasoning', id: 'rs_stream', encrypted_content: 'enc-stream' } },
+					{ type: 'response.reasoning_summary_part.added', item_id: 'rs_stream', summary_index: 0 },
+					{ type: 'response.reasoning_summary_text.delta', item_id: 'rs_stream', summary_index: 0, delta: 'Think aloud.' },
+					{ type: 'response.output_item.done', output_index: 0, item: { type: 'reasoning', id: 'rs_stream', encrypted_content: 'enc-stream' } },
+					{ type: 'response.output_item.added', output_index: 1, item: { type: 'message', id: 'msg_stream_reason', phase: 'commentary' } },
+					{ type: 'response.output_text.delta', item_id: 'msg_stream_reason', delta: 'Final answer.' },
+					{ type: 'response.output_item.done', output_index: 1, item: { type: 'message', id: 'msg_stream_reason', phase: 'commentary' } },
+					{ type: 'response.completed', response: { usage: { input_tokens: 2, output_tokens: 4 } } },
+				]),
+		})
+
+		const result = streamText({
+			model,
+			prompt: 'Explain it.',
+			providerOptions: {
+				openai: {
+					store: false,
+					reasoningSummary: 'auto',
+					include: ['reasoning.encrypted_content'],
+				},
+			},
+		})
+		const parts = [] as Array<{ type: string; [key: string]: unknown }>
+		for await (const part of result.fullStream) {
+			parts.push(part as { type: string; [key: string]: unknown })
+		}
+
+		expect(parts.map((part) => part.type)).toEqual([
+			'start',
+			'start-step',
+			'reasoning-start',
+			'reasoning-delta',
+			'reasoning-end',
+			'text-start',
+			'text-delta',
+			'text-end',
+			'finish-step',
+			'finish',
+		])
+		const reasoningStart = parts.find((part) => part.type === 'reasoning-start')
+		const reasoningDelta = parts.find((part) => part.type === 'reasoning-delta')
+		const reasoningEnd = parts.find((part) => part.type === 'reasoning-end')
+		const textDelta = parts.find((part) => part.type === 'text-delta')
+		const textStartIndex = parts.findIndex((part) => part.type === 'text-start')
+		const reasoningEndIndex = parts.findIndex((part) => part.type === 'reasoning-end')
+
+		expect(reasoningStart).toMatchObject({
+			type: 'reasoning-start',
+			id: 'rs_stream:0',
+			providerMetadata: { openai: { itemId: 'rs_stream', reasoningEncryptedContent: 'enc-stream' } },
+		})
+		expect(reasoningDelta).toMatchObject({
+			type: 'reasoning-delta',
+			id: 'rs_stream:0',
+			text: 'Think aloud.',
+		})
+		expect(reasoningEnd).toMatchObject({
+			type: 'reasoning-end',
+			id: 'rs_stream:0',
+			providerMetadata: { openai: { itemId: 'rs_stream', reasoningEncryptedContent: 'enc-stream' } },
+		})
+		expect(textDelta).toMatchObject({ type: 'text-delta', text: 'Final answer.' })
+		expect(reasoningEndIndex).toBeLessThan(textStartIndex)
+		expect(await result.reasoningText).toBe('Think aloud.')
+		expect(await result.text).toBe('Final answer.')
 	})
 })

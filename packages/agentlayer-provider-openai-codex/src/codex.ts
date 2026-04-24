@@ -32,9 +32,24 @@ export interface CodexProviderOptions {
 export interface CodexRequestBody {
 	model: string
 	input: Array<Record<string, unknown>>
+	conversation?: string | null
+	include?: string[] | null
 	instructions?: string
+	max_tool_calls?: number | null
+	metadata?: Record<string, unknown>
+	parallel_tool_calls?: boolean | null
+	previous_response_id?: string | null
+	prompt_cache_key?: string | null
+	prompt_cache_retention?: string | null
+	reasoning?: {
+		effort?: string | null
+		summary?: string | null
+	}
+	service_tier?: string | null
 	store: false
 	stream: true
+	truncation?: string | null
+	user?: string | null
 }
 
 export interface CodexModelOptions extends CodexProviderOptions {
@@ -59,21 +74,66 @@ interface CodexResponseTextDeltaEvent {
 interface CodexResponseOutputItemAddedEvent {
 	type: 'response.output_item.added'
 	output_index: number
-	item: {
-		type: string
-		id: string
-		phase?: 'commentary' | 'final_answer' | null
-	}
+	item:
+		| {
+				type: 'message'
+				id: string
+				phase?: 'commentary' | 'final_answer' | null
+		  }
+		| {
+				type: 'reasoning'
+				id: string
+				encrypted_content?: string | null
+		  }
+		| {
+				type: 'function_call'
+				id: string
+				call_id?: string
+				name?: string
+				arguments?: string
+		  }
 }
 
 interface CodexResponseOutputItemDoneEvent {
 	type: 'response.output_item.done'
 	output_index: number
-	item: {
-		type: string
-		id: string
-		phase?: 'commentary' | 'final_answer' | null
-	}
+	item:
+		| {
+				type: 'message'
+				id: string
+				phase?: 'commentary' | 'final_answer' | null
+		  }
+		| {
+				type: 'reasoning'
+				id: string
+				encrypted_content?: string | null
+		  }
+		| {
+				type: 'function_call'
+				id: string
+				call_id?: string
+				name?: string
+				arguments?: string
+		  }
+}
+
+interface CodexResponseReasoningSummaryPartAddedEvent {
+	type: 'response.reasoning_summary_part.added'
+	item_id: string
+	summary_index: number
+}
+
+interface CodexResponseReasoningSummaryTextDeltaEvent {
+	type: 'response.reasoning_summary_text.delta'
+	item_id: string
+	summary_index: number
+	delta: string
+}
+
+interface CodexResponseReasoningSummaryPartDoneEvent {
+	type: 'response.reasoning_summary_part.done'
+	item_id: string
+	summary_index: number
 }
 
 interface CodexResponseFinishedEvent {
@@ -95,6 +155,9 @@ type CodexSseEvent =
 	| CodexResponseTextDeltaEvent
 	| CodexResponseOutputItemAddedEvent
 	| CodexResponseOutputItemDoneEvent
+	| CodexResponseReasoningSummaryPartAddedEvent
+	| CodexResponseReasoningSummaryTextDeltaEvent
+	| CodexResponseReasoningSummaryPartDoneEvent
 	| CodexResponseFinishedEvent
 
 export function createCodexProvider(options: CodexProviderOptions): ProviderV3 {
@@ -253,6 +316,7 @@ export function buildCodexRequestBody(options: LanguageModelV3CallOptions, model
 		model: modelId,
 		input: transformed.input,
 		...(instructions ? { instructions } : {}),
+		...buildCodexRequestExtras(options),
 		store: false,
 		stream: true,
 	}
@@ -283,6 +347,14 @@ export function transformCodexPrompt(prompt: LanguageModelV3Prompt): {
 
 		if (message.role === 'assistant') {
 			for (const part of message.content) {
+				if (part.type === 'reasoning') {
+					const reasoningInput = buildReasoningInput(part)
+					if (reasoningInput) {
+						input.push(reasoningInput)
+					}
+					continue
+				}
+
 				const itemId = getStoredItemId(message, part)
 				if (itemId) {
 					input.push({ type: 'item_reference', id: itemId })
@@ -398,6 +470,10 @@ export function createCodexSseStream(response: Response): ReadableStream<Languag
 			let buffer = ''
 			let finishSeen = false
 			let hasFunctionCall = false
+			const activeReasoning = new Map<
+				number,
+				{ canonicalId: string; encryptedContent?: string | null; summaryParts: Set<number> }
+			>()
 			controller.enqueue({ type: 'stream-start', warnings: [] })
 
 			try {
@@ -414,11 +490,12 @@ export function createCodexSseStream(response: Response): ReadableStream<Languag
 							hasFunctionCall = true
 						}
 
-						const streamPart = codexEventToStreamPart(event, hasFunctionCall)
-						if (!streamPart) continue
-						controller.enqueue(streamPart)
-						if (streamPart.type === 'finish') {
-							finishSeen = true
+						const streamParts = codexEventToStreamParts(event, hasFunctionCall, activeReasoning)
+						for (const streamPart of streamParts) {
+							controller.enqueue(streamPart)
+							if (streamPart.type === 'finish') {
+								finishSeen = true
+							}
 						}
 					}
 				}
@@ -430,11 +507,12 @@ export function createCodexSseStream(response: Response): ReadableStream<Languag
 						hasFunctionCall = true
 					}
 
-					const streamPart = codexEventToStreamPart(event, hasFunctionCall)
-					if (!streamPart) continue
-					controller.enqueue(streamPart)
-					if (streamPart.type === 'finish') {
-						finishSeen = true
+					const streamParts = codexEventToStreamParts(event, hasFunctionCall, activeReasoning)
+					for (const streamPart of streamParts) {
+						controller.enqueue(streamPart)
+						if (streamPart.type === 'finish') {
+							finishSeen = true
+						}
 					}
 				}
 
@@ -461,6 +539,7 @@ export function streamPartsToGenerateResult(
 	response: Response,
 ): LanguageModelV3GenerateResult {
 	const textBuffers = new Map<string, string>()
+	const reasoningBuffers = new Map<string, string>()
 	const content: LanguageModelV3Content[] = []
 	let finishReason: LanguageModelV3FinishReason = { unified: 'stop', raw: undefined }
 	let usage: LanguageModelV3Usage = mapCodexUsage()
@@ -472,8 +551,18 @@ export function streamPartsToGenerateResult(
 			continue
 		}
 
+		if (part.type === 'reasoning-start') {
+			reasoningBuffers.set(part.id, '')
+			continue
+		}
+
 		if (part.type === 'text-delta') {
 			textBuffers.set(part.id, `${textBuffers.get(part.id) ?? ''}${part.delta}`)
+			continue
+		}
+
+		if (part.type === 'reasoning-delta') {
+			reasoningBuffers.set(part.id, `${reasoningBuffers.get(part.id) ?? ''}${part.delta}`)
 			continue
 		}
 
@@ -481,6 +570,15 @@ export function streamPartsToGenerateResult(
 			content.push({
 				type: 'text',
 				text: textBuffers.get(part.id) ?? '',
+				providerMetadata: part.providerMetadata,
+			})
+			continue
+		}
+
+		if (part.type === 'reasoning-end') {
+			content.push({
+				type: 'reasoning',
+				text: reasoningBuffers.get(part.id) ?? '',
 				providerMetadata: part.providerMetadata,
 			})
 			continue
@@ -533,37 +631,113 @@ function parseCodexSseBuffer(buffer: string): { events: CodexSseEvent[]; remaind
 	}
 }
 
-function codexEventToStreamPart(
+function codexEventToStreamParts(
 	event: CodexSseEvent,
 	hasFunctionCall: boolean,
-): LanguageModelV3StreamPart | undefined {
+	activeReasoning: Map<number, { canonicalId: string; encryptedContent?: string | null; summaryParts: Set<number> }>,
+): LanguageModelV3StreamPart[] {
 	if (event.type === 'response.created') {
-		return {
-			type: 'response-metadata',
-			id: event.response.id,
-			timestamp: new Date(event.response.created_at * 1000),
-			modelId: event.response.model,
-		}
+		return [
+			{
+				type: 'response-metadata',
+				id: event.response.id,
+				timestamp: new Date(event.response.created_at * 1000),
+				modelId: event.response.model,
+			},
+		]
 	}
 
 	if (event.type === 'response.output_item.added' && event.item.type === 'message') {
-		return {
-			type: 'text-start',
-			id: event.item.id,
-			providerMetadata: buildItemProviderMetadata(event.item.id, event.item.phase),
-		}
+		return [
+			{
+				type: 'text-start',
+				id: event.item.id,
+				providerMetadata: buildItemProviderMetadata(event.item.id, event.item.phase),
+			},
+		]
+	}
+
+	if (event.type === 'response.output_item.added' && event.item.type === 'reasoning') {
+		activeReasoning.set(event.output_index, {
+			canonicalId: event.item.id,
+			encryptedContent: event.item.encrypted_content,
+			summaryParts: new Set([0]),
+		})
+		return [
+			{
+				type: 'reasoning-start',
+				id: `${event.item.id}:0`,
+				providerMetadata: buildReasoningProviderMetadata(event.item.id, event.item.encrypted_content),
+			},
+		]
 	}
 
 	if (event.type === 'response.output_text.delta') {
-		return { type: 'text-delta', id: event.item_id, delta: event.delta }
+		return [{ type: 'text-delta', id: event.item_id, delta: event.delta }]
+	}
+
+	if (event.type === 'response.reasoning_summary_part.added') {
+		const reasoning = findActiveReasoningByCanonicalId(activeReasoning, event.item_id)
+		if (!reasoning) {
+			return []
+		}
+		reasoning.summaryParts.add(event.summary_index)
+		if (event.summary_index === 0) {
+			return []
+		}
+		return [
+			{
+				type: 'reasoning-start',
+				id: `${event.item_id}:${event.summary_index}`,
+				providerMetadata: buildReasoningProviderMetadata(event.item_id, reasoning.encryptedContent),
+			},
+		]
+	}
+
+	if (event.type === 'response.reasoning_summary_text.delta') {
+		return [
+			{
+				type: 'reasoning-delta',
+				id: `${event.item_id}:${event.summary_index}`,
+				delta: event.delta,
+				providerMetadata: buildReasoningProviderMetadata(event.item_id),
+			},
+		]
+	}
+
+	if (event.type === 'response.reasoning_summary_part.done') {
+		const reasoning = findActiveReasoningByCanonicalId(activeReasoning, event.item_id)
+		if (!reasoning || !reasoning.summaryParts.has(event.summary_index)) {
+			return []
+		}
+		return []
 	}
 
 	if (event.type === 'response.output_item.done' && event.item.type === 'message') {
-		return {
-			type: 'text-end',
-			id: event.item.id,
-			providerMetadata: buildItemProviderMetadata(event.item.id, event.item.phase),
+		return [
+			{
+				type: 'text-end',
+				id: event.item.id,
+				providerMetadata: buildItemProviderMetadata(event.item.id, event.item.phase),
+			},
+		]
+	}
+
+	if (event.type === 'response.output_item.done' && event.item.type === 'reasoning') {
+		const reasoning = activeReasoning.get(event.output_index)
+		if (!reasoning) {
+			return []
 		}
+		const item = event.item
+		const encryptedContent = item.encrypted_content ?? reasoning.encryptedContent
+		activeReasoning.delete(event.output_index)
+		return [...reasoning.summaryParts]
+			.sort((left, right) => left - right)
+			.map((summaryIndex) => ({
+				type: 'reasoning-end' as const,
+				id: `${reasoning.canonicalId}:${summaryIndex}`,
+				providerMetadata: buildReasoningProviderMetadata(reasoning.canonicalId, encryptedContent),
+			}))
 	}
 
 	if (
@@ -571,14 +745,16 @@ function codexEventToStreamPart(
 		event.type === 'response.incomplete' ||
 		event.type === 'response.failed'
 	) {
-		return {
-			type: 'finish',
-			finishReason: mapCodexFinishReason(event.response.incomplete_details?.reason, hasFunctionCall),
-			usage: mapCodexUsage(event.response.usage ?? undefined),
-		}
+		return [
+			{
+				type: 'finish',
+				finishReason: mapCodexFinishReason(event.response.incomplete_details?.reason, hasFunctionCall),
+				usage: mapCodexUsage(event.response.usage ?? undefined),
+			},
+		]
 	}
 
-	return undefined
+	return []
 }
 
 function parseSseEvent(rawEvent: string): CodexSseEvent | undefined {
@@ -603,6 +779,12 @@ function parseSseEvent(rawEvent: string): CodexSseEvent | undefined {
 			return isOutputItemAddedEvent(parsed) ? parsed : undefined
 		case 'response.output_item.done':
 			return isOutputItemDoneEvent(parsed) ? parsed : undefined
+		case 'response.reasoning_summary_part.added':
+			return isReasoningSummaryPartAddedEvent(parsed) ? parsed : undefined
+		case 'response.reasoning_summary_text.delta':
+			return isReasoningSummaryTextDeltaEvent(parsed) ? parsed : undefined
+		case 'response.reasoning_summary_part.done':
+			return isReasoningSummaryPartDoneEvent(parsed) ? parsed : undefined
 		case 'response.completed':
 		case 'response.incomplete':
 		case 'response.failed':
@@ -640,23 +822,214 @@ function isOutputItemDoneEvent(value: unknown): value is CodexResponseOutputItem
 	return typeof value.item.id === 'string' && typeof value.item.type === 'string'
 }
 
+function isReasoningSummaryPartAddedEvent(value: unknown): value is CodexResponseReasoningSummaryPartAddedEvent {
+	if (!isRecord(value)) return false
+	return typeof value.item_id === 'string' && typeof value.summary_index === 'number'
+}
+
+function isReasoningSummaryTextDeltaEvent(value: unknown): value is CodexResponseReasoningSummaryTextDeltaEvent {
+	if (!isRecord(value)) return false
+	return (
+		typeof value.item_id === 'string' &&
+		typeof value.summary_index === 'number' &&
+		typeof value.delta === 'string'
+	)
+}
+
+function isReasoningSummaryPartDoneEvent(value: unknown): value is CodexResponseReasoningSummaryPartDoneEvent {
+	if (!isRecord(value)) return false
+	return typeof value.item_id === 'string' && typeof value.summary_index === 'number'
+}
+
 function isFinishedEvent(value: unknown): value is CodexResponseFinishedEvent {
 	return isRecord(value) && isRecord(value.response)
 }
 
 function getProviderInstructions(options: LanguageModelV3CallOptions): string | undefined {
-	const providerOptions = options.providerOptions
-	const openai = providerOptions?.openai
-	if (openai && typeof openai === 'object' && 'instructions' in openai) {
-		const instructions = openai.instructions
-		return typeof instructions === 'string' ? instructions : undefined
+	const openai = getCodexProviderOptionRecord(options, 'openai')
+	if (typeof openai?.instructions === 'string') {
+		return openai.instructions
 	}
-	const codex = providerOptions?.codex
-	if (codex && typeof codex === 'object' && 'instructions' in codex) {
-		const instructions = codex.instructions
-		return typeof instructions === 'string' ? instructions : undefined
+
+	const codex = getCodexProviderOptionRecord(options, 'codex')
+	if (typeof codex?.instructions === 'string') {
+		return codex.instructions
 	}
 	return undefined
+}
+
+function getCodexProviderOptionRecord(
+	options: LanguageModelV3CallOptions,
+	providerName: 'openai' | 'codex',
+): Record<string, unknown> | undefined {
+	const providerOptions = options.providerOptions?.[providerName]
+	return isRecord(providerOptions) ? providerOptions : undefined
+}
+
+function getNullableString(
+	value: Record<string, unknown> | undefined,
+	key: string,
+): string | null | undefined {
+	if (!value || !(key in value)) {
+		return undefined
+	}
+	const candidate = value[key]
+	return typeof candidate === 'string' || candidate === null ? candidate : undefined
+}
+
+function getNullableBoolean(
+	value: Record<string, unknown> | undefined,
+	key: string,
+): boolean | null | undefined {
+	if (!value || !(key in value)) {
+		return undefined
+	}
+	const candidate = value[key]
+	return typeof candidate === 'boolean' || candidate === null ? candidate : undefined
+}
+
+function getNullableNumber(
+	value: Record<string, unknown> | undefined,
+	key: string,
+): number | null | undefined {
+	if (!value || !(key in value)) {
+		return undefined
+	}
+	const candidate = value[key]
+	return typeof candidate === 'number' || candidate === null ? candidate : undefined
+}
+
+function getNullableStringArray(
+	value: Record<string, unknown> | undefined,
+	key: string,
+): string[] | null | undefined {
+	if (!value || !(key in value)) {
+		return undefined
+	}
+	const candidate = value[key]
+	if (candidate === null) {
+		return null
+	}
+	if (Array.isArray(candidate) && candidate.every((entry) => typeof entry === 'string')) {
+		return [...candidate]
+	}
+	return undefined
+}
+
+function getMetadataRecord(
+	value: Record<string, unknown> | undefined,
+	key: string,
+): Record<string, unknown> | undefined {
+	if (!value || !(key in value)) {
+		return undefined
+	}
+	const candidate = value[key]
+	return isRecord(candidate) ? candidate : undefined
+}
+
+function buildCodexReasoningOptions(options: LanguageModelV3CallOptions): CodexRequestBody['reasoning'] | undefined {
+	const openai = getCodexProviderOptionRecord(options, 'openai')
+	const codex = getCodexProviderOptionRecord(options, 'codex')
+	const effort = getNullableString(openai, 'reasoningEffort') ?? getNullableString(codex, 'reasoningEffort')
+	const summary = getNullableString(openai, 'reasoningSummary') ?? getNullableString(codex, 'reasoningSummary')
+
+	if (effort == null && summary == null) {
+		return undefined
+	}
+
+	return {
+		...(effort != null ? { effort } : {}),
+		...(summary != null ? { summary } : {}),
+	}
+}
+
+function buildCodexRequestExtras(options: LanguageModelV3CallOptions): Omit<CodexRequestBody, 'model' | 'input' | 'instructions' | 'store' | 'stream'> {
+	const openai = getCodexProviderOptionRecord(options, 'openai')
+	const codex = getCodexProviderOptionRecord(options, 'codex')
+	const include = getNullableStringArray(openai, 'include') ?? getNullableStringArray(codex, 'include')
+	const reasoning = buildCodexReasoningOptions(options)
+	const conversation = getNullableString(openai, 'conversation') ?? getNullableString(codex, 'conversation')
+	const maxToolCalls = getNullableNumber(openai, 'maxToolCalls') ?? getNullableNumber(codex, 'maxToolCalls')
+	const metadata = getMetadataRecord(openai, 'metadata') ?? getMetadataRecord(codex, 'metadata')
+	const parallelToolCalls =
+		getNullableBoolean(openai, 'parallelToolCalls') ?? getNullableBoolean(codex, 'parallelToolCalls')
+	const previousResponseId =
+		getNullableString(openai, 'previousResponseId') ?? getNullableString(codex, 'previousResponseId')
+	const promptCacheKey =
+		getNullableString(openai, 'promptCacheKey') ?? getNullableString(codex, 'promptCacheKey')
+	const promptCacheRetention =
+		getNullableString(openai, 'promptCacheRetention') ?? getNullableString(codex, 'promptCacheRetention')
+	const serviceTier = getNullableString(openai, 'serviceTier') ?? getNullableString(codex, 'serviceTier')
+	const truncation = getNullableString(openai, 'truncation') ?? getNullableString(codex, 'truncation')
+	const user = getNullableString(openai, 'user') ?? getNullableString(codex, 'user')
+
+	return {
+		...(conversation !== undefined ? { conversation } : {}),
+		...(include !== undefined ? { include } : {}),
+		...(maxToolCalls !== undefined ? { max_tool_calls: maxToolCalls } : {}),
+		...(metadata ? { metadata } : {}),
+		...(parallelToolCalls !== undefined ? { parallel_tool_calls: parallelToolCalls } : {}),
+		...(previousResponseId !== undefined ? { previous_response_id: previousResponseId } : {}),
+		...(promptCacheKey !== undefined ? { prompt_cache_key: promptCacheKey } : {}),
+		...(promptCacheRetention !== undefined ? { prompt_cache_retention: promptCacheRetention } : {}),
+		...(reasoning ? { reasoning } : {}),
+		...(serviceTier !== undefined ? { service_tier: serviceTier } : {}),
+		...(truncation !== undefined ? { truncation } : {}),
+		...(user !== undefined ? { user } : {}),
+	}
+}
+
+function buildReasoningInput(part: {
+	text: string
+	providerOptions?: Record<string, unknown>
+	providerMetadata?: Record<string, unknown>
+}): Record<string, unknown> | undefined {
+	const openai = readReasoningProviderOptions(part.providerOptions?.openai) ?? readReasoningProviderOptions(part.providerMetadata?.openai)
+	const codex = readReasoningProviderOptions(part.providerOptions?.codex) ?? readReasoningProviderOptions(part.providerMetadata?.codex)
+	const itemId = openai?.itemId ?? codex?.itemId
+	const reasoningEncryptedContent = openai?.reasoningEncryptedContent ?? codex?.reasoningEncryptedContent
+	const summary = part.text.length > 0 ? [{ type: 'summary_text', text: part.text }] : []
+
+	if (itemId) {
+		return {
+			type: 'reasoning',
+			id: itemId,
+			...(reasoningEncryptedContent !== undefined ? { encrypted_content: reasoningEncryptedContent } : {}),
+			summary,
+		}
+	}
+
+	if (reasoningEncryptedContent !== undefined) {
+		return {
+			type: 'reasoning',
+			encrypted_content: reasoningEncryptedContent,
+			summary,
+		}
+	}
+
+	return undefined
+}
+
+function readReasoningProviderOptions(value: unknown):
+	| { itemId?: string; reasoningEncryptedContent?: string | null }
+	| undefined {
+	if (!isRecord(value)) {
+		return undefined
+	}
+
+	const itemId = typeof value.itemId === 'string' ? value.itemId : undefined
+	const encrypted =
+		typeof value.reasoningEncryptedContent === 'string' || value.reasoningEncryptedContent === null
+			? value.reasoningEncryptedContent
+			: undefined
+	if (itemId === undefined && encrypted === undefined) {
+		return undefined
+	}
+
+	return {
+		...(itemId !== undefined ? { itemId } : {}),
+		...(encrypted !== undefined ? { reasoningEncryptedContent: encrypted } : {}),
+	}
 }
 
 function joinInstructions(...values: Array<string | undefined>): string | undefined {
@@ -714,6 +1087,18 @@ function isExpired(auth: OAuthAuthInfo, now: number): boolean {
 	return auth.expiresAt != null && auth.expiresAt <= now
 }
 
+function findActiveReasoningByCanonicalId(
+	activeReasoning: Map<number, { canonicalId: string; encryptedContent?: string | null; summaryParts: Set<number> }>,
+	itemId: string,
+): { canonicalId: string; encryptedContent?: string | null; summaryParts: Set<number> } | undefined {
+	for (const reasoning of activeReasoning.values()) {
+		if (reasoning.canonicalId === itemId) {
+			return reasoning
+		}
+	}
+	return undefined
+}
+
 function buildItemProviderMetadata(
 	itemId: string,
 	phase?: 'commentary' | 'final_answer' | null,
@@ -722,6 +1107,18 @@ function buildItemProviderMetadata(
 		openai: {
 			itemId,
 			...(phase != null ? { phase } : {}),
+		},
+	}
+}
+
+function buildReasoningProviderMetadata(
+	itemId: string,
+	reasoningEncryptedContent?: string | null,
+): SharedV3ProviderMetadata {
+	return {
+		openai: {
+			itemId,
+			...(reasoningEncryptedContent !== undefined ? { reasoningEncryptedContent } : {}),
 		},
 	}
 }

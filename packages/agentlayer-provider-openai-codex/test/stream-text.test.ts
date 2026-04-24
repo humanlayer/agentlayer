@@ -1,4 +1,4 @@
-import { describe, test } from 'bun:test'
+import { describe, expect, test } from 'bun:test'
 import { createMemoryAuthStore } from '@humanlayer/agentlayer-provider-auth'
 import { streamText } from 'ai'
 import { createCodexProvider } from '../src'
@@ -26,15 +26,31 @@ describe.skipIf(
 		sessionId: 'local-test-session',
 	})
 
-	test('Basic Streaming', async () => {
-		const result = streamText({
-			model: codex.languageModel('gpt-5.4'),
-			system: 'Be concise.',
-			prompt: 'Say hello in one sentence.',
-		})
+	test(
+		'Basic Streaming',
+		async () => {
+			const result = streamText({
+				model: codex.languageModel('gpt-5.4'),
+				providerOptions: {
+					openai: {
+						reasoningEffort: 'high',
+						reasoningSummary: 'auto',
+						include: ['reasoning.encrypted_content'],
+					},
+				},
+				system: 'Think hard before answering',
+				prompt: 'Think hard about `this` in an arrow function inside a class in JS and tell me what this will refer to.',
+			})
 
-		for await (const chunk of result.textStream) {
-			process.stdout.write(chunk)
-		}
-	})
+			for await (const chunk of result.fullStream) {
+				process.stdout.write(JSON.stringify(chunk) + '\n')
+			}
+
+			expect((await result.reasoning).at(0)!.text).toBeString()
+
+			console.log(await result.reasoning)
+			console.log(await result.text)
+		},
+		{ timeout: 20_000 },
+	)
 })

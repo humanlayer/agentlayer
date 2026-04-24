@@ -16,6 +16,18 @@ describe('buildCodexRequestBody', () => {
 					openai: {
 						instructions: 'Prefer concise output.',
 						include: ['reasoning.encrypted_content'],
+						reasoningSummary: 'auto',
+						reasoningEffort: 'medium',
+						parallelToolCalls: false,
+						conversation: 'conv_123',
+						previousResponseId: 'resp_prev',
+						maxToolCalls: 2,
+						promptCacheKey: 'cache-key',
+						promptCacheRetention: '24h',
+						serviceTier: 'priority',
+						truncation: 'auto',
+						user: 'user_123',
+						metadata: { source: 'test' },
 						max_output_tokens: 123,
 					},
 				},
@@ -26,7 +38,18 @@ describe('buildCodexRequestBody', () => {
 		expect(body.instructions).toBe('Follow the repository rules.\n\nPrefer concise output.')
 		expect(body.store).toBe(false)
 		expect(body.stream).toBe(true)
-		expect(body).not.toHaveProperty('include')
+		expect(body.include).toEqual(['reasoning.encrypted_content'])
+		expect(body.reasoning).toEqual({ effort: 'medium', summary: 'auto' })
+		expect(body.parallel_tool_calls).toBe(false)
+		expect(body.conversation).toBe('conv_123')
+		expect(body.previous_response_id).toBe('resp_prev')
+		expect(body.max_tool_calls).toBe(2)
+		expect(body.prompt_cache_key).toBe('cache-key')
+		expect(body.prompt_cache_retention).toBe('24h')
+		expect(body.service_tier).toBe('priority')
+		expect(body.truncation).toBe('auto')
+		expect(body.user).toBe('user_123')
+		expect(body.metadata).toEqual({ source: 'test' })
 		expect(body).not.toHaveProperty('max_output_tokens')
 	})
 
@@ -74,6 +97,40 @@ describe('buildCodexRequestBody', () => {
 
 		expect(body.input).toEqual([
 			{ type: 'function_call_output', call_id: 'call_123', output: JSON.stringify({ ok: true }) },
+		])
+	})
+
+	test('serializes assistant reasoning with item ids and encrypted content', () => {
+		const body = buildCodexRequestBody(
+			{
+				prompt: [
+					{
+						role: 'assistant',
+						content: [
+							{
+								type: 'reasoning',
+								text: 'Think first',
+								providerOptions: {
+									openai: {
+										itemId: 'rs_123',
+										reasoningEncryptedContent: 'enc_123',
+									},
+								},
+							},
+						],
+					},
+				],
+			},
+			'gpt-5.4',
+		)
+
+		expect(body.input).toEqual([
+			{
+				type: 'reasoning',
+				id: 'rs_123',
+				encrypted_content: 'enc_123',
+				summary: [{ type: 'summary_text', text: 'Think first' }],
+			},
 		])
 	})
 })
