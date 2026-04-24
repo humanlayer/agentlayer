@@ -1,3 +1,4 @@
+/** Internal filesystem module surface shared by the package entrypoints. */
 export { CatalogStore } from './catalog-store'
 export { CommentStore } from './comment-store'
 export { ContentStore } from './content-store'

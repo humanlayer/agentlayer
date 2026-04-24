@@ -1,0 +1,49 @@
+{
+	"name": "@humanlayer/yjs-fs-react",
+	"module": "src/index.tsx",
+	"type": "module",
+	"version": "0.0.0",
+	"private": false,
+	"publishConfig": {
+		"access": "public",
+		"main": "./dist/index.js",
+		"module": "./dist/index.js",
+		"types": "./dist/index.d.ts",
+		"exports": {
+			".": {
+				"types": "./dist/index.d.ts",
+				"import": "./dist/index.js",
+				"default": "./dist/index.js"
+			}
+		}
+	},
+	"files": [
+		"src",
+		"dist"
+	],
+	"scripts": {
+		"typecheck": "tsc --noEmit",
+		"build": "bun run build:js && bunx tsc -p tsconfig.build.json",
+		"build:js": "bun run build.ts",
+		"build:types": "bunx tsc -p tsconfig.build.json"
+	},
+	"devDependencies": {
+		"@humanlayer/yjs-fs": "workspace:*",
+		"@types/react": "^18.3.12",
+		"react": "^18.3.1",
+		"typescript": "catalog:",
+		"y-protocols": "1.0.7",
+		"yjs": "13.6.30"
+	},
+	"dependencies": {
+		"@humanlayer/yjs-fs": "workspace:*"
+	},
+	"peerDependencies": {
+		"react": "^18.3.1",
+		"y-protocols": "1.0.7",
+		"yjs": "13.6.30"
+	},
+	"exports": {
+		".": "./src/index.tsx"
+	}
+}

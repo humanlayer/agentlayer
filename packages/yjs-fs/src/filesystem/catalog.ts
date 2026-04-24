@@ -41,6 +41,13 @@ type EntryRecord = Y.Map<unknown>
 // during sync and cause one side to keep the wrong child map. A flattened index
 // avoids that whole class of replica-initialization bugs.
 
+/**
+ * Root namespace state stored in the shared Y.Doc.
+ *
+ * The catalog answers path, listing, and tree queries without reading file
+ * content. File content is stored separately under the content store and linked
+ * from file entries via `contentId`.
+ */
 export type CatalogState = {
 	doc: Y.Doc
 	catalog: Y.Map<unknown>
@@ -50,6 +57,12 @@ export type CatalogState = {
 	rootEntryId: EntryId
 }
 
+/**
+ * Canonicalizes caller input into the absolute path format used by the catalog.
+ *
+ * This rejects unsupported path features such as `.`/`..` traversal and null
+ * bytes so every later namespace operation can work against one stable form.
+ */
 export function normalizePath(path: string): string {
 	// Normalize all caller input into an absolute path so the rest of the
 	// namespace layer can assume one canonical representation.
@@ -75,6 +88,12 @@ export function normalizePath(path: string): string {
 	return `/${segments.join('/')}`
 }
 
+/**
+ * Creates or recovers the shared catalog collections inside a root Y.Doc.
+ *
+ * This guarantees that the root directory exists with a stable entry id and
+ * that the supporting lookup indexes are present.
+ */
 export function createCatalogState(doc: Y.Doc): CatalogState {
 	// Create or recover the long-lived catalog collections from the root Y.Doc.
 	const catalog = doc.getMap<unknown>(CATALOG_KEY)
@@ -110,6 +129,12 @@ export function createCatalogState(doc: Y.Doc): CatalogState {
 	}
 }
 
+/**
+ * Resolves an absolute path to the stable entry id that currently owns it.
+ *
+ * The path index is used first for fast lookups, with a child-map walk as a
+ * fallback if the index is missing or stale.
+ */
 export function resolvePath(state: CatalogState, path: string): EntryId | undefined {
 	// Resolve an absolute path to a stable entry id. We prefer the cached path
 	// index, but can fall back to walking parent/child maps if needed.
@@ -140,6 +165,12 @@ export function resolvePath(state: CatalogState, path: string): EntryId | undefi
 	return currentEntryId
 }
 
+/**
+ * Looks up the metadata currently stored at a path.
+ *
+ * The returned object ties together the normalized path, the stable `entryId`,
+ * and the parsed metadata record used by higher-level stores.
+ */
 export function lookupPath(state: CatalogState, path: string): LookupResult | undefined {
 	// Lookups return both stable identity and the parsed entry metadata so the
 	// filesystem facade can answer higher-level queries without duplicating logic.
@@ -164,6 +195,7 @@ export function lookupPath(state: CatalogState, path: string): LookupResult | un
 	}
 }
 
+/** Reads and parses one entry record from the catalog by stable entry id. */
 export function getEntry(state: CatalogState, entryId: EntryId): EntryMetadata | undefined {
 	// Entry records are stored as Y.Maps so metadata remains collaborative and
 	// can evolve field-by-field over time.
@@ -177,6 +209,7 @@ export function getEntry(state: CatalogState, entryId: EntryId): EntryMetadata |
 	return parseEntryRecord(record)
 }
 
+/** Reconstructs the current absolute path for an entry by walking parent links. */
 export function getPathForEntryId(state: CatalogState, entryId: EntryId): string | undefined {
 	// Reconstruct the current absolute path by walking parent links back to root.
 	refreshCatalogState(state)
@@ -205,6 +238,12 @@ export function getPathForEntryId(state: CatalogState, entryId: EntryId): string
 	return `/${segments.reverse().join('/')}`
 }
 
+/**
+ * Lists the immediate children of a directory using the explicit child index.
+ *
+ * This is the key difference from the old path-prefix-scanning model: directory
+ * membership is modeled directly in catalog state.
+ */
 export function listDirectoryEntries(state: CatalogState, directoryId: EntryId): EntryDirent[] {
 	// Directory listings are driven by the explicit child map instead of path
 	// prefix scanning, which is the key shift away from the old path-keyed model.
@@ -243,12 +282,19 @@ export function listDirectoryEntries(state: CatalogState, directoryId: EntryId):
 		})
 }
 
+/** Builds a recursive tree view rooted at the requested path. */
 export function buildTree(state: CatalogState, path = '/'): FilesystemTreeNode {
 	refreshCatalogState(state)
 	const lookup = lookupRequired(state, normalizePath(path))
 	return buildTreeNode(state, lookup.entryId, lookup.path)
 }
 
+/**
+ * Creates a new directory entry and links it into the namespace graph.
+ *
+ * The new directory gets a stable `entryId`, while its parent's child index and
+ * modified time are updated atomically in the same Yjs transaction.
+ */
 export function mkdirInCatalog(state: CatalogState, path: string): EntryId {
 	// Create a directory entry and wire it into the parent/child namespace graph.
 	refreshCatalogState(state)
@@ -296,6 +342,12 @@ export function mkdirInCatalog(state: CatalogState, path: string): EntryId {
 	return entryId
 }
 
+/**
+ * Creates a file entry in the catalog that points at an existing content record.
+ *
+ * Namespace identity (`entryId`) and content identity (`contentId`) are kept
+ * separate so renames and moves do not recreate file content state.
+ */
 export function createFileInCatalog(
 	state: CatalogState,
 	path: string,
@@ -333,6 +385,12 @@ export function createFileInCatalog(
 	return entryId
 }
 
+/**
+ * Renames or moves an existing namespace entry without changing its identity.
+ *
+ * The entry id stays the same, and file entries continue to point at the same
+ * content id. Only parent/name/path-index links are rewritten.
+ */
 export function renameInCatalog(state: CatalogState, fromPath: string, toPath: string): EntryId {
 	// Rename mutates namespace links only. The entry id stays the same and file
 	// content ids stay the same, which is the core identity-preservation rule.
@@ -391,6 +449,12 @@ export function renameInCatalog(state: CatalogState, fromPath: string, toPath: s
 	return lookup.entryId
 }
 
+/**
+ * Deletes one namespace entry from the catalog.
+ *
+ * The removed metadata is returned so higher layers can clean up related state,
+ * such as deleting a file's content record after unlinking its catalog entry.
+ */
 export function deleteEntryInCatalog(state: CatalogState, path: string): EntryMetadata {
 	// Deletion removes the namespace entry and returns the removed metadata so the
 	// filesystem layer can clean up related state such as file content docs.
@@ -426,6 +490,7 @@ export function deleteEntryInCatalog(state: CatalogState, path: string): EntryMe
 	return deletedEntry
 }
 
+/** Updates size and modified time metadata after a file content mutation. */
 export function updateFileMetadata(state: CatalogState, entryId: EntryId, size: number): void {
 	// Content edits update file metadata in-place without touching namespace links.
 	refreshCatalogState(state)
@@ -442,6 +507,7 @@ export function updateFileMetadata(state: CatalogState, entryId: EntryId, size: 
 	record.set('modifiedAt', modifiedAt)
 }
 
+/** Creates the in-memory metadata shape used for a directory entry. */
 function createDirectoryEntry(
 	entryId: EntryId,
 	parentId: EntryId | null,
@@ -458,6 +524,7 @@ function createDirectoryEntry(
 	}
 }
 
+/** Refreshes cached references to the shared Yjs maps after remote changes. */
 function refreshCatalogState(state: CatalogState): void {
 	state.entries = state.doc.getMap<EntryRecord>(ENTRIES_KEY)
 	state.children = state.doc.getMap<EntryId>(CHILDREN_KEY)
@@ -469,6 +536,7 @@ function refreshCatalogState(state: CatalogState): void {
 	}
 }
 
+/** Creates the in-memory metadata shape used for a file entry. */
 function createFileEntry(
 	entryId: EntryId,
 	parentId: EntryId,
@@ -491,6 +559,7 @@ function createFileEntry(
 	}
 }
 
+/** Serializes plain entry metadata into the Y.Map record stored in `entries`. */
 function createEntryRecord(entry: EntryMetadata): EntryRecord {
 	const record = new Y.Map<unknown>()
 	record.set('id', entry.id)
@@ -509,6 +578,7 @@ function createEntryRecord(entry: EntryMetadata): EntryRecord {
 	return record
 }
 
+/** Parses a shared Y.Map back into typed entry metadata. */
 function parseEntryRecord(record: EntryRecord): EntryMetadata | undefined {
 	const id = record.get('id')
 	const parentId = record.get('parentId')
@@ -563,6 +633,8 @@ function parseEntryRecord(record: EntryRecord): EntryMetadata | undefined {
 		modifiedAt,
 	}
 }
+
+/** Returns the raw Yjs record for an entry, throwing if it is missing. */
 function getRequiredEntryRecord(state: CatalogState, entryId: EntryId): EntryRecord {
 	const record = state.entries.get(entryId)
 
@@ -574,6 +646,7 @@ function getRequiredEntryRecord(state: CatalogState, entryId: EntryId): EntryRec
 	return record
 }
 
+/** Best-effort helper for bumping an entry's modified timestamp in place. */
 function setEntryModifiedAt(state: CatalogState, entryId: EntryId, modifiedAt: number): void {
 	const record = state.entries.get(entryId)
 
@@ -584,6 +657,7 @@ function setEntryModifiedAt(state: CatalogState, entryId: EntryId, modifiedAt: n
 	record.set('modifiedAt', modifiedAt)
 }
 
+/** Lookup helper that converts missing entries into a path-aware error. */
 function lookupRequired(state: CatalogState, path: string): LookupResult {
 	const lookup = lookupPath(state, path)
 
@@ -594,6 +668,7 @@ function lookupRequired(state: CatalogState, path: string): LookupResult {
 	return lookup
 }
 
+/** Resolves a path and asserts that it points at a directory entry. */
 function resolveRequiredDirectoryId(state: CatalogState, path: string): EntryId {
 	const lookup = lookupRequired(state, path)
 
@@ -604,6 +679,7 @@ function resolveRequiredDirectoryId(state: CatalogState, path: string): EntryId 
 	return lookup.entryId
 }
 
+/** Removes cached absolute-path index rows for an entry and its descendants. */
 function removePathIndexForEntry(state: CatalogState, entryId: EntryId, rootPath: string): void {
 	for (const [path, indexedEntryId] of state.pathIndex.entries()) {
 		if (indexedEntryId !== entryId && !path.startsWith(`${rootPath}/`)) {
@@ -616,6 +692,7 @@ function removePathIndexForEntry(state: CatalogState, entryId: EntryId, rootPath
 	}
 }
 
+/** Rebuilds cached absolute-path index rows for an entry subtree. */
 function populatePathIndexForEntry(state: CatalogState, entryId: EntryId, rootPath: string): void {
 	state.pathIndex.set(rootPath, entryId)
 
@@ -624,6 +701,7 @@ function populatePathIndexForEntry(state: CatalogState, entryId: EntryId, rootPa
 	}
 }
 
+/** Reads all child links for a directory from the flattened `children` index. */
 function getChildrenForDirectory(state: CatalogState, directoryId: EntryId): Array<[string, EntryId]> {
 	const prefix = `${directoryId}\0`
 	const children: Array<[string, EntryId]> = []
@@ -639,6 +717,7 @@ function getChildrenForDirectory(state: CatalogState, directoryId: EntryId): Arr
 	return children
 }
 
+/** Recursively converts catalog state into the public tree representation. */
 function buildTreeNode(state: CatalogState, entryId: EntryId, path: string): FilesystemTreeNode {
 	const entry = getEntry(state, entryId)
 
@@ -668,10 +747,12 @@ function buildTreeNode(state: CatalogState, entryId: EntryId, path: string): Fil
 	}
 }
 
+/** Encodes a directory/name pair into the flattened child-index key format. */
 function childLookupKey(directoryId: EntryId, name: string): string {
 	return `${directoryId}\0${name}`
 }
 
+/** Prevents moving an entry into one of its own descendants. */
 function assertNoDescendantMove(
 	state: CatalogState,
 	entryId: EntryId,
@@ -690,14 +771,17 @@ function assertNoDescendantMove(
 	}
 }
 
+/** Returns true when `path` is nested under `rootPath`. */
 function isDescendantPath(path: string, rootPath: string): boolean {
 	return path.startsWith(`${rootPath}/`)
 }
 
+/** Splits a normalized absolute path into catalog path segments. */
 function splitPath(path: string): string[] {
 	return path === '/' ? [] : path.slice(1).split('/')
 }
 
+/** Returns the parent directory path for a normalized absolute path. */
 function dirname(path: string): string {
 	const segments = splitPath(path)
 
@@ -708,6 +792,7 @@ function dirname(path: string): string {
 	return `/${segments.slice(0, -1).join('/')}`
 }
 
+/** Returns the final path segment for a normalized absolute path. */
 function basename(path: string): string {
 	const segments = splitPath(path)
 	const name = segments.at(-1)
@@ -719,6 +804,7 @@ function basename(path: string): string {
 	return name
 }
 
+/** Joins a parent directory path and child name into one normalized path. */
 function joinPath(directoryPath: string, name: string): string {
 	return directoryPath === '/' ? `/${name}` : `${directoryPath}/${name}`
 }

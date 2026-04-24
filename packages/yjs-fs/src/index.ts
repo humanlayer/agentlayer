@@ -1,3 +1,4 @@
+/** Public package surface for the transport-neutral Yjs filesystem core. */
 export type { YjsFilesystemOptions } from './filesystem'
 export { CatalogStore, CommentStore, ContentStore, PresenceStore, YjsFilesystem } from './filesystem'
 export type {

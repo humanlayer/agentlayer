@@ -1,0 +1,40 @@
+{
+	"name": "@humanlayer/agentlayer-provider-github-copilot",
+	"module": "src/index.ts",
+	"type": "module",
+	"version": "0.0.0",
+	"private": false,
+	"publishConfig": {
+		"access": "public",
+		"main": "./dist/index.js",
+		"module": "./dist/index.js",
+		"types": "./dist/index.d.ts",
+		"exports": {
+			".": {
+				"types": "./dist/index.d.ts",
+				"import": "./dist/index.js",
+				"default": "./dist/index.js"
+			}
+		}
+	},
+	"files": [
+		"src",
+		"dist"
+	],
+	"scripts": {
+		"typecheck": "tsgo --noEmit",
+		"build": "bun run build:js && bunx tsc -p tsconfig.build.json",
+		"build:js": "bun run build.ts",
+		"build:types": "bunx tsc -p tsconfig.build.json"
+	},
+	"devDependencies": {
+		"@types/bun": "latest"
+	},
+	"peerDependencies": {
+		"typescript": "^5"
+	},
+	"exports": {
+		".": "./src/index.ts"
+	},
+	"dependencies": {}
+}

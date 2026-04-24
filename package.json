@@ -5,13 +5,12 @@
     "scripts": {
         "biome": "biome check . --write --unsafe",
         "biome:check": "biome check .",
-        "build": "bun run build:packages",
-        "build:packages": "bun --filter @humanlayer/agentlayer-core build && bun --filter @humanlayer/agentlayer-filesystem build && bun --filter @humanlayer/agentlayer-justbash build && bun --filter @humanlayer/yjs-fs build",
-        "typecheck": "bun --filter '*' --parallel typecheck",
+        "build": "bun --filter '*' build",
         "check": "bun --parallel 'typecheck' 'biome' 'test'",
+        "dev": "bun --filter '*' dev",
         "test": "bun test --concurrency 16 **/*",
         "test:ci": "bun test ./packages/*/test/*.test.ts ./agents/*/test/*.test.ts",
-        "docs:build": "bun run --cwd packages/docs docs:build",
+        "typecheck": "bun --filter '*' --parallel typecheck",
         "release:prepare": "bun run scripts/release/prepare.ts",
         "release:publish": "bun run scripts/release/publish.ts"
     },
@@ -31,7 +30,9 @@
     ],
     "catalog": {
         "@ai-sdk/anthropic": "3.0.69",
+        "@ai-sdk/openai": "3.0.53",
         "@ai-sdk/provider": "3.0.8",
+        "@ai-sdk/provider-utils": "4.0.23",
         "@pulumi/aws": "7.26.0",
         "@pulumi/command": "1.2.1",
         "@pulumi/pulumi": "3.231.0",
