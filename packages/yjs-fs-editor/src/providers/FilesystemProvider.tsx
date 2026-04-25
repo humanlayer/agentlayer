@@ -6,6 +6,7 @@ import { type PropsWithChildren, useCallback } from 'react'
 import { Awareness } from 'y-protocols/awareness.js'
 import * as Y from 'yjs'
 import { getOrCreateLocalUser } from '../lib/collaboration'
+import { patchProviderAwareness } from '../lib/provider-awareness'
 
 export const FilesystemProvider: React.FC<PropsWithChildren> = ({ children }) => {
 	const createSession = useCallback(async () => {
@@ -34,6 +35,8 @@ export const FilesystemProvider: React.FC<PropsWithChildren> = ({ children }) =>
 			connect: false,
 			liveMode: 'long-poll',
 		})
+
+		patchProviderAwareness(provider)
 
 		await provider.connect()
 		const filesystem = new YjsFilesystem({ doc, awareness })
