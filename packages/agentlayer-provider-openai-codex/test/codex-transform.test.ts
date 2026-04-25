@@ -107,7 +107,7 @@ describe('buildCodexRequestBody', () => {
 		expect(body.service_tier).toBe('flex')
 	})
 
-	test('preserves item_reference ids from provider metadata', () => {
+	test('replays assistant text instead of referencing unpersisted Codex item ids', () => {
 		const body = buildCodexRequestBody(
 			{
 				prompt: [
@@ -126,7 +126,7 @@ describe('buildCodexRequestBody', () => {
 			'gpt-5.4',
 		)
 
-		expect(body.input).toEqual([{ type: 'item_reference', id: 'msg_123' }])
+		expect(body.input).toEqual([{ role: 'assistant', content: [{ type: 'output_text', text: 'Stored content' }] }])
 	})
 
 	test('serializes tool call outputs for tool messages', () => {
@@ -222,7 +222,7 @@ describe('buildCodexRequestBody', () => {
 		])
 	})
 
-	test('derives previous_response_id from the latest assistant responseId when not explicitly provided', () => {
+	test('does not derive previous_response_id for unpersisted Codex responses', () => {
 		const body = buildCodexRequestBody(
 			{
 				prompt: [
@@ -244,7 +244,7 @@ describe('buildCodexRequestBody', () => {
 			'gpt-5.4',
 		)
 
-		expect(body.previous_response_id).toBe('resp_from_history')
+		expect(body.previous_response_id).toBeUndefined()
 	})
 
 	test('prefers explicit previousResponseId over derived responseId', () => {
@@ -273,7 +273,7 @@ describe('buildCodexRequestBody', () => {
 		expect(body.previous_response_id).toBe('resp_explicit')
 	})
 
-	test('derives previous_response_id from assistant content part responseId when present', () => {
+	test('does not derive previous_response_id from assistant content part responseId', () => {
 		const body = buildCodexRequestBody(
 			{
 				prompt: [
@@ -297,6 +297,6 @@ describe('buildCodexRequestBody', () => {
 			'gpt-5.4',
 		)
 
-		expect(body.previous_response_id).toBe('resp_from_part')
+		expect(body.previous_response_id).toBeUndefined()
 	})
 })

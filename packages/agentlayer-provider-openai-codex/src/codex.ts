@@ -5,7 +5,6 @@ import {
 	type LanguageModelV3Content,
 	type LanguageModelV3FinishReason,
 	type LanguageModelV3GenerateResult,
-	type LanguageModelV3Message,
 	type LanguageModelV3Prompt,
 	type LanguageModelV3StreamPart,
 	type LanguageModelV3Usage,
@@ -379,12 +378,6 @@ export function transformCodexPrompt(prompt: LanguageModelV3Prompt): {
 					continue
 				}
 
-				const itemId = getStoredItemId(message, part)
-				if (itemId) {
-					input.push({ type: 'item_reference', id: itemId })
-					continue
-				}
-
 				if (part.type === 'text') {
 					input.push({
 						role: 'assistant',
@@ -407,12 +400,6 @@ export function transformCodexPrompt(prompt: LanguageModelV3Prompt): {
 
 		if (message.role === 'tool') {
 			for (const part of message.content) {
-				const itemId = getStoredItemId(message, part)
-				if (itemId) {
-					input.push({ type: 'item_reference', id: itemId })
-					continue
-				}
-
 				if (part.type === 'tool-result') {
 					input.push({
 						type: 'function_call_output',
@@ -1022,9 +1009,7 @@ function buildCodexRequestExtras(
 	const parallelToolCalls =
 		getNullableBoolean(openai, 'parallelToolCalls') ?? getNullableBoolean(codex, 'parallelToolCalls')
 	const previousResponseId =
-		getNullableString(openai, 'previousResponseId') ??
-		getNullableString(codex, 'previousResponseId') ??
-		findLatestResponseId(options.prompt)
+		getNullableString(openai, 'previousResponseId') ?? getNullableString(codex, 'previousResponseId')
 	const promptCacheKey = getNullableString(openai, 'promptCacheKey') ?? getNullableString(codex, 'promptCacheKey')
 	const promptCacheRetention =
 		getNullableString(openai, 'promptCacheRetention') ?? getNullableString(codex, 'promptCacheRetention')
@@ -1046,59 +1031,6 @@ function buildCodexRequestExtras(
 		...(truncation !== undefined ? { truncation } : {}),
 		...(user !== undefined ? { user } : {}),
 	}
-}
-
-function findLatestResponseId(prompt: LanguageModelV3Prompt): string | undefined {
-	for (let index = prompt.length - 1; index >= 0; index--) {
-		const message = prompt[index]
-		if (message?.role !== 'assistant') continue
-
-		const messageOptions = isRecord(message.providerOptions?.openai)
-			? (message.providerOptions?.openai as Record<string, unknown>)
-			: undefined
-		const messageCodexOptions = isRecord(message.providerOptions?.codex)
-			? (message.providerOptions?.codex as Record<string, unknown>)
-			: undefined
-
-		const directResponseId =
-			getNullableString(messageOptions, 'responseId') ?? getNullableString(messageCodexOptions, 'responseId')
-		if (directResponseId) {
-			return directResponseId
-		}
-
-		if (!Array.isArray(message.content)) continue
-
-		for (let partIndex = message.content.length - 1; partIndex >= 0; partIndex--) {
-			const part = message.content[partIndex]
-			if (!part || typeof part !== 'object') continue
-			const providerOptions =
-				'providerOptions' in part && isRecord(part.providerOptions) ? part.providerOptions : undefined
-			const providerMetadata =
-				'providerMetadata' in part && isRecord(part.providerMetadata) ? part.providerMetadata : undefined
-			const openai = isRecord(providerOptions?.openai)
-				? (providerOptions.openai as Record<string, unknown>)
-				: undefined
-			const codex = isRecord(providerOptions?.codex)
-				? (providerOptions.codex as Record<string, unknown>)
-				: undefined
-			const openaiMetadata = isRecord(providerMetadata?.openai)
-				? (providerMetadata.openai as Record<string, unknown>)
-				: undefined
-			const codexMetadata = isRecord(providerMetadata?.codex)
-				? (providerMetadata.codex as Record<string, unknown>)
-				: undefined
-			const responseId =
-				getNullableString(openai, 'responseId') ??
-				getNullableString(codex, 'responseId') ??
-				getNullableString(openaiMetadata, 'responseId') ??
-				getNullableString(codexMetadata, 'responseId')
-			if (responseId) {
-				return responseId
-			}
-		}
-	}
-
-	return undefined
 }
 
 function buildReasoningInput(part: {
@@ -1161,38 +1093,6 @@ function readReasoningProviderOptions(
 function joinInstructions(...values: Array<string | undefined>): string | undefined {
 	const parts = values.filter((value): value is string => Boolean(value?.trim()))
 	return parts.length > 0 ? parts.join('\n\n') : undefined
-}
-
-function getStoredItemId(
-	message: LanguageModelV3Message,
-	part: { providerOptions?: Record<string, unknown> } | { providerMetadata?: Record<string, unknown> },
-): string | undefined {
-	const messageOptions = message.providerOptions as Record<string, unknown> | undefined
-	const partOptions =
-		'providerOptions' in part ? (part.providerOptions as Record<string, unknown> | undefined) : undefined
-	const metadata =
-		'providerMetadata' in part ? (part.providerMetadata as Record<string, unknown> | undefined) : undefined
-
-	return (
-		readItemId(partOptions?.openai) ||
-		readItemId(partOptions?.codex) ||
-		readItemId(messageOptions?.openai) ||
-		readItemId(messageOptions?.codex) ||
-		readItemId(metadata?.openai) ||
-		readItemId(metadata?.codex)
-	)
-}
-
-function readItemId(value: unknown): string | undefined {
-	if (!value || typeof value !== 'object') return undefined
-	if ('itemId' in value && typeof value.itemId === 'string') return value.itemId
-	return undefined
-}
-
-function _readResponseId(value: unknown): string | undefined {
-	if (!value || typeof value !== 'object') return undefined
-	if ('responseId' in value && typeof value.responseId === 'string') return value.responseId
-	return undefined
 }
 
 function stringifyToolResult(output: unknown): string {

@@ -1,7 +1,9 @@
 import { describe, expect, test } from 'bun:test'
 import type { LanguageModel } from 'ai'
 import type { AgentConfig } from '@humanlayer/agentlayer-core'
-import { createCodelayerAgent } from '../src/agent'
+import { buildProviderOptions, createCodelayerAgent } from '../src/agent'
+import { parseProviderOptionOverrides } from '../src/command'
+import { DEFAULT_MODELS } from '../src/providers'
 
 function createMockModel(modelId: string): LanguageModel {
 	return {
@@ -42,6 +44,44 @@ function getSystemEntries(agent: object): string[] {
 }
 
 describe('createCodelayerAgent', () => {
+	test('uses gpt-5.4 as the default copilot model', () => {
+		expect(DEFAULT_MODELS.copilot).toBe('gpt-5.4')
+	})
+
+	test('builds provider options with reasoning and fast mode overrides', () => {
+		const model = createMockModel('gpt-5.4')
+		const overrides = parseProviderOptionOverrides([
+			'reasoningEffort=medium',
+			'reasoningSummary=detailed',
+			'fastMode=true',
+			'anthropic.thinking=enabled',
+			'anthropic.budgetTokens=1234',
+		])
+
+		expect(buildProviderOptions(model, overrides)).toEqual({
+			anthropic: {
+				thinking: { type: 'enabled', budgetTokens: 1234 },
+				cacheControl: { type: 'ephemeral' },
+			},
+			openai: {
+				store: false,
+				reasoningSummary: 'detailed',
+				reasoningEffort: 'medium',
+				fastMode: true,
+			},
+			copilot: {
+				reasoningEffort: 'medium',
+				reasoningSummary: 'detailed',
+			},
+		})
+	})
+
+	test('enables codex fast mode by default', () => {
+		const model = createMockModel('gpt-5.5')
+
+		expect(buildProviderOptions(model).openai.fastMode).toBe(true)
+	})
+
 	test('creates a standard claude agent with coding tools and subagent tool', async () => {
 		const agent = await createCodelayerAgent({
 			model: createMockModel('claude-sonnet-4-5'),

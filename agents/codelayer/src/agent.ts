@@ -1,4 +1,4 @@
-import type { LanguageModel } from 'ai'
+import type { LanguageModel, JSONValue } from 'ai'
 import { Agent, doomLoop, tarsPersona, type AgentConfig, type Tool } from '@humanlayer/agentlayer-core'
 import {
 	createAgentFilesystemHooks,
@@ -35,9 +35,48 @@ export interface CodelayerAgentOptions {
 	skillTool?: Tool<any, any>
 	additionalTools?: Record<string, Tool<any, any>>
 	subagentTool?: Tool<any, any>
+	providerOptionOverrides?: CodelayerProviderOptionOverrides
 }
 
 export type ModelFamily = ReturnType<typeof detectModelFamily>
+
+export type ReasoningEffort = 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
+export type ReasoningSummary = 'auto' | 'concise' | 'detailed'
+
+export interface CodelayerProviderOptionOverrides {
+	anthropic?: {
+		thinking?: 'off' | 'adaptive' | 'enabled'
+		budgetTokens?: number
+	}
+	codex?: {
+		reasoningEffort?: ReasoningEffort
+		reasoningSummary?: ReasoningSummary
+		fastMode?: boolean
+		serviceTier?: string | null
+	}
+	copilot?: {
+		reasoningEffort?: ReasoningEffort
+		reasoningSummary?: ReasoningSummary
+	}
+}
+
+export interface CodelayerProviderOptions extends Record<string, Record<string, JSONValue>> {
+	anthropic: {
+		thinking?: { type: 'adaptive' } | { type: 'enabled'; budgetTokens: number }
+		cacheControl: { type: 'ephemeral' }
+	}
+	openai: {
+		store: false
+		reasoningEffort?: ReasoningEffort
+		reasoningSummary?: ReasoningSummary
+		fastMode?: boolean
+		serviceTier?: string | null
+	}
+	copilot: {
+		reasoningEffort?: ReasoningEffort
+		reasoningSummary?: ReasoningSummary
+	}
+}
 
 function resolveAnthropicThinking(model: LanguageModel): Record<string, unknown> {
 	const modelId = ((model as { modelId?: string }).modelId ?? '').toLowerCase()
@@ -61,15 +100,36 @@ function resolveCodexThinking(model: LanguageModel): Record<string, unknown> {
 	return {}
 }
 
-export function buildProviderOptions(model: LanguageModel) {
+export function buildProviderOptions(
+	model: LanguageModel,
+	overrides: CodelayerProviderOptionOverrides = {},
+): CodelayerProviderOptions {
+	const anthropicThinking =
+		overrides.anthropic?.thinking === 'off'
+			? {}
+			: overrides.anthropic?.thinking === 'adaptive'
+				? { thinking: { type: 'adaptive' as const } }
+				: overrides.anthropic?.thinking === 'enabled'
+					? { thinking: { type: 'enabled' as const, budgetTokens: overrides.anthropic.budgetTokens ?? 10000 } }
+					: resolveAnthropicThinking(model)
+	const codexOptions = {
+		fastMode: true,
+		...resolveCodexThinking(model),
+		...overrides.codex,
+	}
+	const copilotOptions = overrides.copilot ?? {}
+
 	return {
 		anthropic: {
-			...resolveAnthropicThinking(model),
+			...anthropicThinking,
 			cacheControl: { type: 'ephemeral' as const },
 		},
 		openai: {
 			store: false as const,
-			...resolveCodexThinking(model),
+			...codexOptions,
+		},
+		copilot: {
+			...copilotOptions,
 		},
 	}
 }
@@ -97,9 +157,10 @@ export async function createCodelayerAgent(opts: CodelayerAgentOptions): Promise
 		skillTool,
 		additionalTools = {},
 		subagentTool,
+		providerOptionOverrides,
 	} = opts
 	const modelFamily = detectModelFamily(model)
-	const providerOptions = buildProviderOptions(model)
+	const providerOptions = buildProviderOptions(model, providerOptionOverrides)
 	const personaPromptAdditions = [
 		...(tars ? [tarsPersona(35)] : []),
 		...systemPromptAdditions,
