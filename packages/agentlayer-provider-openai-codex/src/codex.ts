@@ -14,6 +14,7 @@ import {
 	type SharedV3ProviderMetadata,
 } from '@ai-sdk/provider'
 import type { AuthInfo, AuthStore, OAuthAuthInfo } from '@humanlayer/agentlayer-provider-auth'
+import { createFileAuthStore } from '@humanlayer/agentlayer-provider-auth'
 import { type CodexFetchLike, refreshAccessToken } from './codex-oauth'
 
 export const CODEX_API_ENDPOINT = 'https://chatgpt.com/backend-api/codex/responses'
@@ -36,7 +37,7 @@ export interface CodexRequestOptions {
 }
 
 export interface CodexProviderOptions extends CodexRequestOptions {
-	authStore: AuthStore
+	authStore?: AuthStore
 	providerId?: string
 	fetch?: CodexFetchLike
 	version?: string
@@ -201,6 +202,7 @@ export function createCodexProvider(options: CodexProviderOptions): ProviderV3 {
 
 export function createCodexLanguageModel(options: CodexModelOptions): LanguageModelV3 {
 	const providerId = options.providerId ?? CODEX_PROVIDER_ID
+	const authStore = options.authStore ?? createFileAuthStore()
 	const fetchFn = options.fetch ?? globalThis.fetch
 	const now = options.now ?? Date.now
 
@@ -214,7 +216,7 @@ export function createCodexLanguageModel(options: CodexModelOptions): LanguageMo
 				callOptions,
 				modelId: options.modelId,
 				requestOptions: options,
-				authStore: options.authStore,
+				authStore,
 				providerId,
 				fetch: fetchFn,
 				version: options.version,
@@ -241,7 +243,7 @@ export function createCodexLanguageModel(options: CodexModelOptions): LanguageMo
 				callOptions,
 				modelId: options.modelId,
 				requestOptions: options,
-				authStore: options.authStore,
+				authStore,
 				providerId,
 				fetch: fetchFn,
 				version: options.version,
@@ -496,6 +498,7 @@ export function createCodexSseStream(response: Response): ReadableStream<Languag
 				number,
 				{ canonicalId: string; encryptedContent?: string | null; summaryParts: Set<number> }
 			>()
+			let responseId: string | undefined
 			controller.enqueue({ type: 'stream-start', warnings: [] })
 
 			try {
@@ -508,11 +511,14 @@ export function createCodexSseStream(response: Response): ReadableStream<Languag
 					buffer = parsed.remainder
 
 					for (const event of parsed.events) {
+						if (event.type === 'response.created') {
+							responseId = event.response.id
+						}
 						if (event.type === 'response.output_item.done' && event.item.type === 'function_call') {
 							hasFunctionCall = true
 						}
 
-						const streamParts = codexEventToStreamParts(event, hasFunctionCall, activeReasoning)
+						const streamParts = codexEventToStreamParts(event, hasFunctionCall, responseId, activeReasoning)
 						for (const streamPart of streamParts) {
 							controller.enqueue(streamPart)
 							if (streamPart.type === 'finish') {
@@ -525,11 +531,14 @@ export function createCodexSseStream(response: Response): ReadableStream<Languag
 				buffer += decoder.decode()
 				const trailing = parseCodexSseBuffer(buffer)
 				for (const event of trailing.events) {
+					if (event.type === 'response.created') {
+						responseId = event.response.id
+					}
 					if (event.type === 'response.output_item.done' && event.item.type === 'function_call') {
 						hasFunctionCall = true
 					}
 
-					const streamParts = codexEventToStreamParts(event, hasFunctionCall, activeReasoning)
+					const streamParts = codexEventToStreamParts(event, hasFunctionCall, responseId, activeReasoning)
 					for (const streamPart of streamParts) {
 						controller.enqueue(streamPart)
 						if (streamPart.type === 'finish') {
@@ -625,6 +634,7 @@ export function streamPartsToGenerateResult(
 		content,
 		finishReason,
 		usage,
+		providerMetadata: responseMetadata?.id ? { openai: { responseId: responseMetadata.id } } : undefined,
 		warnings: [],
 		request: { body: requestBody },
 		response: {
@@ -656,6 +666,7 @@ function parseCodexSseBuffer(buffer: string): { events: CodexSseEvent[]; remaind
 function codexEventToStreamParts(
 	event: CodexSseEvent,
 	hasFunctionCall: boolean,
+	responseId: string | undefined,
 	activeReasoning: Map<number, { canonicalId: string; encryptedContent?: string | null; summaryParts: Set<number> }>,
 ): LanguageModelV3StreamPart[] {
 	if (event.type === 'response.created') {
@@ -674,7 +685,7 @@ function codexEventToStreamParts(
 			{
 				type: 'text-start',
 				id: event.item.id,
-				providerMetadata: buildItemProviderMetadata(event.item.id, event.item.phase),
+				providerMetadata: buildItemProviderMetadata(event.item.id, event.item.phase, responseId),
 			},
 		]
 	}
@@ -689,7 +700,11 @@ function codexEventToStreamParts(
 			{
 				type: 'reasoning-start',
 				id: `${event.item.id}:0`,
-				providerMetadata: buildReasoningProviderMetadata(event.item.id, event.item.encrypted_content),
+				providerMetadata: buildReasoningProviderMetadata(
+					event.item.id,
+					event.item.encrypted_content,
+					responseId,
+				),
 			},
 		]
 	}
@@ -711,7 +726,7 @@ function codexEventToStreamParts(
 			{
 				type: 'reasoning-start',
 				id: `${event.item_id}:${event.summary_index}`,
-				providerMetadata: buildReasoningProviderMetadata(event.item_id, reasoning.encryptedContent),
+				providerMetadata: buildReasoningProviderMetadata(event.item_id, reasoning.encryptedContent, responseId),
 			},
 		]
 	}
@@ -722,7 +737,7 @@ function codexEventToStreamParts(
 				type: 'reasoning-delta',
 				id: `${event.item_id}:${event.summary_index}`,
 				delta: event.delta,
-				providerMetadata: buildReasoningProviderMetadata(event.item_id),
+				providerMetadata: buildReasoningProviderMetadata(event.item_id, undefined, responseId),
 			},
 		]
 	}
@@ -740,7 +755,7 @@ function codexEventToStreamParts(
 			{
 				type: 'text-end',
 				id: event.item.id,
-				providerMetadata: buildItemProviderMetadata(event.item.id, event.item.phase),
+				providerMetadata: buildItemProviderMetadata(event.item.id, event.item.phase, responseId),
 			},
 		]
 	}
@@ -758,7 +773,7 @@ function codexEventToStreamParts(
 			.map((summaryIndex) => ({
 				type: 'reasoning-end' as const,
 				id: `${reasoning.canonicalId}:${summaryIndex}`,
-				providerMetadata: buildReasoningProviderMetadata(reasoning.canonicalId, encryptedContent),
+				providerMetadata: buildReasoningProviderMetadata(reasoning.canonicalId, encryptedContent, responseId),
 			}))
 	}
 
@@ -772,6 +787,7 @@ function codexEventToStreamParts(
 				type: 'finish',
 				finishReason: mapCodexFinishReason(event.response.incomplete_details?.reason, hasFunctionCall),
 				usage: mapCodexUsage(event.response.usage ?? undefined),
+				providerMetadata: responseId !== undefined ? { openai: { responseId } } : undefined,
 			},
 		]
 	}
@@ -852,9 +868,7 @@ function isReasoningSummaryPartAddedEvent(value: unknown): value is CodexRespons
 function isReasoningSummaryTextDeltaEvent(value: unknown): value is CodexResponseReasoningSummaryTextDeltaEvent {
 	if (!isRecord(value)) return false
 	return (
-		typeof value.item_id === 'string' &&
-		typeof value.summary_index === 'number' &&
-		typeof value.delta === 'string'
+		typeof value.item_id === 'string' && typeof value.summary_index === 'number' && typeof value.delta === 'string'
 	)
 }
 
@@ -888,10 +902,7 @@ function getCodexProviderOptionRecord(
 	return isRecord(providerOptions) ? providerOptions : undefined
 }
 
-function getNullableString(
-	value: Record<string, unknown> | undefined,
-	key: string,
-): string | null | undefined {
+function getNullableString(value: Record<string, unknown> | undefined, key: string): string | null | undefined {
 	if (!value || !(key in value)) {
 		return undefined
 	}
@@ -899,10 +910,7 @@ function getNullableString(
 	return typeof candidate === 'string' || candidate === null ? candidate : undefined
 }
 
-function getNullableBoolean(
-	value: Record<string, unknown> | undefined,
-	key: string,
-): boolean | null | undefined {
+function getNullableBoolean(value: Record<string, unknown> | undefined, key: string): boolean | null | undefined {
 	if (!value || !(key in value)) {
 		return undefined
 	}
@@ -910,10 +918,7 @@ function getNullableBoolean(
 	return typeof candidate === 'boolean' || candidate === null ? candidate : undefined
 }
 
-function getNullableNumber(
-	value: Record<string, unknown> | undefined,
-	key: string,
-): number | null | undefined {
+function getNullableNumber(value: Record<string, unknown> | undefined, key: string): number | null | undefined {
 	if (!value || !(key in value)) {
 		return undefined
 	}
@@ -921,10 +926,7 @@ function getNullableNumber(
 	return typeof candidate === 'number' || candidate === null ? candidate : undefined
 }
 
-function getNullableStringArray(
-	value: Record<string, unknown> | undefined,
-	key: string,
-): string[] | null | undefined {
+function getNullableStringArray(value: Record<string, unknown> | undefined, key: string): string[] | null | undefined {
 	if (!value || !(key in value)) {
 		return undefined
 	}
@@ -1020,9 +1022,10 @@ function buildCodexRequestExtras(
 	const parallelToolCalls =
 		getNullableBoolean(openai, 'parallelToolCalls') ?? getNullableBoolean(codex, 'parallelToolCalls')
 	const previousResponseId =
-		getNullableString(openai, 'previousResponseId') ?? getNullableString(codex, 'previousResponseId')
-	const promptCacheKey =
-		getNullableString(openai, 'promptCacheKey') ?? getNullableString(codex, 'promptCacheKey')
+		getNullableString(openai, 'previousResponseId') ??
+		getNullableString(codex, 'previousResponseId') ??
+		findLatestResponseId(options.prompt)
+	const promptCacheKey = getNullableString(openai, 'promptCacheKey') ?? getNullableString(codex, 'promptCacheKey')
 	const promptCacheRetention =
 		getNullableString(openai, 'promptCacheRetention') ?? getNullableString(codex, 'promptCacheRetention')
 	const serviceTier = buildCodexServiceTier(options, requestOptions)
@@ -1045,13 +1048,70 @@ function buildCodexRequestExtras(
 	}
 }
 
+function findLatestResponseId(prompt: LanguageModelV3Prompt): string | undefined {
+	for (let index = prompt.length - 1; index >= 0; index--) {
+		const message = prompt[index]
+		if (message?.role !== 'assistant') continue
+
+		const messageOptions = isRecord(message.providerOptions?.openai)
+			? (message.providerOptions?.openai as Record<string, unknown>)
+			: undefined
+		const messageCodexOptions = isRecord(message.providerOptions?.codex)
+			? (message.providerOptions?.codex as Record<string, unknown>)
+			: undefined
+
+		const directResponseId =
+			getNullableString(messageOptions, 'responseId') ?? getNullableString(messageCodexOptions, 'responseId')
+		if (directResponseId) {
+			return directResponseId
+		}
+
+		if (!Array.isArray(message.content)) continue
+
+		for (let partIndex = message.content.length - 1; partIndex >= 0; partIndex--) {
+			const part = message.content[partIndex]
+			if (!part || typeof part !== 'object') continue
+			const providerOptions =
+				'providerOptions' in part && isRecord(part.providerOptions) ? part.providerOptions : undefined
+			const providerMetadata =
+				'providerMetadata' in part && isRecord(part.providerMetadata) ? part.providerMetadata : undefined
+			const openai = isRecord(providerOptions?.openai)
+				? (providerOptions.openai as Record<string, unknown>)
+				: undefined
+			const codex = isRecord(providerOptions?.codex)
+				? (providerOptions.codex as Record<string, unknown>)
+				: undefined
+			const openaiMetadata = isRecord(providerMetadata?.openai)
+				? (providerMetadata.openai as Record<string, unknown>)
+				: undefined
+			const codexMetadata = isRecord(providerMetadata?.codex)
+				? (providerMetadata.codex as Record<string, unknown>)
+				: undefined
+			const responseId =
+				getNullableString(openai, 'responseId') ??
+				getNullableString(codex, 'responseId') ??
+				getNullableString(openaiMetadata, 'responseId') ??
+				getNullableString(codexMetadata, 'responseId')
+			if (responseId) {
+				return responseId
+			}
+		}
+	}
+
+	return undefined
+}
+
 function buildReasoningInput(part: {
 	text: string
 	providerOptions?: Record<string, unknown>
 	providerMetadata?: Record<string, unknown>
 }): Record<string, unknown> | undefined {
-	const openai = readReasoningProviderOptions(part.providerOptions?.openai) ?? readReasoningProviderOptions(part.providerMetadata?.openai)
-	const codex = readReasoningProviderOptions(part.providerOptions?.codex) ?? readReasoningProviderOptions(part.providerMetadata?.codex)
+	const openai =
+		readReasoningProviderOptions(part.providerOptions?.openai) ??
+		readReasoningProviderOptions(part.providerMetadata?.openai)
+	const codex =
+		readReasoningProviderOptions(part.providerOptions?.codex) ??
+		readReasoningProviderOptions(part.providerMetadata?.codex)
 	const itemId = openai?.itemId ?? codex?.itemId
 	const reasoningEncryptedContent = openai?.reasoningEncryptedContent ?? codex?.reasoningEncryptedContent
 	const summary = part.text.length > 0 ? [{ type: 'summary_text', text: part.text }] : []
@@ -1076,9 +1136,9 @@ function buildReasoningInput(part: {
 	return undefined
 }
 
-function readReasoningProviderOptions(value: unknown):
-	| { itemId?: string; reasoningEncryptedContent?: string | null }
-	| undefined {
+function readReasoningProviderOptions(
+	value: unknown,
+): { itemId?: string; reasoningEncryptedContent?: string | null } | undefined {
 	if (!isRecord(value)) {
 		return undefined
 	}
@@ -1129,6 +1189,12 @@ function readItemId(value: unknown): string | undefined {
 	return undefined
 }
 
+function _readResponseId(value: unknown): string | undefined {
+	if (!value || typeof value !== 'object') return undefined
+	if ('responseId' in value && typeof value.responseId === 'string') return value.responseId
+	return undefined
+}
+
 function stringifyToolResult(output: unknown): string {
 	if (!output || typeof output !== 'object') {
 		return JSON.stringify(output)
@@ -1168,11 +1234,13 @@ function findActiveReasoningByCanonicalId(
 function buildItemProviderMetadata(
 	itemId: string,
 	phase?: 'commentary' | 'final_answer' | null,
+	responseId?: string,
 ): SharedV3ProviderMetadata {
 	return {
 		openai: {
 			itemId,
 			...(phase != null ? { phase } : {}),
+			...(responseId !== undefined ? { responseId } : {}),
 		},
 	}
 }
@@ -1180,11 +1248,13 @@ function buildItemProviderMetadata(
 function buildReasoningProviderMetadata(
 	itemId: string,
 	reasoningEncryptedContent?: string | null,
+	responseId?: string,
 ): SharedV3ProviderMetadata {
 	return {
 		openai: {
 			itemId,
 			...(reasoningEncryptedContent !== undefined ? { reasoningEncryptedContent } : {}),
+			...(responseId !== undefined ? { responseId } : {}),
 		},
 	}
 }

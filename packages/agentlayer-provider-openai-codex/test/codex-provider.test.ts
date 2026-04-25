@@ -1,7 +1,10 @@
-import { setTimeout as sleep } from 'node:timers/promises'
 import { describe, expect, test } from 'bun:test'
-import { generateText, streamText } from 'ai'
+import * as fs from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
+import { setTimeout as sleep } from 'node:timers/promises'
 import { createMemoryAuthStore } from '@humanlayer/agentlayer-provider-auth'
+import { generateText, streamText } from 'ai'
 import {
 	buildCodexHeaders,
 	buildCodexUserAgent,
@@ -21,6 +24,10 @@ function createSseResponse(events: unknown[]): Response {
 		status: 200,
 		headers: { 'content-type': 'text/event-stream' },
 	})
+}
+
+async function makeTempDir(): Promise<string> {
+	return fs.mkdtemp(path.join(tmpdir(), 'agentlayer-codex-'))
 }
 
 function createDeferredSseResponse(initialEvents: unknown[], trailingEvents: unknown[]) {
@@ -50,6 +57,65 @@ function createDeferredSseResponse(initialEvents: unknown[], trailingEvents: unk
 }
 
 describe('codex provider wrapper', () => {
+	test('createCodexProvider defaults to the disk-backed auth store', async () => {
+		const dir = await makeTempDir()
+		const filePath = path.join(dir, 'auth.json')
+		await fs.writeFile(
+			filePath,
+			JSON.stringify({
+				codex: {
+					kind: 'oauth',
+					accessToken: 'disk-access',
+					accountId: 'acct_disk',
+				},
+			}),
+		)
+		const previousAuthPath = process.env.AGENTLAYER_AUTH_PATH
+		process.env.AGENTLAYER_AUTH_PATH = filePath
+		const calls: Array<{ url: string; init?: RequestInit }> = []
+
+		try {
+			const provider = createCodexProvider({
+				version: '1.2.3',
+				fetch: async (input, init) => {
+					calls.push({ url: input instanceof URL ? input.toString() : String(input), init })
+					return createSseResponse([
+						{
+							type: 'response.output_item.added',
+							output_index: 0,
+							item: { type: 'message', id: 'msg_disk' },
+						},
+						{ type: 'response.output_text.delta', item_id: 'msg_disk', delta: 'Hello from disk' },
+						{
+							type: 'response.output_item.done',
+							output_index: 0,
+							item: { type: 'message', id: 'msg_disk' },
+						},
+						{ type: 'response.completed', response: { usage: { input_tokens: 1, output_tokens: 1 } } },
+					])
+				},
+			})
+
+			const result = await provider.languageModel('gpt-5.4').doGenerate({
+				prompt: [{ role: 'user', content: [{ type: 'text', text: 'Hi' }] }],
+			})
+
+			expect(calls).toHaveLength(1)
+			const headers = new Headers(calls[0]?.init?.headers)
+			expect(headers.get('authorization')).toBe('Bearer disk-access')
+			expect(headers.get('ChatGPT-Account-Id')).toBe('acct_disk')
+			expect(result.content).toEqual([
+				{ type: 'text', text: 'Hello from disk', providerMetadata: { openai: { itemId: 'msg_disk' } } },
+			])
+		} finally {
+			if (previousAuthPath === undefined) {
+				delete process.env.AGENTLAYER_AUTH_PATH
+			} else {
+				process.env.AGENTLAYER_AUTH_PATH = previousAuthPath
+			}
+		}
+	})
+
 	test('createCodexProvider creates language models with OpenCode request behavior', async () => {
 		const store = createMemoryAuthStore({
 			[CODEX_PROVIDER_ID]: {
@@ -112,7 +178,11 @@ describe('codex provider wrapper', () => {
 		expect(headers.get('x-extra')).toBe('extra-header')
 
 		expect(result.content).toEqual([
-			{ type: 'text', text: 'Hello from Codex', providerMetadata: { openai: { itemId: 'msg_1' } } },
+			{
+				type: 'text',
+				text: 'Hello from Codex',
+				providerMetadata: { openai: { itemId: 'msg_1', responseId: 'resp_1' } },
+			},
 		])
 		expect(result.finishReason).toEqual({ unified: 'stop', raw: undefined })
 		expect(result.usage).toEqual({
@@ -179,7 +249,11 @@ describe('codex provider wrapper', () => {
 			prompt: [{ role: 'user', content: [{ type: 'text', text: 'Combine lines' }] }],
 		})
 		expect(result.content).toEqual([
-			{ type: 'text', text: 'Line 1 and line 2', providerMetadata: { openai: { itemId: 'msg_2' } } },
+			{
+				type: 'text',
+				text: 'Line 1 and line 2',
+				providerMetadata: { openai: { itemId: 'msg_2', responseId: 'resp_2' } },
+			},
 		])
 	})
 
@@ -225,7 +299,7 @@ describe('codex provider wrapper', () => {
 			value: {
 				type: 'text-start',
 				id: 'msg_stream',
-				providerMetadata: { openai: { itemId: 'msg_stream' } },
+				providerMetadata: { openai: { itemId: 'msg_stream', responseId: 'resp_stream' } },
 			},
 		})
 		expect(await reader.read()).toEqual({
@@ -252,7 +326,7 @@ describe('codex provider wrapper', () => {
 			value: {
 				type: 'text-end',
 				id: 'msg_stream',
-				providerMetadata: { openai: { itemId: 'msg_stream' } },
+				providerMetadata: { openai: { itemId: 'msg_stream', responseId: 'resp_stream' } },
 			},
 		})
 		expect(await reader.read()).toEqual({
@@ -264,6 +338,7 @@ describe('codex provider wrapper', () => {
 					inputTokens: { total: 2, noCache: 2, cacheRead: undefined, cacheWrite: undefined },
 					outputTokens: { total: 2, text: 2, reasoning: undefined },
 				},
+				providerMetadata: { openai: { responseId: 'resp_stream' } },
 			},
 		})
 		expect(await reader.read()).toEqual({ done: true, value: undefined })
@@ -295,17 +370,46 @@ describe('codex provider wrapper', () => {
 			authStore: store,
 			fetch: async () =>
 				createSseResponse([
-					{ type: 'response.created', response: { id: 'resp_reason', created_at: 1700000003, model: 'gpt-5.4' } },
-					{ type: 'response.output_item.added', output_index: 0, item: { type: 'reasoning', id: 'rs_1', encrypted_content: 'enc-final' } },
+					{
+						type: 'response.created',
+						response: { id: 'resp_reason', created_at: 1700000003, model: 'gpt-5.4' },
+					},
+					{
+						type: 'response.output_item.added',
+						output_index: 0,
+						item: { type: 'reasoning', id: 'rs_1', encrypted_content: 'enc-final' },
+					},
 					{ type: 'response.reasoning_summary_part.added', item_id: 'rs_1', summary_index: 0 },
-					{ type: 'response.reasoning_summary_text.delta', item_id: 'rs_1', summary_index: 0, delta: 'First thought.' },
+					{
+						type: 'response.reasoning_summary_text.delta',
+						item_id: 'rs_1',
+						summary_index: 0,
+						delta: 'First thought.',
+					},
 					{ type: 'response.reasoning_summary_part.done', item_id: 'rs_1', summary_index: 0 },
 					{ type: 'response.reasoning_summary_part.added', item_id: 'rs_1', summary_index: 1 },
-					{ type: 'response.reasoning_summary_text.delta', item_id: 'rs_1', summary_index: 1, delta: 'Second thought.' },
-					{ type: 'response.output_item.done', output_index: 0, item: { type: 'reasoning', id: 'rs_1', encrypted_content: 'enc-final' } },
-					{ type: 'response.output_item.added', output_index: 1, item: { type: 'message', id: 'msg_3', phase: 'final_answer' } },
+					{
+						type: 'response.reasoning_summary_text.delta',
+						item_id: 'rs_1',
+						summary_index: 1,
+						delta: 'Second thought.',
+					},
+					{
+						type: 'response.output_item.done',
+						output_index: 0,
+						item: { type: 'reasoning', id: 'rs_1', encrypted_content: 'enc-final' },
+					},
+					{
+						type: 'response.output_item.added',
+						output_index: 1,
+						item: { type: 'message', id: 'msg_3', phase: 'final_answer' },
+					},
 					{ type: 'response.output_text.delta', item_id: 'msg_3', delta: 'Answer.' },
-					{ type: 'response.output_item.done', output_index: 1, item: { type: 'message', id: 'msg_3', phase: 'final_answer' } },
+					{
+						type: 'response.output_item.done',
+						output_index: 1,
+						item: { type: 'message', id: 'msg_3', phase: 'final_answer' },
+					},
 					{ type: 'response.completed', response: { usage: { input_tokens: 3, output_tokens: 5 } } },
 				]),
 		})
@@ -326,16 +430,21 @@ describe('codex provider wrapper', () => {
 			{
 				type: 'reasoning',
 				text: 'First thought.',
-				providerMetadata: { openai: { itemId: 'rs_1', reasoningEncryptedContent: 'enc-final' } },
+				providerMetadata: {
+					openai: { itemId: 'rs_1', reasoningEncryptedContent: 'enc-final', responseId: 'resp_reason' },
+				},
 			},
 			{
 				type: 'reasoning',
 				text: 'Second thought.',
-				providerMetadata: { openai: { itemId: 'rs_1', reasoningEncryptedContent: 'enc-final' } },
+				providerMetadata: {
+					openai: { itemId: 'rs_1', reasoningEncryptedContent: 'enc-final', responseId: 'resp_reason' },
+				},
 			},
 		])
 		expect(result.reasoningText).toBe('First thought.Second thought.')
 		expect(result.text).toBe('Answer.')
+		expect(result.providerMetadata).toEqual({ openai: { responseId: 'resp_reason' } })
 	})
 
 	test('streamText fullStream emits reasoning events before final text', async () => {
@@ -347,14 +456,38 @@ describe('codex provider wrapper', () => {
 			authStore: store,
 			fetch: async () =>
 				createSseResponse([
-					{ type: 'response.created', response: { id: 'resp_stream_reason', created_at: 1700000004, model: 'gpt-5.4' } },
-					{ type: 'response.output_item.added', output_index: 0, item: { type: 'reasoning', id: 'rs_stream', encrypted_content: 'enc-stream' } },
+					{
+						type: 'response.created',
+						response: { id: 'resp_stream_reason', created_at: 1700000004, model: 'gpt-5.4' },
+					},
+					{
+						type: 'response.output_item.added',
+						output_index: 0,
+						item: { type: 'reasoning', id: 'rs_stream', encrypted_content: 'enc-stream' },
+					},
 					{ type: 'response.reasoning_summary_part.added', item_id: 'rs_stream', summary_index: 0 },
-					{ type: 'response.reasoning_summary_text.delta', item_id: 'rs_stream', summary_index: 0, delta: 'Think aloud.' },
-					{ type: 'response.output_item.done', output_index: 0, item: { type: 'reasoning', id: 'rs_stream', encrypted_content: 'enc-stream' } },
-					{ type: 'response.output_item.added', output_index: 1, item: { type: 'message', id: 'msg_stream_reason', phase: 'commentary' } },
+					{
+						type: 'response.reasoning_summary_text.delta',
+						item_id: 'rs_stream',
+						summary_index: 0,
+						delta: 'Think aloud.',
+					},
+					{
+						type: 'response.output_item.done',
+						output_index: 0,
+						item: { type: 'reasoning', id: 'rs_stream', encrypted_content: 'enc-stream' },
+					},
+					{
+						type: 'response.output_item.added',
+						output_index: 1,
+						item: { type: 'message', id: 'msg_stream_reason', phase: 'commentary' },
+					},
 					{ type: 'response.output_text.delta', item_id: 'msg_stream_reason', delta: 'Final answer.' },
-					{ type: 'response.output_item.done', output_index: 1, item: { type: 'message', id: 'msg_stream_reason', phase: 'commentary' } },
+					{
+						type: 'response.output_item.done',
+						output_index: 1,
+						item: { type: 'message', id: 'msg_stream_reason', phase: 'commentary' },
+					},
 					{ type: 'response.completed', response: { usage: { input_tokens: 2, output_tokens: 4 } } },
 				]),
 		})
@@ -424,14 +557,38 @@ describe('codex provider wrapper', () => {
 			authStore: store,
 			fetch: async () =>
 				createSseResponse([
-					{ type: 'response.created', response: { id: 'resp_state_reason', created_at: 1700000005, model: 'gpt-5.4' } },
-					{ type: 'response.output_item.added', output_index: 0, item: { type: 'reasoning', id: 'rs_state', encrypted_content: 'enc-state' } },
+					{
+						type: 'response.created',
+						response: { id: 'resp_state_reason', created_at: 1700000005, model: 'gpt-5.4' },
+					},
+					{
+						type: 'response.output_item.added',
+						output_index: 0,
+						item: { type: 'reasoning', id: 'rs_state', encrypted_content: 'enc-state' },
+					},
 					{ type: 'response.reasoning_summary_part.added', item_id: 'rs_state', summary_index: 0 },
-					{ type: 'response.reasoning_summary_text.delta', item_id: 'rs_state', summary_index: 0, delta: 'Stored thought.' },
-					{ type: 'response.output_item.done', output_index: 0, item: { type: 'reasoning', id: 'rs_state', encrypted_content: 'enc-state' } },
-					{ type: 'response.output_item.added', output_index: 1, item: { type: 'message', id: 'msg_state', phase: 'final_answer' } },
+					{
+						type: 'response.reasoning_summary_text.delta',
+						item_id: 'rs_state',
+						summary_index: 0,
+						delta: 'Stored thought.',
+					},
+					{
+						type: 'response.output_item.done',
+						output_index: 0,
+						item: { type: 'reasoning', id: 'rs_state', encrypted_content: 'enc-state' },
+					},
+					{
+						type: 'response.output_item.added',
+						output_index: 1,
+						item: { type: 'message', id: 'msg_state', phase: 'final_answer' },
+					},
 					{ type: 'response.output_text.delta', item_id: 'msg_state', delta: 'Saved answer.' },
-					{ type: 'response.output_item.done', output_index: 1, item: { type: 'message', id: 'msg_state', phase: 'final_answer' } },
+					{
+						type: 'response.output_item.done',
+						output_index: 1,
+						item: { type: 'message', id: 'msg_state', phase: 'final_answer' },
+					},
 					{ type: 'response.completed', response: { usage: { input_tokens: 2, output_tokens: 4 } } },
 				]),
 		})
@@ -449,6 +606,7 @@ describe('codex provider wrapper', () => {
 		})
 
 		const response = await result.response
+		const providerMetadata = await result.providerMetadata
 		expect(response.messages).toHaveLength(1)
 		expect(response.messages[0]).toMatchObject({
 			role: 'assistant',
@@ -456,14 +614,27 @@ describe('codex provider wrapper', () => {
 				{
 					type: 'reasoning',
 					text: 'Stored thought.',
-					providerOptions: { openai: { itemId: 'rs_state', reasoningEncryptedContent: 'enc-state' } },
+					providerOptions: {
+						openai: {
+							itemId: 'rs_state',
+							reasoningEncryptedContent: 'enc-state',
+							responseId: 'resp_state_reason',
+						},
+					},
 				},
 				{
 					type: 'text',
 					text: 'Saved answer.',
-					providerOptions: { openai: { itemId: 'msg_state', phase: 'final_answer' } },
+					providerOptions: {
+						openai: {
+							itemId: 'msg_state',
+							phase: 'final_answer',
+							responseId: 'resp_state_reason',
+						},
+					},
 				},
 			],
 		})
+		expect(providerMetadata).toEqual({ openai: { responseId: 'resp_state_reason' } })
 	})
 })

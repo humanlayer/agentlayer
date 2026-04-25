@@ -198,7 +198,7 @@ describe('buildCodexRequestBody', () => {
 							{
 								type: 'reasoning',
 								text: 'Persisted thought',
-								providerMetadata: {
+								providerOptions: {
 									openai: {
 										itemId: 'rs_persisted',
 										reasoningEncryptedContent: 'enc_persisted',
@@ -220,5 +220,83 @@ describe('buildCodexRequestBody', () => {
 				summary: [{ type: 'summary_text', text: 'Persisted thought' }],
 			},
 		])
+	})
+
+	test('derives previous_response_id from the latest assistant responseId when not explicitly provided', () => {
+		const body = buildCodexRequestBody(
+			{
+				prompt: [
+					{
+						role: 'assistant',
+						content: [{ type: 'text', text: 'Earlier answer' }],
+						providerOptions: {
+							openai: {
+								responseId: 'resp_from_history',
+							},
+						},
+					},
+					{
+						role: 'user',
+						content: [{ type: 'text', text: 'Follow up' }],
+					},
+				],
+			},
+			'gpt-5.4',
+		)
+
+		expect(body.previous_response_id).toBe('resp_from_history')
+	})
+
+	test('prefers explicit previousResponseId over derived responseId', () => {
+		const body = buildCodexRequestBody(
+			{
+				prompt: [
+					{
+						role: 'assistant',
+						content: [{ type: 'text', text: 'Earlier answer' }],
+						providerOptions: {
+							openai: {
+								responseId: 'resp_from_history',
+							},
+						},
+					},
+				],
+				providerOptions: {
+					openai: {
+						previousResponseId: 'resp_explicit',
+					},
+				},
+			},
+			'gpt-5.4',
+		)
+
+		expect(body.previous_response_id).toBe('resp_explicit')
+	})
+
+	test('derives previous_response_id from assistant content part responseId when present', () => {
+		const body = buildCodexRequestBody(
+			{
+				prompt: [
+					{
+						role: 'assistant',
+						content: [
+							{
+								type: 'text',
+								text: 'Earlier answer',
+								providerOptions: {
+									openai: {
+										itemId: 'msg_from_history',
+										responseId: 'resp_from_part',
+									},
+								},
+							},
+						],
+					},
+				],
+			},
+			'gpt-5.4',
+		)
+
+		expect(body.previous_response_id).toBe('resp_from_part')
 	})
 })
