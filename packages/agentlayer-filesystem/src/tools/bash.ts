@@ -4,11 +4,12 @@ import { runProcess } from '../utils/process'
 
 export function createBashTool(opts?: { cwd?: string }) {
 	return BashTool.define(
-		async (input) => {
+		async (input, ctx) => {
 			const cwd = input.workdir ?? opts?.cwd
-			const { stdout, stderr, exitCode, timedOut } = await runProcess('bash', ['-c', input.command], {
+			const { stdout, stderr, exitCode, timedOut, aborted } = await runProcess('bash', ['-c', input.command], {
 				cwd,
 				timeoutMs: input.timeout,
+				signal: ctx.signal,
 			})
 
 			let output = stdout
@@ -16,7 +17,10 @@ export function createBashTool(opts?: { cwd?: string }) {
 				output += `\nSTDERR: ${stderr}`
 			}
 			if (timedOut) {
-				output += `\n\nCommand timed out after ${input.timeout}ms`
+				output += `\n\n<system-reminder>Command timed out after ${input.timeout}ms</system-reminder>`
+			}
+			if (aborted) {
+				output += '\n\n<system-reminder>Command aborted by user interrupt</system-reminder>'
 			}
 
 			return `Exit code: ${exitCode}\n${output}`
