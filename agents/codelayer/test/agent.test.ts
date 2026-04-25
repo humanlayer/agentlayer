@@ -79,7 +79,11 @@ describe('createCodelayerAgent', () => {
 	test('enables codex fast mode by default', () => {
 		const model = createMockModel('gpt-5.5')
 
-		expect(buildProviderOptions(model).openai.fastMode).toBe(true)
+		expect(buildProviderOptions(model).openai).toMatchObject({
+			fastMode: true,
+			reasoningSummary: 'detailed',
+			reasoningEffort: 'low',
+		})
 	})
 
 	test('creates a standard claude agent with coding tools and subagent tool', async () => {
@@ -94,8 +98,26 @@ describe('createCodelayerAgent', () => {
 		expect(config.tools?.read).toBeDefined()
 		expect(config.tools?.edit).toBeDefined()
 		expect(config.tools?.write).toBeDefined()
+		expect(config.tools?.list).toBeDefined()
+		expect(config.tools?.grep).toBeDefined()
+		expect(config.tools?.glob).toBeDefined()
+		expect(config.tools?.web_fetch).toBeDefined()
 		expect(config.tools?.agent).toBeDefined()
 		expect(config.system?.length).toBeGreaterThan(0)
+	})
+
+	test('allows disabling default tools', async () => {
+		const agent = await createCodelayerAgent({
+			model: createMockModel('claude-sonnet-4-5'),
+			cwd: '/tmp',
+			tools: { bash: false, webFetch: false },
+		})
+		const config = getAgentConfig(agent)
+
+		expect(config.tools?.bash).toBeUndefined()
+		expect(config.tools?.web_fetch).toBeUndefined()
+		expect(config.tools?.read).toBeDefined()
+		expect(config.tools?.agent).toBeDefined()
 	})
 
 	test('propagates context7 support into the subagent tool inventory', async () => {
@@ -120,7 +142,11 @@ describe('createCodelayerAgent', () => {
 		const config = getAgentConfig(agent)
 
 		expect(config.tools?.bash).toBeUndefined()
+		expect(config.tools?.read).toBeDefined()
 		expect(config.tools?.apply_patch).toBeDefined()
+		expect(config.tools?.list).toBeUndefined()
+		expect(config.tools?.grep).toBeUndefined()
+		expect(config.tools?.glob).toBeUndefined()
 		expect(config.tools?.agent).toBeDefined()
 		expect(config.tools?.web_fetch).toBeDefined()
 	})

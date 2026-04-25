@@ -26,6 +26,7 @@ export interface CodelayerAgentOptions {
 	model: LanguageModel
 	cwd: string
 	hooks?: AgentConfig['hooks']
+	tools?: CodelayerToolSuiteOptions
 	systemPromptAdditions?: string[]
 	rlm?: boolean
 	rpi?: boolean
@@ -39,6 +40,18 @@ export interface CodelayerAgentOptions {
 }
 
 export type ModelFamily = ReturnType<typeof detectModelFamily>
+
+export interface CodelayerToolSuiteOptions {
+	bash?: boolean
+	read?: boolean
+	write?: boolean
+	edit?: boolean
+	applyPatch?: boolean
+	list?: boolean
+	grep?: boolean
+	glob?: boolean
+	webFetch?: boolean
+}
 
 export type ReasoningEffort = 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
 export type ReasoningSummary = 'auto' | 'concise' | 'detailed'
@@ -91,6 +104,9 @@ function resolveAnthropicThinking(model: LanguageModel): Record<string, unknown>
 
 function resolveCodexThinking(model: LanguageModel): Record<string, unknown> {
 	const modelId = ((model as { modelId?: string }).modelId ?? '').toLowerCase()
+	if (modelId.includes('gpt-5.5')) {
+		return { reasoningSummary: 'detailed', reasoningEffort: 'low' }
+	}
 	if (modelId.includes('gpt-5.4') || modelId.includes('gpt-5.3') || modelId.includes('gpt-5.2')) {
 		return { reasoningSummary: 'detailed', reasoningEffort: 'high' }
 	}
@@ -98,6 +114,28 @@ function resolveCodexThinking(model: LanguageModel): Record<string, unknown> {
 		return { reasoningSummary: 'detailed', reasoningEffort: 'xhigh' }
 	}
 	return {}
+}
+
+function withToolSuiteOptions<T extends Record<string, Tool<any, any>>>(
+	tools: T,
+	options: CodelayerToolSuiteOptions | undefined,
+): Partial<T> {
+	if (!options) return tools
+	const enabledByToolName: Record<string, boolean | undefined> = {
+		bash: options.bash,
+		read: options.read,
+		write: options.write,
+		edit: options.edit,
+		apply_patch: options.applyPatch,
+		list: options.list,
+		grep: options.grep,
+		glob: options.glob,
+		web_fetch: options.webFetch,
+	}
+
+	return Object.fromEntries(
+		Object.entries(tools).filter(([name]) => enabledByToolName[name] !== false),
+	) as Partial<T>
 }
 
 export function buildProviderOptions(
@@ -148,6 +186,7 @@ export async function createCodelayerAgent(opts: CodelayerAgentOptions): Promise
 		model,
 		cwd,
 		hooks,
+		tools: toolOpts,
 		systemPromptAdditions = [],
 		rlm = false,
 		rpi = false,
@@ -197,16 +236,26 @@ export async function createCodelayerAgent(opts: CodelayerAgentOptions): Promise
 		const tools =
 			modelFamily === 'codex'
 				? {
-					read: createReadTool({ cwd }),
-					apply_patch: createApplyPatchTool({ cwd }),
-					...aux,
-				}
+						...withToolSuiteOptions(
+							{
+								read: createReadTool({ cwd }),
+								apply_patch: createApplyPatchTool({ cwd }),
+							},
+							toolOpts,
+						),
+						...aux,
+					}
 				: {
-					read: createReadTool({ cwd }),
-					write: createWriteTool({ cwd }),
-					edit: createEditTool({ cwd }),
-					...aux,
-				}
+						...withToolSuiteOptions(
+							{
+								read: createReadTool({ cwd }),
+								write: createWriteTool({ cwd }),
+								edit: createEditTool({ cwd }),
+							},
+							toolOpts,
+						),
+						...aux,
+					}
 
 		return new Agent({
 			model,
@@ -220,20 +269,26 @@ export async function createCodelayerAgent(opts: CodelayerAgentOptions): Promise
 
 	const tools =
 		modelFamily === 'codex'
-			? await createCodexCodingAgentToolset({
-					cwd,
-					agentTool,
-					skillTool,
-					exaApiKey,
-					additionalTools,
-				})
-			: await createClaudeCodingAgentToolset({
-					cwd,
-					agentTool,
-					skillTool,
-					exaApiKey,
-					additionalTools,
-				})
+			? withToolSuiteOptions(
+					await createCodexCodingAgentToolset({
+						cwd,
+						agentTool,
+						skillTool,
+						exaApiKey,
+						additionalTools,
+					}),
+					toolOpts,
+				)
+			: withToolSuiteOptions(
+					await createClaudeCodingAgentToolset({
+						cwd,
+						agentTool,
+						skillTool,
+						exaApiKey,
+						additionalTools,
+					}),
+					toolOpts,
+				)
 
 	const system = await createAgentSystemPrompt({
 		cwd,
