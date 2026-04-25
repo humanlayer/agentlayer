@@ -1,10 +1,13 @@
 import { useFilesystem, useFilesystemTree } from '@humanlayer/yjs-fs-react'
 import { FileTree, useFileTree, useFileTreeSelection } from '@pierre/trees/react'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import type { Collaborator } from '../lib/collaboration'
+import { getTreePresenceCounts } from '../lib/collaboration'
 
 type FileTreePaneProps = {
 	activePath: string
 	onFileSelect: (path: string) => void
+	collaborators: Collaborator[]
 }
 
 // Convert filesystem path (with leading /) to Trees path (without leading /)
@@ -32,7 +35,7 @@ function flattenFilePaths(node: {
 	return paths
 }
 
-export function FileTreePane({ onFileSelect }: FileTreePaneProps) {
+export function FileTreePane({ onFileSelect, collaborators }: FileTreePaneProps) {
 	const filesystem = useFilesystem()
 	const tree = useFilesystemTree('/')
 
@@ -40,10 +43,29 @@ export function FileTreePane({ onFileSelect }: FileTreePaneProps) {
 	const [newItemName, setNewItemName] = useState('')
 	const [newItemParent, setNewItemParent] = useState('/')
 
+	const presenceCounts = useMemo(() => getTreePresenceCounts(collaborators), [collaborators])
+
 	const { model } = useFileTree({
 		paths: [],
 		search: true,
 		icons: { set: 'complete', colored: true },
+		renderRowDecoration: ({ row }) => {
+			const exactCount = presenceCounts.exact.get(row.path) ?? 0
+			const descendantCount = row.kind === 'directory' ? (presenceCounts.descendants.get(row.path) ?? 0) : 0
+			const total = exactCount + descendantCount
+
+			if (total === 0) {
+				return null
+			}
+
+			return {
+				text: total === 1 ? '•' : `${total}`,
+				title:
+					total === 1
+						? '1 collaborator is active here'
+						: `${total} collaborators are active here or within this folder`,
+			}
+		},
 		renaming: {
 			canRename: () => true,
 			onRename: ({ sourcePath, destinationPath }) => {

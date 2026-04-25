@@ -1,10 +1,17 @@
 export type EditorType = 'tiptap' | 'monaco' | 'image' | 'none'
 
-const TIPTAP_EXTENSIONS = new Set(['.md', '.txt', '.markdown'])
+// TipTap currently operates on a rich-text document model, while yjs-fs stores
+// these files as plain text in Y.Text. Routing markdown/plaintext through TipTap
+// causes lossy round-trips and collaborative corruption, so keep them on Monaco
+// until TipTap is reworked around a compatible document model.
+const TIPTAP_EXTENSIONS = new Set<string>()
 
 const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.ico', '.bmp'])
 
 const MONACO_EXTENSIONS = new Set([
+	'.md',
+	'.markdown',
+	'.txt',
 	'.ts',
 	'.tsx',
 	'.js',

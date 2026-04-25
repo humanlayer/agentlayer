@@ -1,6 +1,7 @@
-import { useConnectionStatus } from '@humanlayer/yjs-fs-react'
+import { useAwarenessStates, useConnectionStatus, useFilesystem } from '@humanlayer/yjs-fs-react'
 import { useNavigate } from '@tanstack/react-router'
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { getCollaborators } from '../lib/collaboration'
 import { CommentsPanel } from './CommentsPanel'
 import { EditorPane } from './EditorPane'
 import { FileTreePane } from './FileTreePane'
@@ -11,9 +12,31 @@ type LayoutProps = {
 }
 
 export function Layout({ activePath }: LayoutProps) {
+	const filesystem = useFilesystem()
 	const connectionStatus = useConnectionStatus()
+	const awarenessStates = useAwarenessStates()
 	const navigate = useNavigate()
 	const [showComments, setShowComments] = useState(false)
+
+	const activeEntryId = useMemo(() => {
+		try {
+			return filesystem.lookup(activePath)?.entryId
+		} catch {
+			return undefined
+		}
+	}, [filesystem, activePath])
+
+	useEffect(() => {
+		filesystem.updateLocalPresence({
+			activePath,
+			activeEntryId,
+		})
+	}, [filesystem, activePath, activeEntryId])
+
+	const collaborators = useMemo(
+		() => getCollaborators(awarenessStates as Map<number, unknown>, filesystem.awareness?.clientID ?? -1),
+		[awarenessStates, filesystem.awareness],
+	)
 
 	const handleFileSelect = (path: string) => {
 		const pathWithoutLeadingSlash = path.startsWith('/') ? path.slice(1) : path
@@ -65,7 +88,7 @@ export function Layout({ activePath }: LayoutProps) {
 					</span>
 				</div>
 				<div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-					<PresenceIndicator />
+					<PresenceIndicator collaborators={collaborators} onNavigateToPath={handleFileSelect} />
 					<button
 						onClick={() => setShowComments(!showComments)}
 						style={{
@@ -92,7 +115,11 @@ export function Layout({ activePath }: LayoutProps) {
 						overflow: 'hidden',
 					}}
 				>
-					<FileTreePane activePath={activePath} onFileSelect={handleFileSelect} />
+					<FileTreePane
+						activePath={activePath}
+						onFileSelect={handleFileSelect}
+						collaborators={collaborators}
+					/>
 				</div>
 
 				<div style={{ flex: 1, overflow: 'hidden' }}>

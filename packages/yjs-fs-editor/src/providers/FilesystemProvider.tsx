@@ -5,11 +5,23 @@ import type React from 'react'
 import { type PropsWithChildren, useCallback } from 'react'
 import { Awareness } from 'y-protocols/awareness.js'
 import * as Y from 'yjs'
+import { getOrCreateLocalUser } from '../lib/collaboration'
 
 export const FilesystemProvider: React.FC<PropsWithChildren> = ({ children }) => {
 	const createSession = useCallback(async () => {
 		const doc = new Y.Doc()
 		const awareness = new Awareness(doc)
+		const localUser = getOrCreateLocalUser()
+		const initializeLocalPresence = (filesystem?: YjsFilesystem) => {
+			if (filesystem) {
+				filesystem.setLocalPresence({ user: localUser })
+			} else {
+				awareness.setLocalStateField('presence', { user: localUser })
+			}
+			awareness.setLocalStateField('user', localUser)
+		}
+
+		initializeLocalPresence()
 		const docId = new URLSearchParams(window.location.search).get('doc') ?? 'default-workspace'
 
 		const serviceName = 'yjs-fs-editor'
@@ -25,6 +37,7 @@ export const FilesystemProvider: React.FC<PropsWithChildren> = ({ children }) =>
 
 		await provider.connect()
 		const filesystem = new YjsFilesystem({ doc, awareness })
+		initializeLocalPresence(filesystem)
 
 		return {
 			filesystem,

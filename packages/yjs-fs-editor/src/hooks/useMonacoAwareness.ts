@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import type { Awareness } from 'y-protocols/awareness'
 import type * as Y from 'yjs'
+import { getCollaboratorFromAwarenessState } from '../lib/collaboration'
 
 export function useMonacoAwareness(awareness: Awareness, doc: Y.Doc) {
 	useEffect(() => {
@@ -25,9 +26,9 @@ export function useMonacoAwareness(awareness: Awareness, doc: Y.Doc) {
 
 			awareness.getStates().forEach((state, clientId) => {
 				if (clientId === doc.clientID) return
-				const user = state.user as { name?: string; color?: string } | undefined
-				const color = user?.color ?? '#888888'
-				const name = user?.name ?? 'Anonymous'
+				const collaborator = getCollaboratorFromAwarenessState(state, clientId, doc.clientID)
+				const color = collaborator?.user.color ?? '#888888'
+				const name = collaborator?.user.name ?? 'Anonymous'
 
 				css += `
           .yRemoteSelection-${clientId} {
