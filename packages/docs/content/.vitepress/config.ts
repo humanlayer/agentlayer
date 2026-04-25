@@ -83,6 +83,11 @@ export default withMermaid(
 					],
 				},
 				{
+					text: 'agentlayer-provider-openai-codex',
+					collapsed: true,
+					items: [{ text: 'Overview', link: '/packages/openai-codex/' }],
+				},
+				{
 					text: 'Guides',
 					collapsed: true,
 					items: [

@@ -1,13 +1,17 @@
+export type { CodexProviderOptions, CodexRequestBody, CodexRequestOptions } from './codex'
 export {
 	buildCodexHeaders,
 	buildCodexRequestBody,
 	buildCodexUserAgent,
 	CODEX_API_ENDPOINT,
+	CODEX_FAST_SERVICE_TIER,
+	CODEX_FLEX_SERVICE_TIER,
 	CODEX_PROVIDER,
 	CODEX_PROVIDER_ID,
 	createCodexLanguageModel,
 	createCodexProvider,
 	createCodexSseStream,
+	normalizeCodexServiceTier,
 	parseCodexSseResponse,
 	prepareCodexRequest,
 	resolveCodexAuth,

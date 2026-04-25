@@ -19,8 +19,23 @@ import { type CodexFetchLike, refreshAccessToken } from './codex-oauth'
 export const CODEX_API_ENDPOINT = 'https://chatgpt.com/backend-api/codex/responses'
 export const CODEX_PROVIDER = 'openai.codex'
 export const CODEX_PROVIDER_ID = 'codex'
+export const CODEX_FAST_SERVICE_TIER = 'priority'
+export const CODEX_FLEX_SERVICE_TIER = 'flex'
 
-export interface CodexProviderOptions {
+export interface CodexRequestOptions {
+	/**
+	 * Enable Codex fast mode. This sends `service_tier: "priority"`, matching
+	 * the Codex CLI's fast-mode request behavior.
+	 */
+	fastMode?: boolean
+	/**
+	 * Explicit Codex service tier. The convenience value `"fast"` is normalized
+	 * to the API value `"priority"`.
+	 */
+	serviceTier?: string | null
+}
+
+export interface CodexProviderOptions extends CodexRequestOptions {
 	authStore: AuthStore
 	providerId?: string
 	fetch?: CodexFetchLike
@@ -198,6 +213,7 @@ export function createCodexLanguageModel(options: CodexModelOptions): LanguageMo
 			const prepared = await prepareCodexRequest({
 				callOptions,
 				modelId: options.modelId,
+				requestOptions: options,
 				authStore: options.authStore,
 				providerId,
 				fetch: fetchFn,
@@ -224,6 +240,7 @@ export function createCodexLanguageModel(options: CodexModelOptions): LanguageMo
 			const prepared = await prepareCodexRequest({
 				callOptions,
 				modelId: options.modelId,
+				requestOptions: options,
 				authStore: options.authStore,
 				providerId,
 				fetch: fetchFn,
@@ -255,6 +272,7 @@ export function createCodexLanguageModel(options: CodexModelOptions): LanguageMo
 export async function prepareCodexRequest(args: {
 	callOptions: LanguageModelV3CallOptions
 	modelId: string
+	requestOptions?: CodexRequestOptions
 	authStore: AuthStore
 	providerId: string
 	fetch: CodexFetchLike
@@ -263,7 +281,7 @@ export async function prepareCodexRequest(args: {
 	now: () => number
 }): Promise<{ headers: Record<string, string>; body: CodexRequestBody; auth: AuthInfo }> {
 	const auth = await resolveCodexAuth(args.authStore, args.providerId, args.fetch, args.now)
-	const body = buildCodexRequestBody(args.callOptions, args.modelId)
+	const body = buildCodexRequestBody(args.callOptions, args.modelId, args.requestOptions)
 	const headers = buildCodexHeaders({
 		auth,
 		version: args.version,
@@ -307,7 +325,11 @@ export function buildCodexUserAgent(version: string): string {
 	return `opencode/${version} (${os.platform()} ${os.release()}; ${os.arch()})`
 }
 
-export function buildCodexRequestBody(options: LanguageModelV3CallOptions, modelId: string): CodexRequestBody {
+export function buildCodexRequestBody(
+	options: LanguageModelV3CallOptions,
+	modelId: string,
+	requestOptions: CodexRequestOptions = {},
+): CodexRequestBody {
 	const transformed = transformCodexPrompt(options.prompt)
 	const providerInstructions = getProviderInstructions(options)
 	const instructions = joinInstructions(transformed.instructions, providerInstructions)
@@ -316,7 +338,7 @@ export function buildCodexRequestBody(options: LanguageModelV3CallOptions, model
 		model: modelId,
 		input: transformed.input,
 		...(instructions ? { instructions } : {}),
-		...buildCodexRequestExtras(options),
+		...buildCodexRequestExtras(options, requestOptions),
 		store: false,
 		stream: true,
 	}
@@ -943,7 +965,51 @@ function buildCodexReasoningOptions(options: LanguageModelV3CallOptions): CodexR
 	}
 }
 
-function buildCodexRequestExtras(options: LanguageModelV3CallOptions): Omit<CodexRequestBody, 'model' | 'input' | 'instructions' | 'store' | 'stream'> {
+function getNullableFastMode(value: Record<string, unknown> | undefined): boolean | null | undefined {
+	if (!value || !('fastMode' in value)) {
+		return undefined
+	}
+	const candidate = value.fastMode
+	return typeof candidate === 'boolean' || candidate === null ? candidate : undefined
+}
+
+export function normalizeCodexServiceTier(serviceTier: string | null | undefined): string | null | undefined {
+	if (serviceTier == null) {
+		return serviceTier
+	}
+	return serviceTier === 'fast' ? CODEX_FAST_SERVICE_TIER : serviceTier
+}
+
+function buildCodexServiceTier(
+	options: LanguageModelV3CallOptions,
+	requestOptions: CodexRequestOptions,
+): string | null | undefined {
+	const openai = getCodexProviderOptionRecord(options, 'openai')
+	const codex = getCodexProviderOptionRecord(options, 'codex')
+	const serviceTier =
+		getNullableString(openai, 'serviceTier') ??
+		getNullableString(codex, 'serviceTier') ??
+		requestOptions.serviceTier
+
+	if (serviceTier !== undefined) {
+		return normalizeCodexServiceTier(serviceTier)
+	}
+
+	const fastMode = getNullableFastMode(openai) ?? getNullableFastMode(codex) ?? requestOptions.fastMode
+	if (fastMode === true) {
+		return CODEX_FAST_SERVICE_TIER
+	}
+	if (fastMode === false || fastMode === null) {
+		return undefined
+	}
+
+	return undefined
+}
+
+function buildCodexRequestExtras(
+	options: LanguageModelV3CallOptions,
+	requestOptions: CodexRequestOptions,
+): Omit<CodexRequestBody, 'model' | 'input' | 'instructions' | 'store' | 'stream'> {
 	const openai = getCodexProviderOptionRecord(options, 'openai')
 	const codex = getCodexProviderOptionRecord(options, 'codex')
 	const include = getNullableStringArray(openai, 'include') ?? getNullableStringArray(codex, 'include')
@@ -959,7 +1025,7 @@ function buildCodexRequestExtras(options: LanguageModelV3CallOptions): Omit<Code
 		getNullableString(openai, 'promptCacheKey') ?? getNullableString(codex, 'promptCacheKey')
 	const promptCacheRetention =
 		getNullableString(openai, 'promptCacheRetention') ?? getNullableString(codex, 'promptCacheRetention')
-	const serviceTier = getNullableString(openai, 'serviceTier') ?? getNullableString(codex, 'serviceTier')
+	const serviceTier = buildCodexServiceTier(options, requestOptions)
 	const truncation = getNullableString(openai, 'truncation') ?? getNullableString(codex, 'truncation')
 	const user = getNullableString(openai, 'user') ?? getNullableString(codex, 'user')
 

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { buildCodexRequestBody } from '../src/codex'
+import { buildCodexRequestBody, normalizeCodexServiceTier } from '../src/codex'
 
 describe('buildCodexRequestBody', () => {
 	test('moves system and developer instructions into top-level instructions', () => {
@@ -51,6 +51,60 @@ describe('buildCodexRequestBody', () => {
 		expect(body.user).toBe('user_123')
 		expect(body.metadata).toEqual({ source: 'test' })
 		expect(body).not.toHaveProperty('max_output_tokens')
+	})
+
+	test('enables Codex fast mode from provider options', () => {
+		const body = buildCodexRequestBody(
+			{
+				prompt: [{ role: 'user', content: [{ type: 'text', text: 'Use fast mode' }] }],
+				providerOptions: {
+					codex: {
+						fastMode: true,
+					},
+				},
+			},
+			'gpt-5.4',
+		)
+
+		expect(body.service_tier).toBe('priority')
+	})
+
+	test('enables Codex fast mode from provider defaults', () => {
+		const body = buildCodexRequestBody(
+			{
+				prompt: [{ role: 'user', content: [{ type: 'text', text: 'Use fast mode' }] }],
+			},
+			'gpt-5.4',
+			{ fastMode: true },
+		)
+
+		expect(body.service_tier).toBe('priority')
+	})
+
+	test('normalizes fast service tier alias to Codex priority service tier', () => {
+		expect(normalizeCodexServiceTier('fast')).toBe('priority')
+		expect(normalizeCodexServiceTier('priority')).toBe('priority')
+		expect(normalizeCodexServiceTier('flex')).toBe('flex')
+		expect(normalizeCodexServiceTier(null)).toBeNull()
+		expect(normalizeCodexServiceTier(undefined)).toBeUndefined()
+	})
+
+	test('explicit service tier takes precedence over fast mode', () => {
+		const body = buildCodexRequestBody(
+			{
+				prompt: [{ role: 'user', content: [{ type: 'text', text: 'Use flex' }] }],
+				providerOptions: {
+					openai: {
+						fastMode: true,
+						serviceTier: 'flex',
+					},
+				},
+			},
+			'gpt-5.4',
+			{ fastMode: true },
+		)
+
+		expect(body.service_tier).toBe('flex')
 	})
 
 	test('preserves item_reference ids from provider metadata', () => {
