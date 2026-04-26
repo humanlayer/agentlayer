@@ -683,7 +683,7 @@ describe('sanitizeStateForPersistence()', () => {
 									phase: 'final_answer',
 								},
 							},
-						},
+						} as any,
 					],
 				},
 			],

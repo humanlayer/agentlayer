@@ -43,7 +43,7 @@ describe.skipIf(
 			})
 
 			for await (const chunk of result.fullStream) {
-				process.stdout.write(JSON.stringify(chunk) + '\n')
+				process.stdout.write(`${JSON.stringify(chunk)}\n`)
 			}
 
 			expect((await result.reasoning).at(0)!.text).toBeString()

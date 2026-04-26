@@ -10,7 +10,6 @@ import {
 	generatePKCE,
 	refreshAccessToken,
 	startDeviceOAuth,
-	startBrowserOAuth,
 	writeOAuthTokens,
 } from '../src/codex-oauth'
 
@@ -153,11 +152,7 @@ describe('codex oauth helpers', () => {
 
 	test('browser oauth defaults to the OpenCode localhost callback url', () => {
 		const redirectUri = buildBrowserOAuthRedirectUri('localhost', 1455)
-		const url = buildAuthorizeUrl(
-			redirectUri,
-			{ verifier: 'verifier', challenge: 'challenge' },
-			'state-123',
-		)
+		const url = buildAuthorizeUrl(redirectUri, { verifier: 'verifier', challenge: 'challenge' }, 'state-123')
 
 		expect(redirectUri).toBe('http://localhost:1455/auth/callback')
 		expect(url).toContain(encodeURIComponent('http://localhost:1455/auth/callback'))

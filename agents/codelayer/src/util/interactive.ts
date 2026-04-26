@@ -1,4 +1,4 @@
-import readline from 'node:readline'
+import readline from 'node:readline/promises'
 import type { Agent, AgentState, OutputRenderer } from '@humanlayer/agentlayer-core'
 import { createOutputRenderer, renderFinish, startState } from '@humanlayer/agentlayer-core'
 
@@ -10,7 +10,7 @@ export interface InteractiveOptions {
 	exit?: (code: number) => void
 }
 
-export function runInteractive(
+export async function runInteractive(
 	agent: Agent,
 	options?: InteractiveOptions,
 	renderer: OutputRenderer = createOutputRenderer({
@@ -23,37 +23,26 @@ export function runInteractive(
 	const exit = options?.exit ?? ((code: number) => process.exit(code))
 	let state: AgentState = options?.state ?? startState([])
 	let currentAbortController: AbortController | null = null
-	let shouldExit = false
 	const rl = readline.createInterface({ input, output })
 
 	rl.on('SIGINT', () => {
 		if (currentAbortController) {
 			currentAbortController.abort()
-		} else {
-			rl.close()
-			exit(0)
+			return
 		}
+		rl.close()
+		exit(0)
 	})
 
-	output.write(prompt)
-
-	const loop = async () => {
-		try {
-			for await (const line of rl) {
-			if (shouldExit) {
-				break
-			}
-
+	try {
+		while (true) {
+			const line = await rl.question(prompt)
 			const text = line.trim()
-			if (!text) {
-				output.write(prompt)
-				continue
-			}
+			if (!text) continue
 			if (text === 'exit' || text === '/exit') {
-				shouldExit = true
 				rl.close()
 				exit(0)
-				break
+				return
 			}
 
 			state.messages.push({ role: 'user', content: text })
@@ -69,12 +58,11 @@ export function runInteractive(
 			state = result.state
 			renderer.flush()
 			renderFinish(result)
-			output.write(prompt)
-			}
-		} finally {
-			rl.close()
 		}
+	} catch (error) {
+		if (error instanceof Error && error.name === 'AbortError') return
+		throw error
+	} finally {
+		rl.close()
 	}
-
-	return loop()
 }

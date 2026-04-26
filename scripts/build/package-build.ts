@@ -5,6 +5,7 @@ export interface PackageManifest {
 	name: string
 	version?: string
 	exports?: Record<string, string | Record<string, string>>
+	bin?: string | Record<string, string>
 	publishConfig?: Record<string, unknown>
 }
 
@@ -16,6 +17,11 @@ export async function readPackageManifest(packageDir: string): Promise<PackageMa
 export function getSourceExportEntries(manifest: PackageManifest): string[] {
 	const exportsMap = manifest.exports ?? {}
 	return Object.values(exportsMap).filter((value): value is string => typeof value === 'string')
+}
+
+export function getSourceBinEntries(manifest: PackageManifest): string[] {
+	if (!manifest.bin) return []
+	return typeof manifest.bin === 'string' ? [manifest.bin] : Object.values(manifest.bin)
 }
 
 export function sourceExportToDistJsPath(sourceExport: string): string {
@@ -36,7 +42,7 @@ export function sourceExportToDistDtsPath(sourceExport: string): string {
 
 export async function buildPackageFromManifest(packageDir: string): Promise<void> {
 	const manifest = await readPackageManifest(packageDir)
-	const entrypoints = getSourceExportEntries(manifest)
+	const entrypoints = Array.from(new Set([...getSourceExportEntries(manifest), ...getSourceBinEntries(manifest)]))
 
 	if (entrypoints.length === 0) {
 		throw new Error(`No string exports found in ${manifest.name}`)

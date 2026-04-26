@@ -86,7 +86,6 @@ export function patchProviderAwareness(provider: YjsProvider): void {
 				}
 
 				if (!upToDate && offset === '-1') {
-					continue
 				}
 			}
 		} catch (error) {

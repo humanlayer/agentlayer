@@ -1,15 +1,41 @@
 {
-  "name": "@humanlayer/codelayer",
-  "module": "src/index.ts",
-  "type": "module",
-  "private": false,
-  "bin": "src/cli.ts",
-  "scripts": {
-    "start": "bun run cli",
-    "typecheck": "tsgo --noEmit",
-    "cli": "bun run src/cli.ts",
-    "codelayer": "bun --bun run src/cli.ts"
-  },
+	"name": "@humanlayer/codelayer",
+	"module": "src/index.ts",
+	"type": "module",
+	"version": "0.0.0",
+	"private": false,
+	"publishConfig": {
+		"access": "public",
+		"main": "./dist/index.js",
+		"module": "./dist/index.js",
+		"types": "./dist/index.d.ts",
+		"bin": {
+			"codelayer": "./dist/cli.js"
+		},
+		"exports": {
+			".": {
+				"types": "./dist/index.d.ts",
+				"import": "./dist/index.js",
+				"default": "./dist/index.js"
+			}
+		}
+	},
+	"files": [
+		"src",
+		"dist"
+	],
+	"bin": {
+		"codelayer": "src/cli.ts"
+	},
+	"scripts": {
+		"start": "bun run cli",
+		"typecheck": "tsgo --noEmit",
+		"build": "bun run build:js && bunx tsc -p tsconfig.build.json",
+		"build:js": "bun run build.ts",
+		"build:types": "bunx tsc -p tsconfig.build.json",
+		"cli": "bun run src/cli.ts",
+		"codelayer": "bun --bun run src/cli.ts"
+	},
   "exports": {
     ".": "./src/index.ts"
   },
@@ -19,6 +45,9 @@
 		"@ai-sdk/provider": "catalog:",
 		"@humanlayer/agentlayer-core": "workspace:*",
 		"@humanlayer/agentlayer-filesystem": "workspace:*",
+		"@humanlayer/agentlayer-provider-auth": "workspace:*",
+		"@humanlayer/agentlayer-provider-github-copilot": "workspace:*",
+		"@humanlayer/agentlayer-provider-openai-codex": "workspace:*",
 		"@humanlayer/rpi": "workspace:*",
 		"@types/bun": "latest",
 		"ai": "catalog:",
