@@ -45,7 +45,7 @@ export function detectModelFamily(model: LanguageModel | string): CodingModelFam
 		return 'gemini'
 	}
 
-	if (modelId.includes('gpt-5') || modelId.includes('codex') || provider.includes('codex')) {
+	if (modelId.includes('gpt') || modelId.includes('codex') || provider.includes('codex')) {
 		return 'codex'
 	}
 
@@ -54,7 +54,6 @@ export function detectModelFamily(model: LanguageModel | string): CodingModelFam
 	}
 
 	if (
-		modelId.startsWith('gpt-') ||
 		modelId.startsWith('o1') ||
 		modelId.startsWith('o3') ||
 		modelId.startsWith('o4') ||

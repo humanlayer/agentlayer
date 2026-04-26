@@ -63,6 +63,8 @@ export interface CodexRequestBody {
 	service_tier?: string | null
 	store: false
 	stream: true
+	tool_choice?: string | { type: string; name?: string } | null
+	tools?: Array<Record<string, unknown>>
 	truncation?: string | null
 	user?: string | null
 }
@@ -339,9 +341,35 @@ export function buildCodexRequestBody(
 		model: modelId,
 		input: transformed.input,
 		...(instructions ? { instructions } : {}),
+		...buildCodexTools(options),
 		...buildCodexRequestExtras(options, requestOptions),
 		store: false,
 		stream: true,
+	}
+}
+
+export function buildCodexTools(options: LanguageModelV3CallOptions): Pick<CodexRequestBody, 'tools' | 'tool_choice'> {
+	const tools = options.tools?.map((tool) => {
+		if (tool.type === 'provider') {
+			return {
+				type: tool.id,
+				name: tool.name,
+				...(Object.keys(tool.args).length > 0 ? tool.args : {}),
+			}
+		}
+
+		return {
+			type: 'function',
+			name: tool.name,
+			...(tool.description ? { description: tool.description } : {}),
+			parameters: tool.inputSchema,
+			...(tool.strict !== undefined ? { strict: tool.strict } : {}),
+		}
+	})
+
+	return {
+		...(tools && tools.length > 0 ? { tools } : {}),
+		...mapCodexToolChoice(options.toolChoice),
 	}
 }
 
@@ -1093,6 +1121,15 @@ function readReasoningProviderOptions(
 function joinInstructions(...values: Array<string | undefined>): string | undefined {
 	const parts = values.filter((value): value is string => Boolean(value?.trim()))
 	return parts.length > 0 ? parts.join('\n\n') : undefined
+}
+
+function mapCodexToolChoice(
+	toolChoice: LanguageModelV3CallOptions['toolChoice'],
+): Pick<CodexRequestBody, 'tool_choice'> {
+	if (!toolChoice || toolChoice.type === 'auto') return {}
+	if (toolChoice.type === 'none') return { tool_choice: 'none' }
+	if (toolChoice.type === 'required') return { tool_choice: 'required' }
+	return { tool_choice: { type: 'function', name: toolChoice.toolName } }
 }
 
 function stringifyToolResult(output: unknown): string {

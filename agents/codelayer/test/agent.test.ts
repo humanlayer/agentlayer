@@ -106,6 +106,21 @@ describe('createCodelayerAgent', () => {
 		expect(config.system?.length).toBeGreaterThan(0)
 	})
 
+	test('creates a standard gpt agent with codex apply_patch tools', async () => {
+		const agent = await createCodelayerAgent({
+			model: createMockModel('gpt-4.1'),
+			cwd: '/tmp',
+		})
+		const config = getAgentConfig(agent)
+
+		expect(config.tools?.apply_patch).toBeDefined()
+		expect(config.tools?.edit).toBeUndefined()
+		expect(config.tools?.write).toBeUndefined()
+		expect(config.tools?.bash).toBeDefined()
+		expect(config.tools?.read).toBeDefined()
+		expect(config.tools?.agent).toBeDefined()
+	})
+
 	test('allows disabling default tools', async () => {
 		const agent = await createCodelayerAgent({
 			model: createMockModel('claude-sonnet-4-5'),

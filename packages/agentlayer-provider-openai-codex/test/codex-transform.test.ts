@@ -107,6 +107,40 @@ describe('buildCodexRequestBody', () => {
 		expect(body.service_tier).toBe('flex')
 	})
 
+	test('serializes function tools for Codex requests', () => {
+		const body = buildCodexRequestBody(
+			{
+				prompt: [{ role: 'user', content: [{ type: 'text', text: 'Patch a file.' }] }],
+				tools: [
+					{
+						type: 'function',
+						name: 'apply_patch',
+						description: 'Apply a patch to files.',
+						inputSchema: {
+							type: 'object',
+							properties: { patch_text: { type: 'string' } },
+							required: ['patch_text'],
+						},
+					},
+				],
+			},
+			'gpt-5.4',
+		)
+
+		expect(body.tools).toEqual([
+			{
+				type: 'function',
+				name: 'apply_patch',
+				description: 'Apply a patch to files.',
+				parameters: {
+					type: 'object',
+					properties: { patch_text: { type: 'string' } },
+					required: ['patch_text'],
+				},
+			},
+		])
+	})
+
 	test('replays assistant text instead of referencing unpersisted Codex item ids', () => {
 		const body = buildCodexRequestBody(
 			{

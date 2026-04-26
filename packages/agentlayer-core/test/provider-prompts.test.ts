@@ -32,11 +32,11 @@ describe('provider system prompts', () => {
 	test('detects model family from model ids', () => {
 		expect(detectModelFamily('claude-sonnet-4-5')).toBe('claude')
 		expect(detectModelFamily('gpt-5.4')).toBe('codex')
-		expect(detectModelFamily('gpt-4.1')).toBe('openai')
+		expect(detectModelFamily('gpt-4.1')).toBe('codex')
 		expect(detectModelFamily('gpt-5.3-codex')).toBe('codex')
 		expect(detectModelFamily('gemini-2.5-pro')).toBe('gemini')
 		expect(detectModelFamily({ provider: 'openai.responses', modelId: 'gpt-5.4' } as any)).toBe('codex')
-		expect(detectModelFamily({ provider: 'openai.responses', modelId: 'gpt-4.1' } as any)).toBe('openai')
+		expect(detectModelFamily({ provider: 'openai.responses', modelId: 'gpt-4.1' } as any)).toBe('codex')
 	})
 
 	test('builds coding provider options', () => {
