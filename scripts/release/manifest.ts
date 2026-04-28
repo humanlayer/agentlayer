@@ -22,8 +22,24 @@ export const publishablePackages = [
         dir: "packages/agentlayer-justbash",
     },
     {
+        name: "@humanlayer/agentlayer-provider-auth",
+        dir: "packages/agentlayer-provider-auth",
+    },
+    {
+        name: "@humanlayer/agentlayer-provider-github-copilot",
+        dir: "packages/agentlayer-provider-github-copilot",
+    },
+    {
+        name: "@humanlayer/agentlayer-provider-openai-codex",
+        dir: "packages/agentlayer-provider-openai-codex",
+    },
+    {
         name: "@humanlayer/yjs-fs",
         dir: "packages/yjs-fs",
+    },
+    {
+        name: "@humanlayer/codelayer",
+        dir: "agents/codelayer",
     },
 ] as const satisfies ReadonlyArray<WorkspaceReleaseEntry>;
 

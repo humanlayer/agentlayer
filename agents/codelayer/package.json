@@ -17,6 +17,11 @@
 				"types": "./dist/index.d.ts",
 				"import": "./dist/index.js",
 				"default": "./dist/index.js"
+			},
+			"./rpi-agents": {
+				"types": "./dist/rpi-agents/index.d.ts",
+				"import": "./dist/rpi-agents/index.js",
+				"default": "./dist/rpi-agents/index.js"
 			}
 		}
 	},
@@ -36,9 +41,10 @@
 		"cli": "bun run src/cli.ts",
 		"codelayer": "bun --bun run src/cli.ts"
 	},
-  "exports": {
-    ".": "./src/index.ts"
-  },
+	"exports": {
+		".": "./src/index.ts",
+		"./rpi-agents": "./src/rpi-agents/index.ts"
+	},
 	"devDependencies": {
 		"@ai-sdk/anthropic": "catalog:",
 		"@ai-sdk/openai": "^3.0.48",
@@ -48,7 +54,6 @@
 		"@humanlayer/agentlayer-provider-auth": "workspace:*",
 		"@humanlayer/agentlayer-provider-github-copilot": "workspace:*",
 		"@humanlayer/agentlayer-provider-openai-codex": "workspace:*",
-		"@humanlayer/rpi": "workspace:*",
 		"@types/bun": "latest",
 		"ai": "catalog:",
 		"commander": "^14.0.3",

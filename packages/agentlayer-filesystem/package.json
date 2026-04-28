@@ -53,13 +53,13 @@
 		"build:types": "bunx tsc -p tsconfig.build.json"
 	},
 	"dependencies": {
-		"@humanlayer/rpi": "workspace:*",
 		"ripgrep": "0.3.1"
 	},
 	"devDependencies": {
 		"@ai-sdk/anthropic": "catalog:",
 		"@ai-sdk/provider": "catalog:",
 		"@humanlayer/agentlayer-core": "workspace:*",
+		"@humanlayer/codelayer": "workspace:*",
 		"@types/bun": "latest",
 		"ai": "catalog:",
 		"zod": "catalog:"

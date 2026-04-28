@@ -23,15 +23,6 @@ import {
 } from '@humanlayer/agentlayer-core/hooks'
 import type { CodeSearchInput, Skill } from '@humanlayer/agentlayer-core/interfaces'
 import { CodeSearchTool } from '@humanlayer/agentlayer-core/interfaces'
-import {
-	createBashSpecialistAgent,
-	createCodebaseAnalyzerAgent,
-	createCodebaseLocatorAgent,
-	createCodebasePatternFinderAgent,
-	createImplementerAgent,
-	createLibraryResearcherAgent,
-	createWebSearchResearcherAgent,
-} from '@humanlayer/rpi'
 import type { LanguageModel } from 'ai'
 import { createFileStateTrackingHook, createReadBeforeWriteHook, createWastedReadHook } from './hooks/file-state'
 import {
@@ -354,6 +345,16 @@ function createChildAgent(opts: {
 }
 
 export async function createCodingSubagentTool(opts: CreateCodingSubagentToolOptions) {
+	const {
+		createBashSpecialistAgent,
+		createCodebaseAnalyzerAgent,
+		createCodebaseLocatorAgent,
+		createCodebasePatternFinderAgent,
+		createImplementerAgent,
+		createLibraryResearcherAgent,
+		createWebSearchResearcherAgent,
+	} = await import('@humanlayer/codelayer/rpi-agents')
+
 	const baseHooks = createAgentFilesystemHooks({
 		cwd: opts.cwd,
 		outputTruncation: opts.outputTruncation,

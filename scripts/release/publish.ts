@@ -106,7 +106,7 @@ async function ensureOnlyAllowlistedPackagesAreStaged() {
         }
 
         const relativeDir = entry.parentPath.slice(releaseStageDir.length + 1).replaceAll("\\", "/");
-        if (!relativeDir.startsWith('packages/')) {
+        if (!relativeDir.startsWith('packages/') && !relativeDir.startsWith('agents/')) {
             continue;
         }
 

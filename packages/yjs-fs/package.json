@@ -19,26 +19,6 @@
 				"types": "./dist/filesystem/presence.d.ts",
 				"import": "./dist/filesystem/presence.js",
 				"default": "./dist/filesystem/presence.js"
-			},
-			"./durable-streams/shared": {
-				"types": "./dist/durable-streams/shared/index.d.ts",
-				"import": "./dist/durable-streams/shared/index.js",
-				"default": "./dist/durable-streams/shared/index.js"
-			},
-			"./durable-streams/client": {
-				"types": "./dist/durable-streams/client/index.d.ts",
-				"import": "./dist/durable-streams/client/index.js",
-				"default": "./dist/durable-streams/client/index.js"
-			},
-			"./durable-streams/server": {
-				"types": "./dist/durable-streams/server/index.d.ts",
-				"import": "./dist/durable-streams/server/index.js",
-				"default": "./dist/durable-streams/server/index.js"
-			},
-			"./durable-streams/single-stream-client": {
-				"types": "./dist/durable-streams/client/single-root-doc.d.ts",
-				"import": "./dist/durable-streams/client/single-root-doc.js",
-				"default": "./dist/durable-streams/client/single-root-doc.js"
 			}
 		}
 	},
@@ -55,9 +35,6 @@
 	"devDependencies": {
 		"@ai-sdk/anthropic": "catalog:",
 		"@ai-sdk/provider": "catalog:",
-		"@durable-streams/client": "0.2.1",
-		"@durable-streams/server": "0.1.7",
-		"@durable-streams/y-durable-streams": "0.2.4",
 		"@humanlayer/agentlayer-core": "workspace:*",
 		"@types/bun": "latest",
 		"@types/turndown": "5.0.6",
@@ -67,32 +44,14 @@
 		"zod": "catalog:"
 	},
 	"peerDependencies": {
-		"@durable-streams/client": "^0.2.1",
-		"@durable-streams/server": "^0.1.7",
-		"@durable-streams/y-durable-streams": "^0.1.4",
 		"lib0": "^0.2.0",
 		"typescript": "^5",
 		"yjs": "13.6.30",
 		"y-protocols": "1.0.7"
 	},
-	"peerDependenciesMeta": {
-		"@durable-streams/client": {
-			"optional": true
-		},
-		"@durable-streams/server": {
-			"optional": true
-		},
-		"@durable-streams/y-durable-streams": {
-			"optional": true
-		}
-	},
 	"exports": {
 		".": "./src/index.ts",
-		"./presence": "./src/filesystem/presence.ts",
-		"./durable-streams/shared": "./src/durable-streams/shared/index.ts",
-		"./durable-streams/client": "./src/durable-streams/client/index.ts",
-		"./durable-streams/server": "./src/durable-streams/server/index.ts",
-		"./durable-streams/single-stream-client": "./src/durable-streams/client/single-root-doc.ts"
+		"./presence": "./src/filesystem/presence.ts"
 	},
 	"dependencies": {},
 	"author": {
