@@ -1,5 +1,48 @@
-import type { ModelMessage, ToolModelMessage } from 'ai'
+import type { AssistantModelMessage, ModelMessage, SystemModelMessage, ToolModelMessage, UserModelMessage } from 'ai'
 import type { RunResult } from './agent'
+
+type ToolCallInput = {
+	toolCallId: string
+	toolName: string
+	input: unknown
+}
+
+type ToolResultInput = {
+	toolCallId: string
+	toolName: string
+	output: string
+	isError?: boolean
+}
+
+export function userMessage(content: UserModelMessage['content']): UserModelMessage {
+	return { role: 'user', content }
+}
+
+export function systemMessage(content: SystemModelMessage['content']): SystemModelMessage {
+	return { role: 'system', content }
+}
+
+export function assistantMessage(content: AssistantModelMessage['content']): AssistantModelMessage {
+	return { role: 'assistant', content }
+}
+
+export function toolCall(input: ToolCallInput): AssistantModelMessage {
+	return {
+		role: 'assistant',
+		content: [
+			{
+				type: 'tool-call',
+				toolCallId: input.toolCallId,
+				toolName: input.toolName,
+				input: input.input,
+			},
+		],
+	}
+}
+
+export function toolResult(input: ToolResultInput): ToolModelMessage {
+	return toolResultMessage(input.toolCallId, input.toolName, input.output, input.isError)
+}
 
 /**
  * Build a tool-result ModelMessage from execution output.

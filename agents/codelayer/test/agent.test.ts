@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import type { LanguageModel } from 'ai'
 import type { AgentConfig } from '@humanlayer/agentlayer-core'
+import { geminiPrompt } from '@humanlayer/agentlayer-core/prompts'
 import { buildProviderOptions, createCodelayerAgent } from '../src/agent'
 import { parseProviderOptionOverrides } from '../src/command'
 import { DEFAULT_MODELS } from '../src/providers'
@@ -76,13 +77,21 @@ describe('createCodelayerAgent', () => {
 		})
 	})
 
-	test('enables codex fast mode by default', () => {
+	test('disables codex fast mode by default', () => {
 		const model = createMockModel('gpt-5.5')
 
 		expect(buildProviderOptions(model).openai).toMatchObject({
-			fastMode: true,
+			fastMode: false,
 			reasoningSummary: 'detailed',
 			reasoningEffort: 'low',
+		})
+	})
+
+	test('allows disabling anthropic thinking defaults', () => {
+		const model = createMockModel('claude-sonnet-4-5')
+
+		expect(buildProviderOptions(model, { anthropic: { thinking: 'off' } }).anthropic).toEqual({
+			cacheControl: { type: 'ephemeral' },
 		})
 	})
 
@@ -119,6 +128,20 @@ describe('createCodelayerAgent', () => {
 		expect(config.tools?.bash).toBeDefined()
 		expect(config.tools?.read).toBeDefined()
 		expect(config.tools?.agent).toBeDefined()
+	})
+
+	test('creates a gemini agent with gemini prompt and claude-style tools', async () => {
+		const agent = await createCodelayerAgent({
+			model: createMockModel('gemini-2.5-pro'),
+			cwd: '/tmp',
+		})
+		const config = getAgentConfig(agent)
+		const system = getSystemEntries(agent)
+
+		expect(config.tools?.write).toBeDefined()
+		expect(config.tools?.edit).toBeDefined()
+		expect(config.tools?.apply_patch).toBeUndefined()
+		expect(system[0]).toContain(geminiPrompt)
 	})
 
 	test('allows disabling default tools', async () => {
@@ -184,5 +207,31 @@ describe('createCodelayerAgent', () => {
 		})
 		const system = getSystemEntries(agent)
 		expect(system.some((entry) => entry.includes('RPI specialist subagents are enabled'))).toBe(true)
+	})
+
+	test('allows environment prompt controls', async () => {
+		const agent = await createCodelayerAgent({
+			model: createMockModel('claude-sonnet-4-5'),
+			cwd: '/tmp',
+			environment: {
+				date: new Date('2026-04-21T00:00:00Z'),
+				platform: 'test-platform',
+			},
+		})
+		const system = getSystemEntries(agent).join('\n')
+
+		expect(system).toContain('Tue Apr 21 2026')
+		expect(system).toContain('test-platform')
+	})
+
+	test('allows disabling the environment prompt', async () => {
+		const agent = await createCodelayerAgent({
+			model: createMockModel('claude-sonnet-4-5'),
+			cwd: '/tmp',
+			environment: { include: false },
+		})
+		const system = getSystemEntries(agent).join('\n')
+
+		expect(system).not.toContain('# Environment')
 	})
 })

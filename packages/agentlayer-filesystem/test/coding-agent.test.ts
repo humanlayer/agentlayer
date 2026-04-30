@@ -96,7 +96,7 @@ describe('createAgentFilesystemHooks', () => {
 			const hooks = createAgentFilesystemHooks({ cwd: dir })
 			expect(hooks.preToolUse).toHaveLength(2)
 			expect(hooks.postToolUse).toHaveLength(6)
-			expect(hooks.preRequest).toHaveLength(3)
+			expect(hooks.preRequest).toHaveLength(0)
 		} finally {
 			await rm(dir, { recursive: true, force: true })
 		}

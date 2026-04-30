@@ -77,7 +77,16 @@ export {
 } from './hooks'
 export * from './hooks/index'
 export * from './interfaces'
-export { buildToolResultMessage, extractLastAssistantText, toolResultMessage } from './messages'
+export {
+	assistantMessage,
+	buildToolResultMessage,
+	extractLastAssistantText,
+	systemMessage,
+	toolCall,
+	toolResult,
+	toolResultMessage,
+	userMessage,
+} from './messages'
 export { createOutputRenderer, type OutputRenderer, type OutputRendererOptions } from './output-renderer'
 export { getPendingToolCalls } from './pending'
 export * from './prompts'

@@ -13,14 +13,6 @@ import {
 	TodoWriteTool,
 	type Tool,
 } from '@humanlayer/agentlayer-core'
-import {
-	type DeduplicateReadsOptions,
-	deduplicateReads,
-	type StripThinkingOptions,
-	stripThinkingTokens,
-	type TruncateOldBashResultsOptions,
-	truncateOldBashResults,
-} from '@humanlayer/agentlayer-core/hooks'
 import type { CodeSearchInput, Skill } from '@humanlayer/agentlayer-core/interfaces'
 import { CodeSearchTool } from '@humanlayer/agentlayer-core/interfaces'
 import type { LanguageModel } from 'ai'
@@ -53,9 +45,6 @@ export interface AgentOutputTruncationOptions {
 export interface CreateAgentFilesystemHooksOptions {
 	cwd: string
 	outputTruncation?: AgentOutputTruncationOptions
-	stripThinking?: StripThinkingOptions
-	deduplicateReads?: DeduplicateReadsOptions
-	truncateOldBashResults?: TruncateOldBashResultsOptions
 }
 
 export function createAgentFilesystemHooks(opts: CreateAgentFilesystemHooksOptions): {
@@ -89,11 +78,7 @@ export function createAgentFilesystemHooks(opts: CreateAgentFilesystemHooksOptio
 			createListOutputTruncationHook(sharedOutputTruncation),
 			createFileStateTrackingHook({ cwd: opts.cwd }),
 		],
-		preRequest: [
-			stripThinkingTokens(opts.stripThinking),
-			deduplicateReads(opts.deduplicateReads),
-			truncateOldBashResults(opts.truncateOldBashResults),
-		],
+		preRequest: [],
 	} as const
 }
 
@@ -309,6 +294,9 @@ export interface CreateCodingSubagentToolOptions
 	model: LanguageModel
 	system?: string | string[]
 	systemPromptAdditions?: string[]
+	includeEnvironment?: boolean
+	date?: Date
+	platform?: string
 	hooks?: AgentConfig['hooks']
 	stopWhen?: AgentConfig['stopWhen']
 	providerOptions?: AgentConfig['providerOptions']
@@ -358,9 +346,6 @@ export async function createCodingSubagentTool(opts: CreateCodingSubagentToolOpt
 	const baseHooks = createAgentFilesystemHooks({
 		cwd: opts.cwd,
 		outputTruncation: opts.outputTruncation,
-		stripThinking: opts.stripThinking,
-		deduplicateReads: opts.deduplicateReads,
-		truncateOldBashResults: opts.truncateOldBashResults,
 	})
 	const hooks = mergeHooks(baseHooks, opts.hooks)
 	const stopWhen = opts.stopWhen ?? [doomLoop(3)]
@@ -373,6 +358,9 @@ export async function createCodingSubagentTool(opts: CreateCodingSubagentToolOpt
 				: await createAgentSystemPrompt({
 						cwd: opts.cwd,
 						model: opts.model,
+						includeEnvironment: opts.includeEnvironment,
+						date: opts.date,
+						platform: opts.platform,
 						systemPromptAdditions: opts.systemPromptAdditions,
 					})
 

@@ -37,6 +37,13 @@ export interface CodelayerAgentOptions {
 	additionalTools?: Record<string, Tool<any, any>>
 	subagentTool?: Tool<any, any>
 	providerOptionOverrides?: CodelayerProviderOptionOverrides
+	environment?: CodelayerEnvironmentOptions
+}
+
+export interface CodelayerEnvironmentOptions {
+	include?: boolean
+	date?: Date
+	platform?: string
 }
 
 export type ModelFamily = ReturnType<typeof detectModelFamily>
@@ -151,8 +158,8 @@ export function buildProviderOptions(
 					? { thinking: { type: 'enabled' as const, budgetTokens: overrides.anthropic.budgetTokens ?? 10000 } }
 					: resolveAnthropicThinking(model)
 	const codexOptions = {
-		fastMode: true,
 		...resolveCodexThinking(model),
+		fastMode: overrides.codex?.fastMode ?? false,
 		...overrides.codex,
 	}
 	const copilotOptions = overrides.copilot ?? {}
@@ -197,6 +204,7 @@ export async function createCodelayerAgent(opts: CodelayerAgentOptions): Promise
 		additionalTools = {},
 		subagentTool,
 		providerOptionOverrides,
+		environment,
 	} = opts
 	const modelFamily = detectModelFamily(model)
 	const providerOptions = buildProviderOptions(model, providerOptionOverrides)
@@ -211,6 +219,9 @@ export async function createCodelayerAgent(opts: CodelayerAgentOptions): Promise
 		(await createCodingSubagentTool({
 			cwd,
 			model,
+			includeEnvironment: environment?.include,
+			date: environment?.date,
+			platform: environment?.platform,
 			exaApiKey,
 			context7ApiKey,
 			skillTool,
@@ -224,6 +235,9 @@ export async function createCodelayerAgent(opts: CodelayerAgentOptions): Promise
 		const system = await createAgentSystemPrompt({
 			cwd,
 			model,
+			includeEnvironment: environment?.include,
+			date: environment?.date,
+			platform: environment?.platform,
 			systemPromptAdditions: [ORCHESTRATOR_PROMPT, ...(rpi ? ['RPI specialist subagents are enabled. Prefer delegating specialized research and codebase analysis tasks to subagents when appropriate.'] : []), ...personaPromptAdditions],
 		})
 		const aux = await createCodingAgentAuxToolset({
@@ -293,6 +307,9 @@ export async function createCodelayerAgent(opts: CodelayerAgentOptions): Promise
 	const system = await createAgentSystemPrompt({
 		cwd,
 		model,
+		includeEnvironment: environment?.include,
+		date: environment?.date,
+		platform: environment?.platform,
 		systemPromptAdditions: [
 			...(rpi ? ['RPI specialist subagents are enabled. Prefer delegating specialized research and codebase analysis tasks to subagents when appropriate.'] : []),
 			...personaPromptAdditions,
