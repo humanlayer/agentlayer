@@ -7,10 +7,6 @@ const monacoEditorPlugin = (monacoEditorPluginModule as any).default || monacoEd
 
 export default defineConfig({
 	plugins: [TanStackRouterVite(), react(), monacoEditorPlugin({})],
-	define: {
-		// Polyfill process.nextTick for fastq (used by @durable-streams/client)
-		'process.nextTick': '((fn) => setTimeout(fn, 0))',
-	},
 	server: {
 		port: 5175,
 		strictPort: true,
