@@ -6,6 +6,11 @@
       "name": "agentlayer",
       "devDependencies": {
         "@biomejs/biome": "2.2.5",
+        "@humanlayer/agentlayer-core": "workspace:*",
+        "@humanlayer/agentlayer-filesystem": "workspace:*",
+        "@humanlayer/agentlayer-provider-auth": "workspace:*",
+        "@humanlayer/codelayer": "workspace:*",
+        "@humanlayer/yjs-fs": "workspace:*",
         "@socketsecurity/bun-security-scanner": "1.1.2",
         "@types/bun": "latest",
         "@typescript/native-preview": "7.0.0-dev.20260414.1",

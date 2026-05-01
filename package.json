@@ -17,6 +17,11 @@
         "release:publish": "bun run scripts/release/publish.ts"
     },
     "devDependencies": {
+        "@humanlayer/agentlayer-core": "workspace:*",
+        "@humanlayer/agentlayer-filesystem": "workspace:*",
+        "@humanlayer/agentlayer-provider-auth": "workspace:*",
+        "@humanlayer/codelayer": "workspace:*",
+        "@humanlayer/yjs-fs": "workspace:*",
         "@biomejs/biome": "2.2.5",
         "@socketsecurity/bun-security-scanner": "1.1.2",
         "@types/bun": "latest",
