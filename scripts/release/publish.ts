@@ -152,10 +152,10 @@ async function packageForDryRun(packageDir: string) {
 }
 
 async function bunPublish(packageDir: string) {
-    await runCommand("bun", ["publish"], {
-        cwd: packageDir,
-        stdio: "inherit",
-    });
+	await runCommand("bun", ["publish", "--access", "public"], {
+		cwd: packageDir,
+		stdio: "inherit",
+	});
 }
 
 async function main() {

@@ -13,6 +13,7 @@
 			"!packages/docs/content/.vitepress/**/*",
 			"!**/node_modules/**/*",
 			"!packages/agentlayer-core/models.json",
+			"!packages/yjs-fs-editor/src/routeTree.gen.ts",
 			"!.humanlayer",
 			"!node_modules",
 			"!**/dist"
