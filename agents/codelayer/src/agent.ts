@@ -6,7 +6,6 @@ import {
 	createClaudeAgentFilesystemToolset,
 	createClaudeCodingAgentToolset,
 	createCodingAgentAuxToolset,
-	createCodingSubagentTool,
 	createCodexAgentFilesystemToolset,
 	createCodexCodingAgentToolset,
 	detectModelFamily,
@@ -16,6 +15,7 @@ import { createApplyPatchTool } from '@humanlayer/agentlayer-filesystem/tools'
 import { createEditTool } from '@humanlayer/agentlayer-filesystem/tools'
 import { createReadTool } from '@humanlayer/agentlayer-filesystem/tools'
 import { createWriteTool } from '@humanlayer/agentlayer-filesystem/tools'
+import { createCodingSubagentTool } from './coding-subagent-tool'
 
 const ORCHESTRATOR_PROMPT = `# Sub-Agent Orchestration
 

@@ -12,7 +12,6 @@ import {
 	createAgentSystemPrompt,
 	createClaudeCodingAgentToolset,
 	createCodexCodingAgentToolset,
-	createCodingSubagentTool,
 	createSkillToolFromRepoDirs,
 } from '../src'
 
@@ -146,40 +145,6 @@ describe('coding agent toolsets', () => {
 			expect('edit' in tools).toBe(false)
 			expect('skill' in tools).toBe(true)
 			expect('web_fetch' in tools).toBe(true)
-		} finally {
-			await rm(dir, { recursive: true, force: true })
-		}
-	})
-})
-
-describe('coding subagent tool', () => {
-	test('creates the standard subagent tool wrapper', async () => {
-		const dir = await mkdtemp(join(tmpdir(), 'agentlayer-subagent-tool-'))
-		try {
-			const tool = await createCodingSubagentTool({
-				cwd: dir,
-				model: mockModel('gpt-5.4'),
-			})
-
-			expect(tool.name).toBe('subagent')
-			expect(tool.description).toContain('general-purpose')
-			expect(tool.description).toContain('implementer-agent')
-			expect(tool.description).toContain('codebase-locator')
-		} finally {
-			await rm(dir, { recursive: true, force: true })
-		}
-	})
-
-	test('includes library-researcher when documentation search keys are available', async () => {
-		const dir = await mkdtemp(join(tmpdir(), 'agentlayer-subagent-tool-'))
-		try {
-			const tool = await createCodingSubagentTool({
-				cwd: dir,
-				model: mockModel('claude-sonnet-4-5'),
-				context7ApiKey: 'context7-test-key',
-			})
-
-			expect(tool.description).toContain('library-researcher')
 		} finally {
 			await rm(dir, { recursive: true, force: true })
 		}

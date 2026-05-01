@@ -3,6 +3,7 @@ import type { LanguageModel } from 'ai'
 import type { AgentConfig } from '@humanlayer/agentlayer-core'
 import { geminiPrompt } from '@humanlayer/agentlayer-core/prompts'
 import { buildProviderOptions, createCodelayerAgent } from '../src/agent'
+import { createCodingSubagentTool } from '../src/coding-subagent-tool'
 import { parseProviderOptionOverrides } from '../src/command'
 import { DEFAULT_MODELS } from '../src/providers'
 
@@ -233,5 +234,29 @@ describe('createCodelayerAgent', () => {
 		const system = getSystemEntries(agent).join('\n')
 
 		expect(system).not.toContain('# Environment')
+	})
+})
+
+describe('createCodingSubagentTool', () => {
+	test('creates the standard subagent tool wrapper', async () => {
+		const tool = await createCodingSubagentTool({
+			cwd: '/tmp',
+			model: createMockModel('gpt-5.4'),
+		})
+
+		expect(tool.name).toBe('subagent')
+		expect(tool.description).toContain('general-purpose')
+		expect(tool.description).toContain('implementer-agent')
+		expect(tool.description).toContain('codebase-locator')
+	})
+
+	test('includes library-researcher when documentation search keys are available', async () => {
+		const tool = await createCodingSubagentTool({
+			cwd: '/tmp',
+			model: createMockModel('claude-sonnet-4-5'),
+			context7ApiKey: 'context7-test-key',
+		})
+
+		expect(tool.description).toContain('library-researcher')
 	})
 })

@@ -6,13 +6,11 @@ export {
 	type CreateAgentFilesystemToolsetOptions,
 	type CreateCodingAgentAuxToolsetOptions,
 	type CreateCodingAgentToolsetOptions,
-	type CreateCodingSubagentToolOptions,
 	createClaudeAgentFilesystemToolset,
 	createClaudeCodingAgentToolset,
 	createCodexAgentFilesystemToolset,
 	createCodexCodingAgentToolset,
 	createCodingAgentAuxToolset,
-	createCodingSubagentTool,
 } from '../coding-agent'
 export { createApplyPatchTool } from './apply-patch'
 export { createBashTool } from './bash'
