@@ -1,7 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import type { LanguageModel } from 'ai'
 import type { AgentConfig } from '@humanlayer/agentlayer-core'
-import { geminiPrompt } from '@humanlayer/agentlayer-core/prompts'
 import { buildProviderOptions, createCodelayerAgent } from '../src/agent'
 import { createCodingSubagentTool } from '../src/coding-subagent-tool'
 import { parseProviderOptionOverrides } from '../src/command'
@@ -142,7 +141,8 @@ describe('createCodelayerAgent', () => {
 		expect(config.tools?.write).toBeDefined()
 		expect(config.tools?.edit).toBeDefined()
 		expect(config.tools?.apply_patch).toBeUndefined()
-		expect(system[0]).toContain(geminiPrompt)
+		expect(system[0]).toContain('You are CodeLayer')
+		expect(system[0]).toContain('an interactive CLI agent')
 	})
 
 	test('allows disabling default tools', async () => {
