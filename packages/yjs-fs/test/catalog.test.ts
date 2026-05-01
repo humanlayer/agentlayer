@@ -1,12 +1,4 @@
 import { describe, expect, test } from 'bun:test'
-import {
-	AlreadyExistsError,
-	DirectoryNotEmptyError,
-	EntryNotFoundError,
-	InvalidPathError,
-	NotDirectoryError,
-	RootMutationError,
-} from '@humanlayer/yjs-fs'
 import * as Y from 'yjs'
 import {
 	buildTree,
@@ -22,6 +14,14 @@ import {
 	renameInCatalog,
 	updateFileMetadata,
 } from '../src/filesystem/catalog'
+import {
+	AlreadyExistsError,
+	DirectoryNotEmptyError,
+	EntryNotFoundError,
+	InvalidPathError,
+	NotDirectoryError,
+	RootMutationError,
+} from '../src/filesystem/types'
 
 describe('catalog module', () => {
 	test('normalizes absolute paths and rejects unsupported segments', () => {
