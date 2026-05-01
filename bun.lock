@@ -19,21 +19,24 @@
       "name": "@humanlayer/codelayer",
       "version": "0.0.0",
       "bin": {
-        "codelayer": "src/cli.ts",
+        "codelayer": "./dist/cli.js",
       },
-      "devDependencies": {
+      "dependencies": {
         "@ai-sdk/anthropic": "catalog:",
         "@ai-sdk/openai": "^3.0.48",
-        "@ai-sdk/provider": "catalog:",
         "@humanlayer/agentlayer-core": "workspace:*",
         "@humanlayer/agentlayer-filesystem": "workspace:*",
         "@humanlayer/agentlayer-provider-auth": "workspace:*",
         "@humanlayer/agentlayer-provider-github-copilot": "workspace:*",
         "@humanlayer/agentlayer-provider-openai-codex": "workspace:*",
-        "@types/bun": "latest",
         "ai": "catalog:",
+        "chalk": "^5.6.2",
         "commander": "^14.0.3",
         "zod": "catalog:",
+      },
+      "devDependencies": {
+        "@ai-sdk/provider": "catalog:",
+        "@types/bun": "latest",
       },
       "peerDependencies": {
         "typescript": "^5",
@@ -73,17 +76,17 @@
       "name": "@humanlayer/agentlayer-core",
       "version": "0.0.0",
       "dependencies": {
+        "ai": "catalog:",
         "chalk": "^5.6.2",
         "dedent": "^1.7.2",
         "turndown": "7.2.4",
+        "zod": "catalog:",
       },
       "devDependencies": {
         "@ai-sdk/anthropic": "catalog:",
         "@ai-sdk/provider": "catalog:",
         "@types/bun": "latest",
         "@types/turndown": "5.0.6",
-        "ai": "catalog:",
-        "zod": "catalog:",
       },
       "peerDependencies": {
         "typescript": "^5",
@@ -93,15 +96,14 @@
       "name": "@humanlayer/agentlayer-filesystem",
       "version": "0.0.0",
       "dependencies": {
+        "@humanlayer/agentlayer-core": "workspace:*",
+        "ai": "catalog:",
         "ripgrep": "0.3.1",
       },
       "devDependencies": {
         "@ai-sdk/anthropic": "catalog:",
         "@ai-sdk/provider": "catalog:",
-        "@humanlayer/agentlayer-core": "workspace:*",
-        "@humanlayer/codelayer": "workspace:*",
         "@types/bun": "latest",
-        "ai": "catalog:",
         "zod": "catalog:",
       },
       "peerDependencies": {
@@ -111,10 +113,13 @@
     "packages/agentlayer-justbash": {
       "name": "@humanlayer/agentlayer-justbash",
       "version": "0.0.0",
+      "dependencies": {
+        "@humanlayer/agentlayer-core": "workspace:*",
+        "turndown": "7.2.4",
+      },
       "devDependencies": {
         "@ai-sdk/anthropic": "catalog:",
         "@ai-sdk/provider": "catalog:",
-        "@humanlayer/agentlayer-core": "workspace:*",
         "@types/bun": "latest",
         "@types/turndown": "5.0.6",
         "ai": "catalog:",
@@ -251,7 +256,6 @@
         "@humanlayer/yjs-fs": "workspace:*",
       },
       "devDependencies": {
-        "@humanlayer/yjs-fs": "workspace:*",
         "@types/react": "^18.3.12",
         "react": "^18.3.1",
         "typescript": "catalog:",
@@ -2033,6 +2037,8 @@
 
     "@humanlayer/agentlayer-filesystem/@types/bun": ["@types/bun@1.3.13", "", { "dependencies": { "bun-types": "1.3.13" } }, "sha512-9fqXWk5YIHGGnUau9TEi+qdlTYDAnOj+xLCmSTwXfAIqXr2x4tytJb43E9uCvt09zJURKXwAtkoH4nLQfzeTXw=="],
 
+    "@humanlayer/agentlayer-justbash/@types/bun": ["@types/bun@1.3.13", "", { "dependencies": { "bun-types": "1.3.13" } }, "sha512-9fqXWk5YIHGGnUau9TEi+qdlTYDAnOj+xLCmSTwXfAIqXr2x4tytJb43E9uCvt09zJURKXwAtkoH4nLQfzeTXw=="],
+
     "@humanlayer/agentlayer-provider-auth/@types/bun": ["@types/bun@1.3.13", "", { "dependencies": { "bun-types": "1.3.13" } }, "sha512-9fqXWk5YIHGGnUau9TEi+qdlTYDAnOj+xLCmSTwXfAIqXr2x4tytJb43E9uCvt09zJURKXwAtkoH4nLQfzeTXw=="],
 
     "@humanlayer/agentlayer-provider-github-copilot/@types/bun": ["@types/bun@1.3.13", "", { "dependencies": { "bun-types": "1.3.13" } }, "sha512-9fqXWk5YIHGGnUau9TEi+qdlTYDAnOj+xLCmSTwXfAIqXr2x4tytJb43E9uCvt09zJURKXwAtkoH4nLQfzeTXw=="],
@@ -2126,6 +2132,8 @@
     "@humanlayer/agentlayer-docs/@types/bun/bun-types": ["bun-types@1.3.13", "", { "dependencies": { "@types/node": "*" } }, "sha512-QXKeHLlOLqQX9LgYaHJfzdBaV21T63HhFJnvuRCcjZiaUDpbs5ED1MgxbMra71CsryN/1dAoXuJJJwIv/2drVA=="],
 
     "@humanlayer/agentlayer-filesystem/@types/bun/bun-types": ["bun-types@1.3.13", "", { "dependencies": { "@types/node": "*" } }, "sha512-QXKeHLlOLqQX9LgYaHJfzdBaV21T63HhFJnvuRCcjZiaUDpbs5ED1MgxbMra71CsryN/1dAoXuJJJwIv/2drVA=="],
+
+    "@humanlayer/agentlayer-justbash/@types/bun/bun-types": ["bun-types@1.3.13", "", { "dependencies": { "@types/node": "*" } }, "sha512-QXKeHLlOLqQX9LgYaHJfzdBaV21T63HhFJnvuRCcjZiaUDpbs5ED1MgxbMra71CsryN/1dAoXuJJJwIv/2drVA=="],
 
     "@humanlayer/agentlayer-provider-auth/@types/bun/bun-types": ["bun-types@1.3.13", "", { "dependencies": { "@types/node": "*" } }, "sha512-QXKeHLlOLqQX9LgYaHJfzdBaV21T63HhFJnvuRCcjZiaUDpbs5ED1MgxbMra71CsryN/1dAoXuJJJwIv/2drVA=="],
 

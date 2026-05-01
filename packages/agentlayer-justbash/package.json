@@ -23,7 +23,6 @@
 	"devDependencies": {
 		"@ai-sdk/anthropic": "catalog:",
 		"@ai-sdk/provider": "catalog:",
-		"@humanlayer/agentlayer-core": "workspace:*",
 		"@types/bun": "latest",
 		"@types/turndown": "5.0.6",
 		"ai": "catalog:",
@@ -53,5 +52,8 @@
 			"default": "./dist/tools/index.js"
 		}
 	},
-	"dependencies": {}
+	"dependencies": {
+		"@humanlayer/agentlayer-core": "workspace:*",
+		"turndown": "7.2.4"
+	}
 }

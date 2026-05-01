@@ -19,10 +19,9 @@ jobs:
         with:
           node-version: 22
           registry-url: https://registry.npmjs.org
-      - name: Get version from tag
+      - name: Get version and npm tag from git tag
         id: version
-        run: |
-          echo "version=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+        run: bun run scripts/release/tag-info.ts
       - run: bun install --frozen-lockfile
       - run: bun run biome:check
       - run: bun run typecheck
@@ -30,7 +29,7 @@ jobs:
       - run: bun run docs:build
       - run: bun run build:packages
       - run: bun run release:prepare --version "${{ steps.version.outputs.version }}"
-      - run: bun run release:publish --version "${{ steps.version.outputs.version }}"
+      - run: bun run release:publish --version "${{ steps.version.outputs.version }}" --tag "${{ steps.version.outputs.tag }}"
       - uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true

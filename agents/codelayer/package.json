@@ -40,22 +40,24 @@
 			"default": "./dist/rpi-agents/index.js"
 		}
 	},
-	"devDependencies": {
+	"dependencies": {
 		"@ai-sdk/anthropic": "catalog:",
 		"@ai-sdk/openai": "^3.0.48",
-		"@ai-sdk/provider": "catalog:",
 		"@humanlayer/agentlayer-core": "workspace:*",
 		"@humanlayer/agentlayer-filesystem": "workspace:*",
 		"@humanlayer/agentlayer-provider-auth": "workspace:*",
 		"@humanlayer/agentlayer-provider-github-copilot": "workspace:*",
 		"@humanlayer/agentlayer-provider-openai-codex": "workspace:*",
-		"@types/bun": "latest",
 		"ai": "catalog:",
+		"chalk": "^5.6.2",
 		"commander": "^14.0.3",
 		"zod": "catalog:"
-  },
-  "peerDependencies": {
-    "typescript": "^5"
-  },
-  "dependencies": {}
+	},
+	"devDependencies": {
+		"@ai-sdk/provider": "catalog:",
+		"@types/bun": "latest"
+	},
+	"peerDependencies": {
+		"typescript": "^5"
+	}
 }

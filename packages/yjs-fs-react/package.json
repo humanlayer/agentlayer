@@ -20,7 +20,6 @@
 		"build:types": "bunx tsc -p tsconfig.build.json"
 	},
 	"devDependencies": {
-		"@humanlayer/yjs-fs": "workspace:*",
 		"@types/react": "^18.3.12",
 		"react": "^18.3.1",
 		"typescript": "catalog:",
