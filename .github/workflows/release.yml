@@ -25,9 +25,9 @@ jobs:
       - run: bun install --frozen-lockfile
       - run: bun run biome:check
       - run: bun run typecheck
-      - run: bun run build:packages
       - run: bun run test:ci
       - run: bun run docs:build
+      - run: bun run build:packages
       - run: bun run release:prepare --version "${{ steps.version.outputs.version }}"
       - run: bun run release:publish --version "${{ steps.version.outputs.version }}" --tag "${{ steps.version.outputs.tag }}"
       - uses: softprops/action-gh-release@v2
