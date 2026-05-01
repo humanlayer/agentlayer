@@ -203,6 +203,8 @@
       "devDependencies": {
         "@ai-sdk/anthropic": "catalog:",
         "@ai-sdk/provider": "catalog:",
+        "@durable-streams/server": "^0.3.1",
+        "@durable-streams/y-durable-streams": "^0.2.4",
         "@humanlayer/agentlayer-core": "workspace:*",
         "@types/bun": "latest",
         "@types/turndown": "5.0.6",
@@ -411,11 +413,11 @@
 
     "@docsearch/react": ["@docsearch/react@3.8.2", "", { "dependencies": { "@algolia/autocomplete-core": "1.17.7", "@algolia/autocomplete-preset-algolia": "1.17.7", "@docsearch/css": "3.8.2", "algoliasearch": "^5.14.2" }, "peerDependencies": { "@types/react": ">= 16.8.0 < 19.0.0", "react": ">= 16.8.0 < 19.0.0", "react-dom": ">= 16.8.0 < 19.0.0", "search-insights": ">= 1 < 3" }, "optionalPeers": ["@types/react", "react", "react-dom", "search-insights"] }, "sha512-xCRrJQlTt8N9GU0DG4ptwHRkfnSnD/YpdeaXe02iKfqs97TkZJv60yE+1eq/tjPcVnTW8dP5qLP7itifFVV5eg=="],
 
-    "@durable-streams/client": ["@durable-streams/client@0.2.0", "", { "dependencies": { "@microsoft/fetch-event-source": "^2.0.1", "fastq": "^1.19.1" } }, "sha512-nlrbXDjQDqOsFbVFplg0OHkXwy4EAtztARg4zvaTn53WHzMCUwuiIY+V+u3AGvUWA9GJnnjRrbPKIXGkvak1CQ=="],
+    "@durable-streams/client": ["@durable-streams/client@0.2.3", "", { "dependencies": { "@microsoft/fetch-event-source": "^2.0.1", "fastq": "^1.19.1" }, "bin": { "intent": "bin/intent.js" } }, "sha512-609hWTqe8/OXzIFnv+oDdlT57QsCAc3F2c/nAQBcYhSLmmbXk5rHx7rnQSmk9MeGGQ8dsg9UCZf47dTJG3q3ig=="],
 
-    "@durable-streams/server": ["@durable-streams/server@0.1.7", "", { "dependencies": { "@durable-streams/client": "0.2.0", "@durable-streams/state": "0.2.0", "@neophi/sieve-cache": "^1.0.0", "lmdb": "^3.3.0" } }, "sha512-JaCzfKS/GI3ZlbmInHvqX/fAh6XENTjc+acfhRlZH9iaRQiD1rOjfircj+jFDTIHgeT9oPqOVscmISGot8kI3w=="],
+    "@durable-streams/server": ["@durable-streams/server@0.3.1", "", { "dependencies": { "@durable-streams/client": "0.2.3", "@durable-streams/state": "0.2.5", "@neophi/sieve-cache": "^1.0.0", "lmdb": "^3.3.0" } }, "sha512-c8vr9x5l5CzYrjdIIpVE/tiEDTrCvzBvcOsLRu0Cf13D06fofabgB2TB7W5OAIscWkXNDhO2plegfeP9I56KDQ=="],
 
-    "@durable-streams/state": ["@durable-streams/state@0.2.0", "", { "dependencies": { "@durable-streams/client": "0.2.0", "@standard-schema/spec": "^1.0.0" }, "peerDependencies": { "@tanstack/db": ">=0.5.0" } }, "sha512-9XKSKkubcCbbRgUHJCENTw3351uJ4hfi8GLmYWD8l5OCEjvhVegUF06utFKehIRy3xTr57t5MC78weBfVlD2Dg=="],
+    "@durable-streams/state": ["@durable-streams/state@0.2.5", "", { "dependencies": { "@durable-streams/client": "0.2.3", "@standard-schema/spec": "^1.0.0" }, "peerDependencies": { "@tanstack/db": ">=0.5.0" }, "bin": { "intent": "bin/intent.js" } }, "sha512-9vVe2Ww+FxVuNs79f5geS7KZ6kvFXOROC+gCZmIXVugb5Fpah/B/IBl+kTm0gL/4MpjIuAcZtu3JK4rG9TuEeA=="],
 
     "@durable-streams/y-durable-streams": ["@durable-streams/y-durable-streams@0.2.4", "", { "dependencies": { "@durable-streams/client": "0.2.3", "lib0": "^0.2.99", "y-protocols": "^1.0.6", "yjs": "^13.6.24" }, "bin": { "intent": "bin/intent.js" } }, "sha512-XwhVSWEpy7WaGyyTxWECYIQ4nmvoseJ99dIhwm/G5IgIwUxofzk9DIQ5DQ1dMQ45ztLMQyYlbS8C2leU7MMwrA=="],
 
@@ -2029,8 +2031,6 @@
 
     "@docsearch/js/preact": ["preact@10.29.1", "", {}, "sha512-gQCLc/vWroE8lIpleXtdJhTFDogTdZG9AjMUpVkDf2iTCNwYNWA+u16dL41TqUDJO4gm2IgrcMv3uTpjd4Pwmg=="],
 
-    "@durable-streams/y-durable-streams/@durable-streams/client": ["@durable-streams/client@0.2.3", "", { "dependencies": { "@microsoft/fetch-event-source": "^2.0.1", "fastq": "^1.19.1" }, "bin": { "intent": "bin/intent.js" } }, "sha512-609hWTqe8/OXzIFnv+oDdlT57QsCAc3F2c/nAQBcYhSLmmbXk5rHx7rnQSmk9MeGGQ8dsg9UCZf47dTJG3q3ig=="],
-
     "@humanlayer/agentlayer-core/@types/bun": ["@types/bun@1.3.13", "", { "dependencies": { "bun-types": "1.3.13" } }, "sha512-9fqXWk5YIHGGnUau9TEi+qdlTYDAnOj+xLCmSTwXfAIqXr2x4tytJb43E9uCvt09zJURKXwAtkoH4nLQfzeTXw=="],
 
     "@humanlayer/agentlayer-docs/@types/bun": ["@types/bun@1.3.13", "", { "dependencies": { "bun-types": "1.3.13" } }, "sha512-9fqXWk5YIHGGnUau9TEi+qdlTYDAnOj+xLCmSTwXfAIqXr2x4tytJb43E9uCvt09zJURKXwAtkoH4nLQfzeTXw=="],
@@ -2048,6 +2048,8 @@
     "@humanlayer/codelayer/@types/bun": ["@types/bun@1.3.13", "", { "dependencies": { "bun-types": "1.3.13" } }, "sha512-9fqXWk5YIHGGnUau9TEi+qdlTYDAnOj+xLCmSTwXfAIqXr2x4tytJb43E9uCvt09zJURKXwAtkoH4nLQfzeTXw=="],
 
     "@humanlayer/yjs-fs/@types/bun": ["@types/bun@1.3.13", "", { "dependencies": { "bun-types": "1.3.13" } }, "sha512-9fqXWk5YIHGGnUau9TEi+qdlTYDAnOj+xLCmSTwXfAIqXr2x4tytJb43E9uCvt09zJURKXwAtkoH4nLQfzeTXw=="],
+
+    "@humanlayer/yjs-fs-editor/@durable-streams/server": ["@durable-streams/server@0.1.7", "", { "dependencies": { "@durable-streams/client": "0.2.0", "@durable-streams/state": "0.2.0", "@neophi/sieve-cache": "^1.0.0", "lmdb": "^3.3.0" } }, "sha512-JaCzfKS/GI3ZlbmInHvqX/fAh6XENTjc+acfhRlZH9iaRQiD1rOjfircj+jFDTIHgeT9oPqOVscmISGot8kI3w=="],
 
     "@mermaid-js/mermaid-mindmap/@braintree/sanitize-url": ["@braintree/sanitize-url@6.0.4", "", {}, "sha512-s3jaWicZd0pkP0jf5ysyHUI/RE7MHos6qlToFcGWXVp+ykHOy77OUMrfbgJ9it2C5bow7OIQwYYaHjk9XlBQ2A=="],
 
@@ -2142,6 +2144,10 @@
     "@humanlayer/agentlayer-provider-openai-codex/@types/bun/bun-types": ["bun-types@1.3.13", "", { "dependencies": { "@types/node": "*" } }, "sha512-QXKeHLlOLqQX9LgYaHJfzdBaV21T63HhFJnvuRCcjZiaUDpbs5ED1MgxbMra71CsryN/1dAoXuJJJwIv/2drVA=="],
 
     "@humanlayer/codelayer/@types/bun/bun-types": ["bun-types@1.3.13", "", { "dependencies": { "@types/node": "*" } }, "sha512-QXKeHLlOLqQX9LgYaHJfzdBaV21T63HhFJnvuRCcjZiaUDpbs5ED1MgxbMra71CsryN/1dAoXuJJJwIv/2drVA=="],
+
+    "@humanlayer/yjs-fs-editor/@durable-streams/server/@durable-streams/client": ["@durable-streams/client@0.2.0", "", { "dependencies": { "@microsoft/fetch-event-source": "^2.0.1", "fastq": "^1.19.1" } }, "sha512-nlrbXDjQDqOsFbVFplg0OHkXwy4EAtztARg4zvaTn53WHzMCUwuiIY+V+u3AGvUWA9GJnnjRrbPKIXGkvak1CQ=="],
+
+    "@humanlayer/yjs-fs-editor/@durable-streams/server/@durable-streams/state": ["@durable-streams/state@0.2.0", "", { "dependencies": { "@durable-streams/client": "0.2.0", "@standard-schema/spec": "^1.0.0" }, "peerDependencies": { "@tanstack/db": ">=0.5.0" } }, "sha512-9XKSKkubcCbbRgUHJCENTw3351uJ4hfi8GLmYWD8l5OCEjvhVegUF06utFKehIRy3xTr57t5MC78weBfVlD2Dg=="],
 
     "@humanlayer/yjs-fs/@types/bun/bun-types": ["bun-types@1.3.13", "", { "dependencies": { "@types/node": "*" } }, "sha512-QXKeHLlOLqQX9LgYaHJfzdBaV21T63HhFJnvuRCcjZiaUDpbs5ED1MgxbMra71CsryN/1dAoXuJJJwIv/2drVA=="],
 
