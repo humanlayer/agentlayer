@@ -28,6 +28,9 @@ function parseCliArgs() {
                 type: "boolean",
                 default: false,
             },
+            tag: {
+                type: "string",
+            },
         },
         strict: true,
         allowPositionals: false,
@@ -41,6 +44,7 @@ function parseCliArgs() {
     return {
         version,
         dryRun: values["dry-run"],
+        tag: values.tag?.trim(),
     };
 }
 
@@ -117,6 +121,7 @@ async function ensureOnlyAllowlistedPackagesAreStaged() {
     const expectedDirs = new Set(publishablePackages.map((pkg) => pkg.dir));
 
     for (const stagedDir of stagedPackageDirs) {
+        // @ts-expect-error
         if (!expectedDirs.has(stagedDir)) {
             throw new Error(`Unexpected staged package found at ${stagedDir}`);
         }
@@ -130,7 +135,7 @@ async function ensureOnlyAllowlistedPackagesAreStaged() {
 }
 
 async function ensureVersionDoesNotAlreadyExist(packageName: string, version: string) {
-    const result = await runCommand("bun", ["pm", "view", packageName, "versions", "--json"], {
+    const result = await runCommand("npm", ["view", packageName, "versions", "--json"], {
         allowFailure: true,
     });
 
@@ -144,22 +149,25 @@ async function ensureVersionDoesNotAlreadyExist(packageName: string, version: st
     }
 }
 
-async function packageForDryRun(packageDir: string) {
-    await runCommand("bun", ["pm", "pack", "--dry-run"], {
+function publishArgs(opts: { dryRun?: boolean; tag?: string }) {
+    return [
+        "publish",
+        "--access",
+        "public",
+        ...(opts.tag ? ["--tag", opts.tag] : []),
+        ...(opts.dryRun ? ["--dry-run"] : []),
+    ];
+}
+
+async function npmPublish(packageDir: string, opts: { dryRun?: boolean; tag?: string } = {}) {
+    await runCommand("npm", publishArgs(opts), {
         cwd: packageDir,
         stdio: "inherit",
     });
 }
 
-async function bunPublish(packageDir: string) {
-	await runCommand("bun", ["publish", "--access", "public"], {
-		cwd: packageDir,
-		stdio: "inherit",
-	});
-}
-
 async function main() {
-    const { version, dryRun } = parseCliArgs();
+    const { version, dryRun, tag } = parseCliArgs();
 
     await ensureReleaseStageExists();
     await ensureOnlyAllowlistedPackagesAreStaged();
@@ -180,12 +188,12 @@ async function main() {
 
         if (dryRun) {
             console.log(`[dry-run] packaging ${manifest.name} from ${stagedPackageDir}`);
-            await packageForDryRun(stagedPackageDir);
+            await npmPublish(stagedPackageDir, { dryRun: true, tag });
             continue;
         }
 
         console.log(`publishing ${manifest.name} from ${stagedPackageDir}`);
-        await bunPublish(stagedPackageDir);
+        await npmPublish(stagedPackageDir, { tag });
     }
 }
 

@@ -1,37 +1,22 @@
 {
 	"name": "@humanlayer/codelayer",
-	"module": "src/index.ts",
+	"source": "./src/index.ts",
 	"type": "module",
 	"version": "0.0.0",
 	"private": false,
+	"main": "./dist/index.js",
+	"module": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"bin": {
+		"codelayer": "./dist/cli.js"
+	},
 	"publishConfig": {
-		"access": "public",
-		"main": "./dist/index.js",
-		"module": "./dist/index.js",
-		"types": "./dist/index.d.ts",
-		"bin": {
-			"codelayer": "./dist/cli.js"
-		},
-		"exports": {
-			".": {
-				"types": "./dist/index.d.ts",
-				"import": "./dist/index.js",
-				"default": "./dist/index.js"
-			},
-			"./rpi-agents": {
-				"types": "./dist/rpi-agents/index.d.ts",
-				"import": "./dist/rpi-agents/index.js",
-				"default": "./dist/rpi-agents/index.js"
-			}
-		}
+		"access": "public"
 	},
 	"files": [
 		"src",
 		"dist"
 	],
-	"bin": {
-		"codelayer": "src/cli.ts"
-	},
 	"scripts": {
 		"start": "bun run cli",
 		"typecheck": "tsgo --noEmit",
@@ -42,8 +27,18 @@
 		"codelayer": "bun --bun run src/cli.ts"
 	},
 	"exports": {
-		".": "./src/index.ts",
-		"./rpi-agents": "./src/rpi-agents/index.ts"
+		".": {
+			"source": "./src/index.ts",
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js",
+			"default": "./dist/index.js"
+		},
+		"./rpi-agents": {
+			"source": "./src/rpi-agents/index.ts",
+			"types": "./dist/rpi-agents/index.d.ts",
+			"import": "./dist/rpi-agents/index.js",
+			"default": "./dist/rpi-agents/index.js"
+		}
 	},
 	"devDependencies": {
 		"@ai-sdk/anthropic": "catalog:",

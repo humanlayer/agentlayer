@@ -1,21 +1,13 @@
 {
 	"name": "@humanlayer/yjs-fs-react",
-	"module": "src/index.tsx",
 	"type": "module",
 	"version": "0.0.0",
 	"private": false,
+	"main": "./dist/index.js",
+	"module": "./dist/index.js",
+	"types": "./dist/index.d.ts",
 	"publishConfig": {
-		"access": "public",
-		"main": "./dist/index.js",
-		"module": "./dist/index.js",
-		"types": "./dist/index.d.ts",
-		"exports": {
-			".": {
-				"types": "./dist/index.d.ts",
-				"import": "./dist/index.js",
-				"default": "./dist/index.js"
-			}
-		}
+		"access": "public"
 	},
 	"files": [
 		"src",
@@ -44,6 +36,11 @@
 		"yjs": "13.6.30"
 	},
 	"exports": {
-		".": "./src/index.tsx"
+		".": {
+			"source": "./src/index.tsx",
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js",
+			"default": "./dist/index.js"
+		}
 	}
 }

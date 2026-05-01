@@ -1,46 +1,14 @@
 {
 	"name": "@humanlayer/agentlayer-filesystem",
-	"module": "src/index.ts",
+	"source": "./src/index.ts",
 	"type": "module",
 	"version": "0.0.0",
 	"private": false,
+	"main": "./dist/index.js",
+	"module": "./dist/index.js",
+	"types": "./dist/index.d.ts",
 	"publishConfig": {
-		"access": "public",
-		"main": "./dist/index.js",
-		"module": "./dist/index.js",
-		"types": "./dist/index.d.ts",
-		"exports": {
-			".": {
-				"types": "./dist/index.d.ts",
-				"import": "./dist/index.js",
-				"default": "./dist/index.js"
-			},
-			"./utils": {
-				"types": "./dist/utils/index.d.ts",
-				"import": "./dist/utils/index.js",
-				"default": "./dist/utils/index.js"
-			},
-			"./tools": {
-				"types": "./dist/tools/index.d.ts",
-				"import": "./dist/tools/index.js",
-				"default": "./dist/tools/index.js"
-			},
-			"./hooks": {
-				"types": "./dist/hooks/index.d.ts",
-				"import": "./dist/hooks/index.js",
-				"default": "./dist/hooks/index.js"
-			},
-			"./prompts": {
-				"types": "./dist/prompts/index.d.ts",
-				"import": "./dist/prompts/index.js",
-				"default": "./dist/prompts/index.js"
-			},
-			"./coding-agent": {
-				"types": "./dist/coding-agent.d.ts",
-				"import": "./dist/coding-agent.js",
-				"default": "./dist/coding-agent.js"
-			}
-		}
+		"access": "public"
 	},
 	"files": [
 		"src",
@@ -68,11 +36,41 @@
 		"typescript": "^5"
 	},
 	"exports": {
-		".": "./src/index.ts",
-		"./utils": "./src/utils/index.ts",
-		"./tools": "./src/tools/index.ts",
-		"./hooks": "./src/hooks/index.ts",
-		"./prompts": "./src/prompts/index.ts",
-		"./coding-agent": "./src/coding-agent.ts"
+		".": {
+			"source": "./src/index.ts",
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js",
+			"default": "./dist/index.js"
+		},
+		"./utils": {
+			"source": "./src/utils/index.ts",
+			"types": "./dist/utils/index.d.ts",
+			"import": "./dist/utils/index.js",
+			"default": "./dist/utils/index.js"
+		},
+		"./tools": {
+			"source": "./src/tools/index.ts",
+			"types": "./dist/tools/index.d.ts",
+			"import": "./dist/tools/index.js",
+			"default": "./dist/tools/index.js"
+		},
+		"./hooks": {
+			"source": "./src/hooks/index.ts",
+			"types": "./dist/hooks/index.d.ts",
+			"import": "./dist/hooks/index.js",
+			"default": "./dist/hooks/index.js"
+		},
+		"./prompts": {
+			"source": "./src/prompts/index.ts",
+			"types": "./dist/prompts/index.d.ts",
+			"import": "./dist/prompts/index.js",
+			"default": "./dist/prompts/index.js"
+		},
+		"./coding-agent": {
+			"source": "./src/coding-agent.ts",
+			"types": "./dist/coding-agent.d.ts",
+			"import": "./dist/coding-agent.js",
+			"default": "./dist/coding-agent.js"
+		}
 	}
 }

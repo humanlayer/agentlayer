@@ -8,6 +8,7 @@
     "allowJs": true,
     "types": ["bun"],
     "moduleResolution": "bundler",
+		"customConditions": ["source"],
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,
     "noEmit": true,

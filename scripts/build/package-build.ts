@@ -4,6 +4,7 @@ import { join, resolve } from 'node:path'
 export interface PackageManifest {
 	name: string
 	version?: string
+	source?: string
 	exports?: Record<string, string | Record<string, string>>
 	bin?: string | Record<string, string>
 	publishConfig?: Record<string, unknown>
@@ -16,12 +17,22 @@ export async function readPackageManifest(packageDir: string): Promise<PackageMa
 
 export function getSourceExportEntries(manifest: PackageManifest): string[] {
 	const exportsMap = manifest.exports ?? {}
-	return Object.values(exportsMap).filter((value): value is string => typeof value === 'string')
+	const entries = Object.values(exportsMap)
+		.map((value) => {
+			if (typeof value === 'string') return value
+			const source = value.source
+			return typeof source === 'string' ? source : undefined
+		})
+		.filter((value): value is string => typeof value === 'string')
+
+	if (entries.length > 0) return entries
+	return manifest.source ? [manifest.source] : []
 }
 
 export function getSourceBinEntries(manifest: PackageManifest): string[] {
 	if (!manifest.bin) return []
-	return typeof manifest.bin === 'string' ? [manifest.bin] : Object.values(manifest.bin)
+	const values = typeof manifest.bin === 'string' ? [manifest.bin] : Object.values(manifest.bin)
+	return values.filter((value) => value.startsWith('./src/') || value.startsWith('src/'))
 }
 
 export function sourceExportToDistJsPath(sourceExport: string): string {

@@ -1,26 +1,14 @@
 {
 	"name": "@humanlayer/yjs-fs",
-	"module": "src/index.ts",
+	"source": "./src/index.ts",
 	"type": "module",
 	"version": "0.0.0",
 	"private": false,
+	"main": "./dist/index.js",
+	"module": "./dist/index.js",
+	"types": "./dist/index.d.ts",
 	"publishConfig": {
-		"access": "public",
-		"main": "./dist/index.js",
-		"module": "./dist/index.js",
-		"types": "./dist/index.d.ts",
-		"exports": {
-			".": {
-				"types": "./dist/index.d.ts",
-				"import": "./dist/index.js",
-				"default": "./dist/index.js"
-			},
-			"./presence": {
-				"types": "./dist/filesystem/presence.d.ts",
-				"import": "./dist/filesystem/presence.js",
-				"default": "./dist/filesystem/presence.js"
-			}
-		}
+		"access": "public"
 	},
 	"files": [
 		"src",
@@ -50,8 +38,18 @@
 		"y-protocols": "1.0.7"
 	},
 	"exports": {
-		".": "./src/index.ts",
-		"./presence": "./src/filesystem/presence.ts"
+		".": {
+			"source": "./src/index.ts",
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js",
+			"default": "./dist/index.js"
+		},
+		"./presence": {
+			"source": "./src/filesystem/presence.ts",
+			"types": "./dist/filesystem/presence.d.ts",
+			"import": "./dist/filesystem/presence.js",
+			"default": "./dist/filesystem/presence.js"
+		}
 	},
 	"dependencies": {},
 	"author": {

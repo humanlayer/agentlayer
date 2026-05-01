@@ -1,7 +1,7 @@
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import type { PackageManifest } from './build/package-build'
+import type { PackageManifest } from '../build/package-build'
 
 export type WorkspaceReleaseEntry = {
     name: string;
@@ -36,6 +36,10 @@ export const publishablePackages = [
     {
         name: "@humanlayer/yjs-fs",
         dir: "packages/yjs-fs",
+    },
+    {
+        name: "@humanlayer/yjs-fs-react",
+        dir: "packages/yjs-fs-react",
     },
     {
         name: "@humanlayer/codelayer",
@@ -87,7 +91,16 @@ export async function readPackageManifest(packageDir: string): Promise<PackageMa
 
 export function getSourceExportEntries(manifest: PackageManifest): string[] {
 	const exportsMap = manifest.exports ?? {}
-	return Object.values(exportsMap).filter((value): value is string => typeof value === 'string')
+	const entries = Object.values(exportsMap)
+		.map((value) => {
+			if (typeof value === 'string') return value
+			const source = value.source
+			return typeof source === 'string' ? source : undefined
+		})
+		.filter((value): value is string => typeof value === 'string')
+
+	if (entries.length > 0) return entries
+	return typeof manifest.source === 'string' ? [manifest.source] : []
 }
 
 export function sourceExportToDistJsPath(sourceExport: string): string {

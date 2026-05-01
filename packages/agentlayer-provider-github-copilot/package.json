@@ -1,21 +1,14 @@
 {
 	"name": "@humanlayer/agentlayer-provider-github-copilot",
-	"module": "src/index.ts",
+	"source": "./src/index.ts",
 	"type": "module",
 	"version": "0.0.0",
 	"private": false,
+	"main": "./dist/index.js",
+	"module": "./dist/index.js",
+	"types": "./dist/index.d.ts",
 	"publishConfig": {
-		"access": "public",
-		"main": "./dist/index.js",
-		"module": "./dist/index.js",
-		"types": "./dist/index.d.ts",
-		"exports": {
-			".": {
-				"types": "./dist/index.d.ts",
-				"import": "./dist/index.js",
-				"default": "./dist/index.js"
-			}
-		}
+		"access": "public"
 	},
 	"files": [
 		"src",
@@ -34,7 +27,12 @@
 		"typescript": "^5"
 	},
 	"exports": {
-		".": "./src/index.ts"
+		".": {
+			"source": "./src/index.ts",
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js",
+			"default": "./dist/index.js"
+		}
 	},
 	"dependencies": {
 		"@ai-sdk/provider": "catalog:",
