@@ -17,8 +17,9 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           registry-url: https://registry.npmjs.org
+      - run: npm install -g npm@latest
       - name: Get version and npm tag from git tag
         id: version
         run: bun run scripts/release/tag-info.ts
@@ -30,6 +31,6 @@ jobs:
       - run: bun run build:packages
       - run: bun run release:prepare --version "${{ steps.version.outputs.version }}"
       - run: bun run release:publish --version "${{ steps.version.outputs.version }}" --tag "${{ steps.version.outputs.tag }}"
-      - uses: softprops/action-gh-release@v2
-        with:
-          generate_release_notes: true
+      - run: gh release create "$GITHUB_REF_NAME" --generate-notes
+        env:
+          GH_TOKEN: ${{ github.token }}
