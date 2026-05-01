@@ -1,7 +1,6 @@
 import { isAbsolute, resolve } from 'node:path'
 import type { AgentEvent } from '@humanlayer/agentlayer-core'
 import {
-	type AgentConfig,
 	createSubagentsTool,
 	createWebFetchTool,
 	type PostToolUseHook,
@@ -19,7 +18,6 @@ import {
 	createListOutputTruncationHook,
 	createReadTruncationHook,
 } from './hooks/output-truncation'
-import { createAgentSystemPrompt, detectModelFamily } from './prompts/index'
 import { createApplyPatchTool } from './tools/apply-patch'
 import { createBashTool } from './tools/bash'
 import { createEditTool } from './tools/edit'
