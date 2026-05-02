@@ -1,5 +1,5 @@
 import { artifactCollaborationExtension } from '@humanlayer/yjs-rich-markdown'
-import CollaborationCursor from '@tiptap/extension-collaboration-cursor'
+import CollaborationCaret from '@tiptap/extension-collaboration-caret'
 import { EditorContent, useEditor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import { useEffect } from 'react'
@@ -19,10 +19,10 @@ export function ArtifactEditor({ path, mode = 'fragment' }: ArtifactEditorProps)
 		{
 			extensions: [
 				StarterKit.configure({
-					history: false,
+					undoRedo: false,
 				}),
 				artifactCollaborationExtension({ doc, path, mode }),
-				CollaborationCursor.configure({
+				CollaborationCaret.configure({
 					provider: provider as any,
 					user: {
 						name: localUser.name,

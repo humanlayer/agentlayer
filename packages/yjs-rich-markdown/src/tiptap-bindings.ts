@@ -33,7 +33,7 @@ export function artifactCollaborationExtension(options: ArtifactCollaborationOpt
 export function defaultRichMarkdownExtensions(options: ArtifactCollaborationOptions): Extension[] {
 	return [
 		StarterKit.configure({
-			history: false,
+			undoRedo: false,
 		}),
 		artifactCollaborationExtension(options),
 	]

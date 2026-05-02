@@ -8,14 +8,15 @@ type MarkdownExportPanelProps = {
 
 export function MarkdownExportPanel({ path }: MarkdownExportPanelProps) {
 	const { doc } = useArtifactSession()
-	const [content, setContent] = useState<string>('')
+	const [fragmentString, setFragmentString] = useState<string>('')
+	const [fragmentJson, setFragmentJson] = useState<string>('')
 
 	useEffect(() => {
 		const fragment = artifactFragment(doc, path)
 
 		const update = () => {
-			const text = fragmentToPlainText(fragment)
-			setContent(text)
+			setFragmentString(fragment.toString())
+			setFragmentJson(formatJson(fragment.toJSON()))
 		}
 
 		update()
@@ -33,10 +34,20 @@ export function MarkdownExportPanel({ path }: MarkdownExportPanelProps) {
 				fontFamily: 'monospace',
 			}}
 		>
-			<h4 style={{ margin: '0 0 8px' }}>Content Export: {path}</h4>
+			<h4 style={{ margin: '0 0 8px' }}>Fragment Debug: {path}</h4>
 			<div style={{ marginBottom: 8, color: '#666' }}>
-				(Currently showing plain text from Y.XmlFragment. Full markdown export requires TipTap serialization.)
+				Raw Y.XmlFragment serialization for agent-readable rich artifact inspection.
 			</div>
+			<DebugSection label="fragment.toString()" content={fragmentString} />
+			<DebugSection label="fragment.toJSON()" content={fragmentJson} />
+		</div>
+	)
+}
+
+function DebugSection({ label, content }: { label: string; content: string }) {
+	return (
+		<div style={{ marginTop: 10 }}>
+			<div style={{ marginBottom: 4, color: '#333', fontWeight: 700 }}>{label}</div>
 			<pre
 				style={{
 					whiteSpace: 'pre-wrap',
@@ -45,31 +56,16 @@ export function MarkdownExportPanel({ path }: MarkdownExportPanelProps) {
 					padding: 8,
 					borderRadius: 4,
 					margin: 0,
-					maxHeight: 200,
+					maxHeight: 220,
 					overflow: 'auto',
 				}}
 			>
-				{content || '(empty)'}
+				{content || '(empty fragment)'}
 			</pre>
 		</div>
 	)
 }
 
-function fragmentToPlainText(fragment: any): string {
-	const parts: string[] = []
-
-	const traverse = (node: any) => {
-		if (!node) return
-
-		if (typeof node.toString === 'function' && node._start !== undefined) {
-			parts.push(node.toString())
-		} else if (node.toArray) {
-			for (const child of node.toArray()) {
-				traverse(child)
-			}
-		}
-	}
-
-	traverse(fragment)
-	return parts.join('')
+function formatJson(value: unknown): string {
+	return JSON.stringify(value, null, 2) ?? ''
 }
