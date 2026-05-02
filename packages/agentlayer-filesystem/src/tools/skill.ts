@@ -36,24 +36,22 @@ export interface CreateSkillToolFromRepoDirsOptions {
 }
 
 function getRepoRoot(cwd: string): string | undefined {
-	const originalCwd = process.cwd()
-	try {
-		process.chdir(cwd)
-		return execSync('git rev-parse --show-toplevel', {
-			encoding: 'utf-8',
-			stdio: ['ignore', 'pipe', 'ignore'],
-		}).trim()
-	} catch {
-	} finally {
-		process.chdir(originalCwd)
-	}
-
 	let current = resolve(cwd)
 	while (true) {
 		if (existsSync(join(current, '.git'))) return current
 		const parent = dirname(current)
-		if (parent === current) return undefined
+		if (parent === current) break
 		current = parent
+	}
+
+	try {
+		return execSync('git rev-parse --show-toplevel', {
+			cwd,
+			encoding: 'utf-8',
+			stdio: ['ignore', 'pipe', 'ignore'],
+		}).trim()
+	} catch {
+		return undefined
 	}
 }
 
