@@ -7,7 +7,7 @@
         "biome:check": "biome check .",
         "build": "bun --filter '*' build",
         "build:packages": "bun --filter './packages/*' --filter './agents/*' build",
-        "check": "bun --parallel 'typecheck' 'biome' 'test'",
+        "check": "bun --parallel 'typecheck' 'biome' 'test:ci'",
         "dev": "bun --filter '*' dev",
         "docs:build": "bun --filter '@humanlayer/agentlayer-docs' build",
         "hook:prepush": "bun check",
