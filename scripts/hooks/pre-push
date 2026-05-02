@@ -2,4 +2,5 @@
 # Pre-push checks
 # Version: 1
 
+unset $(git rev-parse --local-env-vars)
 bun run hook:prepush
