@@ -18,6 +18,14 @@ import {
 } from './types'
 
 export type YjsFilesystemOptions = {
+	/**
+	 * Shared Yjs document backing the filesystem.
+	 *
+	 * For provider-backed docs, connect the provider and wait for initial sync
+	 * before constructing `YjsFilesystem`. The constructor initializes missing
+	 * catalog state for empty docs, so constructing it before remote hydration can
+	 * create local catalog updates that race with persisted remote state.
+	 */
 	doc?: Y.Doc
 	awareness?: Awareness | null
 }
@@ -27,6 +35,17 @@ export type YjsFilesystemOptions = {
  *
  * `YjsFilesystem` keeps the public API path-oriented while internally splitting
  * responsibilities across the catalog, content, comment, and presence stores.
+ *
+ * When wrapping a Y.Doc that is backed by a remote provider, connect the
+ * provider and wait for its initial sync before constructing this class. The
+ * constructor initializes missing catalog state for empty docs; doing that before
+ * remote hydration can create local catalog updates that race with persisted
+ * remote state.
+ *
+ * @example
+ * await provider.connect()
+ * await waitForProviderSync(provider)
+ * const fs = new YjsFilesystem({ doc: provider.doc, awareness })
  */
 export class YjsFilesystem {
 	readonly doc: Y.Doc
@@ -35,7 +54,14 @@ export class YjsFilesystem {
 	private readonly comments: CommentStore
 	private readonly presence: PresenceStore
 
-	/** Creates a filesystem around a shared root Y.Doc and optional awareness. */
+	/**
+	 * Creates a filesystem around a shared root Y.Doc and optional awareness.
+	 *
+	 * For provider-backed docs, construct this only after `provider.connect()` has
+	 * completed and the provider reports initial sync. Construction initializes
+	 * missing catalog state for empty docs; doing that before remote hydration can
+	 * race with persisted remote catalog state.
+	 */
 	constructor(options: YjsFilesystemOptions = {}) {
 		this.doc = options.doc ?? new Y.Doc()
 		this.catalog = new CatalogStore(this.doc)
