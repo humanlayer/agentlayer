@@ -46,6 +46,7 @@
         "@pulumi/pulumi": "3.231.0",
         "ai": "6.0.159",
         "commander": "14.0.3",
+        "minimatch": "10.1.1",
         "typescript": "5.9.3",
         "zod": "4.3.6"
     },
