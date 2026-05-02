@@ -28,12 +28,14 @@
 	},
 	"exports": {
 		".": {
+			"bun": "./src/index.ts",
 			"source": "./src/index.ts",
 			"types": "./dist/index.d.ts",
 			"import": "./dist/index.js",
 			"default": "./dist/index.js"
 		},
 		"./rpi-agents": {
+			"bun": "./src/rpi-agents/index.ts",
 			"source": "./src/rpi-agents/index.ts",
 			"types": "./dist/rpi-agents/index.d.ts",
 			"import": "./dist/rpi-agents/index.js",

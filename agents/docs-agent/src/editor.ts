@@ -1,5 +1,4 @@
 import { isAbsolute, relative } from 'node:path'
-import { anthropic } from '@ai-sdk/anthropic'
 import {
 	Agent,
 	createApprovalHook,
@@ -10,6 +9,7 @@ import {
 	WriteTool,
 } from '@humanlayer/agentlayer-core'
 import { createClaudeAgentFilesystemToolset } from '@humanlayer/agentlayer-filesystem'
+import { DEFAULT_MODELS, resolveModel } from '@humanlayer/codelayer'
 
 const DOCS_ROOT = 'packages/docs/content/'
 
@@ -47,11 +47,11 @@ function buildEditorPrompt(diff: string, recommendations: string) {
 }
 
 export async function runDocsEditor(opts: DocsEditorOptions) {
-	if (!process.env.ANTHROPIC_API_KEY) {
+	if (!process.env.FIREWORKS_API_KEY) {
 		if (opts.dryRun) {
-			return 'Dry run: skipped editor because ANTHROPIC_API_KEY is not set.'
+			return 'Dry run: skipped editor because FIREWORKS_API_KEY is not set.'
 		}
-		throw new Error('ANTHROPIC_API_KEY is required to run docs-agent apply mode.')
+		throw new Error('FIREWORKS_API_KEY is required to run docs-agent apply mode.')
 	}
 
 	const markdownOnly = createApprovalHook([WriteTool, EditTool] as const, (ctx) => {
@@ -66,7 +66,7 @@ export async function runDocsEditor(opts: DocsEditorOptions) {
 	})
 
 	const agent = new Agent({
-		model: anthropic('claude-sonnet-4-20250514'),
+		model: await resolveModel('firepass', DEFAULT_MODELS.firepass),
 		tools: createClaudeAgentFilesystemToolset({ cwd: opts.cwd }),
 		system: [
 			'You update AgentLayer docs to match code changes.',

@@ -1,26 +1,30 @@
 {
-  "name": "@humanlayer/docs-agent",
-  "module": "src/index.ts",
-  "type": "module",
-  "version": "0.0.0",
-  "private": true,
-  "scripts": {
-    "typecheck": "tsgo --noEmit",
-    "docs-agent:workflow": "bun run src/workflow.ts"
-  },
-  "exports": {
-    ".": "./src/index.ts"
-  },
-  "devDependencies": {
-    "@ai-sdk/anthropic": "catalog:",
-    "@humanlayer/agentlayer-core": "workspace:*",
-    "@humanlayer/agentlayer-filesystem": "workspace:*",
-    "@types/bun": "latest",
-    "commander": "catalog:",
-    "zod": "catalog:"
-  },
-  "peerDependencies": {
-    "typescript": "^5"
-  },
-  "dependencies": {}
+	"name": "@humanlayer/docs-agent",
+	"module": "src/index.ts",
+	"type": "module",
+	"version": "0.0.0",
+	"private": true,
+	"scripts": {
+		"typecheck": "tsgo --noEmit",
+		"docs-agent:workflow": "bun run src/workflow.ts"
+	},
+	"exports": {
+		".": {
+			"bun": "./src/index.ts",
+			"source": "./src/index.ts",
+			"default": "./src/index.ts"
+		}
+	},
+	"devDependencies": {
+		"@humanlayer/agentlayer-core": "workspace:*",
+		"@humanlayer/agentlayer-filesystem": "workspace:*",
+		"@humanlayer/codelayer": "workspace:*",
+		"@types/bun": "latest",
+		"commander": "catalog:",
+		"zod": "catalog:"
+	},
+	"peerDependencies": {
+		"typescript": "^5"
+	},
+	"dependencies": {}
 }

@@ -68,3 +68,34 @@ Supported values:
 | `serviceTier: "flex"` | `service_tier: "flex"` |
 
 `serviceTier` takes precedence over `fastMode`. Request-level provider options take precedence over provider defaults.
+
+## Auth Store OAuth Fields
+
+When using the auth store with `createCodexProvider`, you can store OAuth tokens using either canonical field names or aliases:
+
+| Field | Aliases | Description |
+|-------|---------|-------------|
+| `accessToken` | `access` | The OAuth access token (required) |
+| `refreshToken` | `refresh` | Refresh token for token rotation |
+| `expiresAt` | `expires` | Unix timestamp when the token expires |
+| `idToken` | — | OpenID Connect ID token |
+| `scope` | — | Granted scopes |
+| `tokenType` | — | Token type (e.g., `Bearer`) |
+
+Example with aliases:
+
+```ts
+import { createCodexProvider } from '@humanlayer/agentlayer-provider-openai-codex'
+import { ensureFileAuthStore } from '@humanlayer/agentlayer-provider-auth'
+
+const authStore = await ensureFileAuthStore()
+await authStore.set('codex', {
+  kind: 'oauth',
+  access: 'your-access-token',
+  refresh: 'your-refresh-token',
+  expires: 1234567890,
+})
+
+const codex = createCodexProvider({ authStore, fastMode: true })
+const model = codex.languageModel('gpt-5.4')
+```
