@@ -53,7 +53,7 @@ describe('buildCodexRequestBody', () => {
 		expect(body).not.toHaveProperty('max_output_tokens')
 	})
 
-	test('allows store to be enabled for reasoning item references', () => {
+	test('ignores store overrides because the Codex endpoint requires store false', () => {
 		const body = buildCodexRequestBody(
 			{
 				prompt: [{ role: 'user', content: [{ type: 'text', text: 'Think then answer.' }] }],
@@ -66,37 +66,7 @@ describe('buildCodexRequestBody', () => {
 			'gpt-5.4',
 		)
 
-		expect(body.store).toBe(true)
-	})
-
-	test('serializes stored assistant reasoning as item references when store is enabled', () => {
-		const body = buildCodexRequestBody(
-			{
-				prompt: [
-					{
-						role: 'assistant',
-						content: [
-							{
-								type: 'reasoning',
-								text: 'Think first',
-								providerOptions: {
-									openai: {
-										itemId: 'rs_123',
-										reasoningEncryptedContent: 'enc_123',
-									},
-								},
-							},
-						],
-					},
-				],
-				providerOptions: {
-					openai: { store: true },
-				},
-			},
-			'gpt-5.4',
-		)
-
-		expect(body.input).toEqual([{ type: 'item_reference', id: 'rs_123' }])
+		expect(body.store).toBe(false)
 	})
 
 	test('enables Codex fast mode from provider options', () => {

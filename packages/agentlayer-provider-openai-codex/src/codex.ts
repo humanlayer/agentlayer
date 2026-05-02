@@ -61,7 +61,7 @@ export interface CodexRequestBody {
 		summary?: string | null
 	}
 	service_tier?: string | null
-	store: boolean
+	store: false
 	stream: true
 	tool_choice?: string | { type: string; name?: string } | null
 	tools?: Array<Record<string, unknown>>
@@ -349,8 +349,7 @@ export function buildCodexRequestBody(
 	modelId: string,
 	requestOptions: CodexRequestOptions = {},
 ): CodexRequestBody {
-	const store = buildCodexStore(options)
-	const transformed = transformCodexPromptWithOptions(options.prompt, store)
+	const transformed = transformCodexPrompt(options.prompt)
 	const providerInstructions = getProviderInstructions(options)
 	const instructions = joinInstructions(transformed.instructions, providerInstructions)
 
@@ -360,15 +359,9 @@ export function buildCodexRequestBody(
 		...(instructions ? { instructions } : {}),
 		...buildCodexTools(options),
 		...buildCodexRequestExtras(options, requestOptions),
-		store,
+		store: false,
 		stream: true,
 	}
-}
-
-function buildCodexStore(options: LanguageModelV3CallOptions): boolean {
-	const openai = getCodexProviderOptionRecord(options, 'openai')
-	const codex = getCodexProviderOptionRecord(options, 'codex')
-	return getNullableBoolean(openai, 'store') ?? getNullableBoolean(codex, 'store') ?? false
 }
 
 export function buildCodexTools(options: LanguageModelV3CallOptions): Pick<CodexRequestBody, 'tools' | 'tool_choice'> {
@@ -400,16 +393,6 @@ export function transformCodexPrompt(prompt: LanguageModelV3Prompt): {
 	input: Array<Record<string, unknown>>
 	instructions?: string
 } {
-	return transformCodexPromptWithOptions(prompt, false)
-}
-
-function transformCodexPromptWithOptions(
-	prompt: LanguageModelV3Prompt,
-	store: boolean,
-): {
-	input: Array<Record<string, unknown>>
-	instructions?: string
-} {
 	const input: Array<Record<string, unknown>> = []
 	const instructions: string[] = []
 
@@ -432,7 +415,7 @@ function transformCodexPromptWithOptions(
 		if (message.role === 'assistant') {
 			for (const part of message.content) {
 				if (part.type === 'reasoning') {
-					const reasoningInput = buildReasoningInput(part, store)
+					const reasoningInput = buildReasoningInput(part)
 					if (reasoningInput) {
 						input.push(reasoningInput)
 					}
@@ -1179,14 +1162,11 @@ function readItemIdFromProviderOptions(value: unknown): string | undefined {
 			: undefined
 }
 
-function buildReasoningInput(
-	part: {
-		text: string
-		providerOptions?: Record<string, unknown>
-		providerMetadata?: Record<string, unknown>
-	},
-	store = false,
-): Record<string, unknown> | undefined {
+function buildReasoningInput(part: {
+	text: string
+	providerOptions?: Record<string, unknown>
+	providerMetadata?: Record<string, unknown>
+}): Record<string, unknown> | undefined {
 	const openai =
 		readReasoningProviderOptions(part.providerOptions?.openai) ??
 		readReasoningProviderOptions(part.providerMetadata?.openai)
@@ -1198,9 +1178,6 @@ function buildReasoningInput(
 	const summary = part.text.length > 0 ? [{ type: 'summary_text', text: part.text }] : []
 
 	if (itemId) {
-		if (store) {
-			return { type: 'item_reference', id: itemId }
-		}
 		return {
 			type: 'reasoning',
 			...(reasoningEncryptedContent !== undefined ? { encrypted_content: reasoningEncryptedContent } : {}),

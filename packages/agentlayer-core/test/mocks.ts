@@ -15,14 +15,6 @@ export type MockResponse = Pick<LanguageModelV3GenerateResult, 'content'> & {
 	usage?: LanguageModelV3GenerateResult['usage']
 }
 
-export type PromptCapture = {
-	prompt: LanguageModelV3['doStream'] extends (options: infer Options) => unknown
-		? Options extends { prompt: infer Prompt }
-			? Prompt
-			: never
-		: never
-}
-
 const MOCK_USAGE: LanguageModelV3GenerateResult['usage'] = {
 	inputTokens: { total: 0, noCache: 0, cacheRead: 0, cacheWrite: 0 },
 	outputTokens: { total: 0, text: 0, reasoning: 0 },
@@ -33,22 +25,13 @@ export function mockModel(responses: MockResponse[]): LanguageModelV3 {
 }
 
 export function mockStreamingModel(responses: MockResponse[]): LanguageModelV3 {
-	return mockStreamingModelWithCapture(responses).model
-}
-
-export function mockStreamingModelWithCapture(responses: MockResponse[]): {
-	model: LanguageModelV3
-	calls: PromptCapture[]
-} {
 	let index = 0
-	const calls: PromptCapture[] = []
 
-	const model = new MockLanguageModelV3({
+	return new MockLanguageModelV3({
 		provider: 'mock',
 		modelId: 'mock-model',
 		supportedUrls: {},
-		doStream: async (options): Promise<LanguageModelV3StreamResult> => {
-			calls.push({ prompt: options.prompt })
+		doStream: async (): Promise<LanguageModelV3StreamResult> => {
 			if (index >= responses.length) {
 				throw new Error(
 					`mockStreamingModel: no more responses (called ${index + 1} times, only ${responses.length} responses)`,
@@ -79,8 +62,6 @@ export function mockStreamingModelWithCapture(responses: MockResponse[]): {
 			}
 		},
 	})
-
-	return { model, calls }
 }
 
 function toStreamParts(part: LanguageModelV3Content): LanguageModelV3StreamPart[] {
