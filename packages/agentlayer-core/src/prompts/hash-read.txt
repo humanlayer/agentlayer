@@ -1,0 +1,4 @@
+Read a file and show each line with a hashline anchor.
+
+Each output line uses LINE+ID|TEXT, for example 160sr|return value.
+Copy the full LINE+ID anchor exactly when using edit.

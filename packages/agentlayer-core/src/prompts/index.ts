@@ -16,6 +16,8 @@ import EDIT_DESCRIPTION from './edit.txt'
 import { type EnvironmentPromptOptions, environmentPrompt } from './environment'
 import GLOB_DESCRIPTION from './glob.txt'
 import GREP_DESCRIPTION from './grep.txt'
+import HASH_READ_DESCRIPTION from './hash-read.txt'
+import HASHLINE_EDIT_DESCRIPTION from './hashline-edit.txt'
 import LIST_DESCRIPTION from './list.txt'
 import MULTI_EDIT_DESCRIPTION from './multiedit.txt'
 import { claudePrompt, codexPrompt, defaultPrompt, geminiPrompt, openaiPrompt, tarsPersona } from './providers'
@@ -45,6 +47,8 @@ export {
 	geminiPrompt,
 	getSystemPromptForModel,
 	GREP_DESCRIPTION,
+	HASH_READ_DESCRIPTION,
+	HASHLINE_EDIT_DESCRIPTION,
 	LIST_DESCRIPTION,
 	MULTI_EDIT_DESCRIPTION,
 	openaiPrompt,
