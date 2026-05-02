@@ -252,6 +252,7 @@
       "version": "0.0.0",
       "dependencies": {
         "@humanlayer/agentlayer-core": "workspace:*",
+        "zod": "catalog:",
       },
       "devDependencies": {
         "@types/bun": "latest",

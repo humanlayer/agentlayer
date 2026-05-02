@@ -6,6 +6,15 @@ type ReadFileOptions = { encoding?: BufferEncoding | null }
 type WriteFileOptions = { encoding?: BufferEncoding }
 type DirentEntry = { name: string; isFile: boolean; isDirectory: boolean; isSymbolicLink: boolean }
 
+export type YjsFsBashOperationType = 'read' | 'write' | 'append' | 'list' | 'mkdir' | 'delete' | 'copy' | 'move'
+
+export interface YjsFsBashOperation {
+	type: YjsFsBashOperationType
+	path: string
+	toPath?: string
+	pathType?: 'file' | 'directory' | 'unknown'
+}
+
 function createError(code: string, message: string, path?: string): Error & { code: string; path?: string } {
 	const error = new Error(message) as Error & { code: string; path?: string }
 	error.code = code
@@ -42,9 +51,22 @@ function normalizeYjsPath(path: string): string {
 }
 
 export class YjsFsBashAdapter implements IFileSystem {
+	private operations: YjsFsBashOperation[] = []
+
 	constructor(private readonly fs: YjsFilesystem) {}
 
+	consumeOperations(): YjsFsBashOperation[] {
+		const operations = this.operations
+		this.operations = []
+		return operations
+	}
+
+	private record(operation: YjsFsBashOperation): void {
+		this.operations.push(operation)
+	}
+
 	async readFile(path: string, options?: ReadFileOptions | BufferEncoding): Promise<string> {
+		this.record({ type: 'read', path, pathType: 'file' })
 		const encoding = typeof options === 'string' ? options : options?.encoding
 		if (encoding === null) {
 			return new TextDecoder().decode(this.fs.readBinaryFile(path))
@@ -53,6 +75,7 @@ export class YjsFsBashAdapter implements IFileSystem {
 	}
 
 	async readFileBuffer(path: string): Promise<Uint8Array> {
+		this.record({ type: 'read', path, pathType: 'file' })
 		try {
 			return this.fs.readBinaryFile(path)
 		} catch {
@@ -61,6 +84,7 @@ export class YjsFsBashAdapter implements IFileSystem {
 	}
 
 	async writeFile(path: string, content: FileContent, options?: WriteFileOptions | BufferEncoding): Promise<void> {
+		this.record({ type: 'write', path, pathType: 'file' })
 		const encoding = typeof options === 'string' ? options : options?.encoding
 		if (content instanceof Uint8Array && encoding !== 'utf8' && encoding !== 'utf-8') {
 			if (this.fs.exists(path)) {
@@ -80,6 +104,7 @@ export class YjsFsBashAdapter implements IFileSystem {
 	}
 
 	async appendFile(path: string, content: FileContent, options?: WriteFileOptions | BufferEncoding): Promise<void> {
+		this.record({ type: 'append', path, pathType: 'file' })
 		const existing = this.fs.exists(path) ? this.fs.readFile(path) : ''
 		await this.writeFile(path, existing + contentToString(content), options)
 	}
@@ -93,6 +118,7 @@ export class YjsFsBashAdapter implements IFileSystem {
 	}
 
 	async mkdir(path: string, options?: MkdirOptions): Promise<void> {
+		this.record({ type: 'mkdir', path, pathType: 'directory' })
 		if (options?.recursive) {
 			const parts = normalizeYjsPath(path).split('/').filter(Boolean)
 			let current = ''
@@ -106,10 +132,12 @@ export class YjsFsBashAdapter implements IFileSystem {
 	}
 
 	async readdir(path: string): Promise<string[]> {
+		this.record({ type: 'list', path, pathType: 'directory' })
 		return this.fs.list(path).map((entry) => entry.name)
 	}
 
 	async readdirWithFileTypes(path: string): Promise<DirentEntry[]> {
+		this.record({ type: 'list', path, pathType: 'directory' })
 		return this.fs.list(path).map((entry) => ({
 			name: entry.name,
 			isFile: entry.type === 'file',
@@ -119,6 +147,11 @@ export class YjsFsBashAdapter implements IFileSystem {
 	}
 
 	async rm(path: string, options?: RmOptions): Promise<void> {
+		this.record({
+			type: 'delete',
+			path,
+			pathType: this.fs.exists(path) ? (this.fs.stat(path).isDirectory ? 'directory' : 'file') : 'unknown',
+		})
 		if (!this.fs.exists(path)) {
 			if (options?.force) return
 			throw createError('ENOENT', `No such file or directory: ${path}`, path)
@@ -127,6 +160,12 @@ export class YjsFsBashAdapter implements IFileSystem {
 	}
 
 	async cp(src: string, dest: string, options?: CpOptions): Promise<void> {
+		this.record({
+			type: 'copy',
+			path: src,
+			toPath: dest,
+			pathType: this.fs.stat(src).isDirectory ? 'directory' : 'file',
+		})
 		const stat = this.fs.stat(src)
 		if (stat.isDirectory) {
 			if (!options?.recursive)
@@ -146,6 +185,12 @@ export class YjsFsBashAdapter implements IFileSystem {
 	}
 
 	async mv(src: string, dest: string): Promise<void> {
+		this.record({
+			type: 'move',
+			path: src,
+			toPath: dest,
+			pathType: this.fs.stat(src).isDirectory ? 'directory' : 'file',
+		})
 		this.fs.rename(src, dest)
 	}
 

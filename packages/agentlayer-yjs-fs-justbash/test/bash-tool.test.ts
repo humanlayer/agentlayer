@@ -1,7 +1,11 @@
 import { describe, expect, test } from 'bun:test'
 import { YjsFilesystem } from '@humanlayer/yjs-fs'
 import { makeToolContext } from '../../agentlayer-yjs-fs/test/mocks'
-import { createYjsFsBashTool } from '../src/tools/bash'
+import { createYjsFsBashTool, type YjsFsBashToolResult } from '../src/tools/bash'
+
+function bashResult(output: unknown): YjsFsBashToolResult {
+	return output as YjsFsBashToolResult
+}
 
 describe('createYjsFsBashTool', () => {
 	test('echo hello returns output', async () => {
@@ -10,8 +14,8 @@ describe('createYjsFsBashTool', () => {
 
 		const output = await tool.execute({ command: 'echo hello', timeout: 120000 }, makeToolContext())
 
-		expect(output).toContain('Exit code: 0')
-		expect(output).toContain('hello')
+		expect(bashResult(output).output).toContain('Exit code: 0')
+		expect(bashResult(output).output).toContain('hello')
 	})
 
 	test('cat reads from YjsFilesystem', async () => {
@@ -21,8 +25,8 @@ describe('createYjsFsBashTool', () => {
 
 		const output = await tool.execute({ command: 'cat /file.txt', timeout: 120000 }, makeToolContext())
 
-		expect(output).toContain('Exit code: 0')
-		expect(output).toContain('from yjs')
+		expect(bashResult(output).output).toContain('Exit code: 0')
+		expect(bashResult(output).output).toContain('from yjs')
 	})
 
 	test('shell redirection writes to YjsFilesystem', async () => {
@@ -34,8 +38,11 @@ describe('createYjsFsBashTool', () => {
 			makeToolContext(),
 		)
 
-		expect(output).toContain('Exit code: 0')
+		expect(bashResult(output).output).toContain('Exit code: 0')
 		expect(fs.readFile('/created.txt')).toBe('content\n')
+		expect(bashResult(output).operations).toContainEqual(
+			expect.objectContaining({ type: 'write', path: '/created.txt' }),
+		)
 	})
 
 	test('touch creates a file in YjsFilesystem', async () => {
@@ -44,7 +51,7 @@ describe('createYjsFsBashTool', () => {
 
 		const output = await tool.execute({ command: 'touch /newfile.txt', timeout: 120000 }, makeToolContext())
 
-		expect(output).toContain('Exit code: 0')
+		expect(bashResult(output).output).toContain('Exit code: 0')
 		expect(fs.exists('/newfile.txt')).toBe(true)
 	})
 
@@ -58,11 +65,11 @@ describe('createYjsFsBashTool', () => {
 			makeToolContext(),
 		)
 
-		expect(output).toContain('Exit code: 0')
-		expect(output).toContain('existing.txt')
-		expect(output).toContain('newfile.txt')
-		expect(output).toContain('hello')
-		expect(output).not.toContain('globalThis.setTimeout')
+		expect(bashResult(output).output).toContain('Exit code: 0')
+		expect(bashResult(output).output).toContain('existing.txt')
+		expect(bashResult(output).output).toContain('newfile.txt')
+		expect(bashResult(output).output).toContain('hello')
+		expect(bashResult(output).output).not.toContain('globalThis.setTimeout')
 		expect(fs.readFile('/hello.txt')).toBe('hello\n')
 	})
 
@@ -73,8 +80,8 @@ describe('createYjsFsBashTool', () => {
 
 		const output = await tool.execute({ command: 'ls /', timeout: 120000 }, makeToolContext())
 
-		expect(output).toContain('Exit code: 0')
-		expect(output).toContain('root.txt')
+		expect(bashResult(output).output).toContain('Exit code: 0')
+		expect(bashResult(output).output).toContain('root.txt')
 	})
 
 	test('non-zero command returns exit code', async () => {
@@ -83,7 +90,7 @@ describe('createYjsFsBashTool', () => {
 
 		const output = await tool.execute({ command: 'cat /missing.txt', timeout: 120000 }, makeToolContext())
 
-		expect(output).toContain('Exit code:')
-		expect(output).not.toContain('Exit code: 0')
+		expect(bashResult(output).output).toContain('Exit code:')
+		expect(bashResult(output).output).not.toContain('Exit code: 0')
 	})
 })

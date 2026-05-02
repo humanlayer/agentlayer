@@ -5,6 +5,7 @@ import { YjsProvider } from '@durable-streams/y-durable-streams'
 import { Agent, claudePrompt, createOutputRenderer, doomLoop, maxSteps, renderFinish, startState } from '@humanlayer/agentlayer-core'
 import { readTruncationHook } from '@humanlayer/agentlayer-core/hooks'
 import { createYjsFsPresenceHooks } from '@humanlayer/agentlayer-yjs-fs/hooks'
+import { createYjsFsBashPresenceHooks } from '@humanlayer/agentlayer-yjs-fs-justbash/hooks'
 import {
 	createYjsFsApplyPatchTool,
 	createYjsFsEditTool,
@@ -70,7 +71,7 @@ const agent = new Agent({
 		bash: createYjsFsBashTool(fs),
 	},
 	hooks: {
-		postToolUse: [readTruncationHook, ...createYjsFsPresenceHooks(fs)],
+		postToolUse: [readTruncationHook, ...createYjsFsPresenceHooks(fs), ...createYjsFsBashPresenceHooks(fs)],
 	},
 	stopWhen: [doomLoop(3), maxSteps(40)],
 })
