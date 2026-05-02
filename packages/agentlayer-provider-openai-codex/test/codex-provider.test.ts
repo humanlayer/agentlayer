@@ -3,8 +3,9 @@ import * as fs from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
+import { Agent, extractLastAssistantText, startState, userMessage } from '@humanlayer/agentlayer-core'
 import { createMemoryAuthStore } from '@humanlayer/agentlayer-provider-auth'
-import { generateText, streamText } from 'ai'
+import { generateText, jsonSchema, streamText } from 'ai'
 import {
 	buildCodexHeaders,
 	buildCodexUserAgent,
@@ -25,6 +26,9 @@ function createSseResponse(events: unknown[]): Response {
 		headers: { 'content-type': 'text/event-stream' },
 	})
 }
+
+const CODEX_REASONING_ONLY_REPRO_PROMPT =
+	'can you think about how I coul ddesign a code mode to allow an agent to write and execute y.js code in a sandbox to execute commands to apply edits to a live y.js doc and then outline to me ways that we could approach the problem?'
 
 async function makeTempDir(): Promise<string> {
 	return fs.mkdtemp(path.join(tmpdir(), 'agentlayer-codex-'))
@@ -257,6 +261,269 @@ describe('codex provider wrapper', () => {
 		])
 	})
 
+	test('Agent run persists assistant item ids so follow-up requests replay them', async () => {
+		const store = createMemoryAuthStore({
+			[CODEX_PROVIDER_ID]: { kind: 'api', apiKey: 'api-key-123' },
+		})
+		const requestBodies: Array<Record<string, unknown>> = []
+		const model = createCodexLanguageModel({
+			modelId: 'gpt-5.4',
+			authStore: store,
+			fetch: async (_input, init) => {
+				requestBodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>)
+				if (requestBodies.length === 1) {
+					return createSseResponse([
+						{
+							type: 'response.created',
+							response: { id: 'resp_first', created_at: 1700000001, model: 'gpt-5.4' },
+						},
+						{
+							type: 'response.output_item.added',
+							output_index: 0,
+							item: { type: 'message', id: 'msg_first' },
+						},
+						{ type: 'response.output_text.delta', item_id: 'msg_first', delta: 'First answer' },
+						{
+							type: 'response.output_item.done',
+							output_index: 0,
+							item: { type: 'message', id: 'msg_first' },
+						},
+						{ type: 'response.completed', response: { usage: { input_tokens: 2, output_tokens: 2 } } },
+					])
+				}
+
+				return createSseResponse([
+					{
+						type: 'response.created',
+						response: { id: 'resp_second', created_at: 1700000002, model: 'gpt-5.4' },
+					},
+					{
+						type: 'response.output_item.added',
+						output_index: 0,
+						item: { type: 'message', id: 'msg_second' },
+					},
+					{ type: 'response.output_text.delta', item_id: 'msg_second', delta: 'Second answer' },
+					{ type: 'response.output_item.done', output_index: 0, item: { type: 'message', id: 'msg_second' } },
+					{ type: 'response.completed', response: { usage: { input_tokens: 3, output_tokens: 2 } } },
+				])
+			},
+		})
+
+		const agent = new Agent({
+			model,
+			tools: {},
+			providerOptions: { openai: { include: ['reasoning.encrypted_content'] } },
+		})
+		const first = await agent.run({ state: startState([userMessage('Hello')]), stream: false }).result
+		const second = await agent.run({
+			state: startState([...first.state.messages, userMessage('Follow up')]),
+			stream: false,
+		}).result
+
+		const assistantMessages = first.state.messages.filter((message) => message.role === 'assistant')
+		const persistedAssistant = assistantMessages.at(-1) as
+			| { content?: Array<{ providerOptions?: Record<string, unknown> }> }
+			| undefined
+
+		expect(requestBodies).toHaveLength(2)
+		expect(requestBodies[0]?.previous_response_id).toBeUndefined()
+		expect(requestBodies[1]?.previous_response_id).toBeUndefined()
+		expect(requestBodies[1]?.input).toEqual([
+			{ role: 'user', content: [{ type: 'input_text', text: 'Hello' }] },
+			{ role: 'assistant', content: [{ type: 'output_text', text: 'First answer' }], id: 'msg_first' },
+			{ role: 'user', content: [{ type: 'input_text', text: 'Follow up' }] },
+		])
+		expect(persistedAssistant?.content?.[0]?.providerOptions).toEqual({
+			openai: { itemId: 'msg_first', responseId: 'resp_first' },
+		})
+		expect(second.state.messages.at(-1)).toMatchObject({
+			role: 'assistant',
+			content: [
+				{ type: 'text', text: 'Second answer', providerOptions: { openai: { responseId: 'resp_second' } } },
+			],
+		})
+	})
+
+	test('Agent continues after reasoning-only response by replaying reasoning input when store is false', async () => {
+		const store = createMemoryAuthStore({
+			[CODEX_PROVIDER_ID]: { kind: 'api', apiKey: 'api-key-123' },
+		})
+		const requestBodies: Array<Record<string, unknown>> = []
+		const model = createCodexLanguageModel({
+			modelId: 'gpt-5.4',
+			authStore: store,
+			fetch: async (_input, init) => {
+				requestBodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>)
+				if (requestBodies.length === 1) {
+					return createSseResponse([
+						{
+							type: 'response.created',
+							response: { id: 'resp_reason_only', created_at: 1700000010, model: 'gpt-5.4' },
+						},
+						{
+							type: 'response.output_item.added',
+							output_index: 0,
+							item: { type: 'reasoning', id: 'rs_only', encrypted_content: 'enc-only' },
+						},
+						{ type: 'response.reasoning_summary_part.added', item_id: 'rs_only', summary_index: 0 },
+						{
+							type: 'response.reasoning_summary_text.delta',
+							item_id: 'rs_only',
+							summary_index: 0,
+							delta: 'Thought.',
+						},
+						{
+							type: 'response.output_item.done',
+							output_index: 0,
+							item: { type: 'reasoning', id: 'rs_only', encrypted_content: 'enc-only' },
+						},
+						{
+							type: 'response.completed',
+							response: {
+								usage: {
+									input_tokens: 2,
+									output_tokens: 3,
+									output_tokens_details: { reasoning_tokens: 3 },
+								},
+							},
+						},
+					])
+				}
+
+				return createSseResponse([
+					{
+						type: 'response.created',
+						response: { id: 'resp_final', created_at: 1700000011, model: 'gpt-5.4' },
+					},
+					{
+						type: 'response.output_item.added',
+						output_index: 0,
+						item: { type: 'message', id: 'msg_final', phase: 'final_answer' },
+					},
+					{ type: 'response.output_text.delta', item_id: 'msg_final', delta: 'Final answer.' },
+					{
+						type: 'response.output_item.done',
+						output_index: 0,
+						item: { type: 'message', id: 'msg_final', phase: 'final_answer' },
+					},
+					{ type: 'response.completed', response: { usage: { input_tokens: 5, output_tokens: 2 } } },
+				])
+			},
+		})
+
+		const agent = new Agent({
+			model,
+			tools: {},
+			providerOptions: {
+				openai: { store: false, reasoningSummary: 'auto', include: ['reasoning.encrypted_content'] },
+			},
+		})
+		const result = await agent.run({
+			state: startState([userMessage(CODEX_REASONING_ONLY_REPRO_PROMPT)]),
+			stream: false,
+		}).result
+
+		expect(result.finishReason).toBe('complete')
+		expect(extractLastAssistantText(result)).toBe('Final answer.')
+		expect(requestBodies).toHaveLength(2)
+		expect(requestBodies[1]?.input).toEqual([
+			{ role: 'user', content: [{ type: 'input_text', text: CODEX_REASONING_ONLY_REPRO_PROMPT }] },
+			{
+				type: 'reasoning',
+				encrypted_content: 'enc-only',
+				summary: [{ type: 'summary_text', text: 'Thought.' }],
+			},
+		])
+	})
+
+	test('Agent continues after reasoning-only response by replaying item references when store is true', async () => {
+		const store = createMemoryAuthStore({
+			[CODEX_PROVIDER_ID]: { kind: 'api', apiKey: 'api-key-123' },
+		})
+		const requestBodies: Array<Record<string, unknown>> = []
+		const model = createCodexLanguageModel({
+			modelId: 'gpt-5.4',
+			authStore: store,
+			fetch: async (_input, init) => {
+				requestBodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>)
+				if (requestBodies.length === 1) {
+					return createSseResponse([
+						{
+							type: 'response.created',
+							response: { id: 'resp_store_reason', created_at: 1700000012, model: 'gpt-5.4' },
+						},
+						{
+							type: 'response.output_item.added',
+							output_index: 0,
+							item: { type: 'reasoning', id: 'rs_store', encrypted_content: 'enc-store' },
+						},
+						{ type: 'response.reasoning_summary_part.added', item_id: 'rs_store', summary_index: 0 },
+						{
+							type: 'response.reasoning_summary_text.delta',
+							item_id: 'rs_store',
+							summary_index: 0,
+							delta: 'Stored thought.',
+						},
+						{
+							type: 'response.output_item.done',
+							output_index: 0,
+							item: { type: 'reasoning', id: 'rs_store', encrypted_content: 'enc-store' },
+						},
+						{
+							type: 'response.completed',
+							response: {
+								usage: {
+									input_tokens: 2,
+									output_tokens: 3,
+									output_tokens_details: { reasoning_tokens: 3 },
+								},
+							},
+						},
+					])
+				}
+
+				return createSseResponse([
+					{
+						type: 'response.created',
+						response: { id: 'resp_store_final', created_at: 1700000013, model: 'gpt-5.4' },
+					},
+					{
+						type: 'response.output_item.added',
+						output_index: 0,
+						item: { type: 'message', id: 'msg_store_final', phase: 'final_answer' },
+					},
+					{ type: 'response.output_text.delta', item_id: 'msg_store_final', delta: 'Stored final.' },
+					{
+						type: 'response.output_item.done',
+						output_index: 0,
+						item: { type: 'message', id: 'msg_store_final', phase: 'final_answer' },
+					},
+					{ type: 'response.completed', response: { usage: { input_tokens: 5, output_tokens: 2 } } },
+				])
+			},
+		})
+
+		const agent = new Agent({
+			model,
+			tools: {},
+			providerOptions: {
+				openai: { store: true, reasoningSummary: 'auto', include: ['reasoning.encrypted_content'] },
+			},
+		})
+		const result = await agent.run({
+			state: startState([userMessage(CODEX_REASONING_ONLY_REPRO_PROMPT)]),
+			stream: false,
+		}).result
+
+		expect(result.finishReason).toBe('complete')
+		expect(extractLastAssistantText(result)).toBe('Stored final.')
+		expect(requestBodies).toHaveLength(2)
+		expect(requestBodies[1]?.input).toEqual([
+			{ role: 'user', content: [{ type: 'input_text', text: CODEX_REASONING_ONLY_REPRO_PROMPT }] },
+			{ type: 'item_reference', id: 'rs_store' },
+		])
+	})
+
 	test('streams Codex SSE parts incrementally instead of buffering the full response', async () => {
 		const store = createMemoryAuthStore({
 			[CODEX_PROVIDER_ID]: { kind: 'api', apiKey: 'api-key-123' },
@@ -343,6 +610,84 @@ describe('codex provider wrapper', () => {
 		})
 		expect(await reader.read()).toEqual({ done: true, value: undefined })
 		expect(result.response).toEqual({ headers: { 'content-type': 'text/event-stream' } })
+	})
+
+	test('streamText fullStream emits Codex function calls and arguments', async () => {
+		const store = createMemoryAuthStore({
+			[CODEX_PROVIDER_ID]: { kind: 'api', apiKey: 'api-key-123' },
+		})
+		const model = createCodexLanguageModel({
+			modelId: 'gpt-5.4',
+			authStore: store,
+			fetch: async () =>
+				createSseResponse([
+					{
+						type: 'response.created',
+						response: { id: 'resp_tool', created_at: 1700000014, model: 'gpt-5.4' },
+					},
+					{
+						type: 'response.output_item.added',
+						output_index: 0,
+						item: { type: 'function_call', id: 'fc_1', call_id: 'call_1', name: 'read', arguments: '' },
+					},
+					{
+						type: 'response.function_call_arguments.delta',
+						output_index: 0,
+						item_id: 'fc_1',
+						delta: '{"filePath"',
+					},
+					{
+						type: 'response.function_call_arguments.delta',
+						output_index: 0,
+						item_id: 'fc_1',
+						delta: ':"README.md"}',
+					},
+					{
+						type: 'response.function_call_arguments.done',
+						output_index: 0,
+						item_id: 'fc_1',
+						arguments: '{"filePath":"README.md"}',
+					},
+					{
+						type: 'response.output_item.done',
+						output_index: 0,
+						item: {
+							type: 'function_call',
+							id: 'fc_1',
+							call_id: 'call_1',
+							name: 'read',
+							arguments: '{"filePath":"README.md"}',
+						},
+					},
+					{ type: 'response.completed', response: { usage: { input_tokens: 2, output_tokens: 4 } } },
+				]),
+		})
+
+		const result = streamText({
+			model,
+			prompt: 'Read a file.',
+			tools: {
+				read: {
+					description: 'Read a file',
+					inputSchema: jsonSchema({
+						type: 'object',
+						properties: { filePath: { type: 'string' } },
+						required: ['filePath'],
+					}),
+				},
+			},
+		})
+		const parts = [] as Array<{ type: string; [key: string]: unknown }>
+		for await (const part of result.fullStream) {
+			parts.push(part as { type: string; [key: string]: unknown })
+		}
+
+		expect(parts.map((part) => part.type)).toContain('tool-input-start')
+		expect(parts.map((part) => part.type)).toContain('tool-input-delta')
+		expect(parts.map((part) => part.type)).toContain('tool-call')
+		expect(await result.toolCalls).toMatchObject([
+			{ type: 'tool-call', toolCallId: 'call_1', toolName: 'read', input: { filePath: 'README.md' } },
+		])
 	})
 
 	test('buildCodexHeaders strips caller authorization headers', () => {

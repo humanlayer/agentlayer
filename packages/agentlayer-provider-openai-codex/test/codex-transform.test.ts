@@ -42,7 +42,7 @@ describe('buildCodexRequestBody', () => {
 		expect(body.reasoning).toEqual({ effort: 'medium', summary: 'auto' })
 		expect(body.parallel_tool_calls).toBe(false)
 		expect(body.conversation).toBe('conv_123')
-		expect(body.previous_response_id).toBe('resp_prev')
+		expect(body.previous_response_id).toBeUndefined()
 		expect(body.max_tool_calls).toBe(2)
 		expect(body.prompt_cache_key).toBe('cache-key')
 		expect(body.prompt_cache_retention).toBe('24h')
@@ -51,6 +51,52 @@ describe('buildCodexRequestBody', () => {
 		expect(body.user).toBe('user_123')
 		expect(body.metadata).toEqual({ source: 'test' })
 		expect(body).not.toHaveProperty('max_output_tokens')
+	})
+
+	test('allows store to be enabled for reasoning item references', () => {
+		const body = buildCodexRequestBody(
+			{
+				prompt: [{ role: 'user', content: [{ type: 'text', text: 'Think then answer.' }] }],
+				providerOptions: {
+					openai: {
+						store: true,
+					},
+				},
+			},
+			'gpt-5.4',
+		)
+
+		expect(body.store).toBe(true)
+	})
+
+	test('serializes stored assistant reasoning as item references when store is enabled', () => {
+		const body = buildCodexRequestBody(
+			{
+				prompt: [
+					{
+						role: 'assistant',
+						content: [
+							{
+								type: 'reasoning',
+								text: 'Think first',
+								providerOptions: {
+									openai: {
+										itemId: 'rs_123',
+										reasoningEncryptedContent: 'enc_123',
+									},
+								},
+							},
+						],
+					},
+				],
+				providerOptions: {
+					openai: { store: true },
+				},
+			},
+			'gpt-5.4',
+		)
+
+		expect(body.input).toEqual([{ type: 'item_reference', id: 'rs_123' }])
 	})
 
 	test('enables Codex fast mode from provider options', () => {
@@ -141,7 +187,7 @@ describe('buildCodexRequestBody', () => {
 		])
 	})
 
-	test('replays assistant text instead of referencing unpersisted Codex item ids', () => {
+	test('replays assistant text with its Codex item id instead of using item references', () => {
 		const body = buildCodexRequestBody(
 			{
 				prompt: [
@@ -160,7 +206,9 @@ describe('buildCodexRequestBody', () => {
 			'gpt-5.4',
 		)
 
-		expect(body.input).toEqual([{ role: 'assistant', content: [{ type: 'output_text', text: 'Stored content' }] }])
+		expect(body.input).toEqual([
+			{ role: 'assistant', content: [{ type: 'output_text', text: 'Stored content' }], id: 'msg_123' },
+		])
 	})
 
 	test('serializes tool call outputs for tool messages', () => {
@@ -215,7 +263,6 @@ describe('buildCodexRequestBody', () => {
 		expect(body.input).toEqual([
 			{
 				type: 'reasoning',
-				id: 'rs_123',
 				encrypted_content: 'enc_123',
 				summary: [{ type: 'summary_text', text: 'Think first' }],
 			},
@@ -249,25 +296,29 @@ describe('buildCodexRequestBody', () => {
 		expect(body.input).toEqual([
 			{
 				type: 'reasoning',
-				id: 'rs_persisted',
 				encrypted_content: 'enc_persisted',
 				summary: [{ type: 'summary_text', text: 'Persisted thought' }],
 			},
 		])
 	})
 
-	test('does not derive previous_response_id for unpersisted Codex responses', () => {
+	test('replays assistant text with its item id', () => {
 		const body = buildCodexRequestBody(
 			{
 				prompt: [
 					{
 						role: 'assistant',
-						content: [{ type: 'text', text: 'Earlier answer' }],
-						providerOptions: {
-							openai: {
-								responseId: 'resp_from_history',
+						content: [
+							{
+								type: 'text',
+								text: 'Earlier answer',
+								providerOptions: {
+									openai: {
+										itemId: 'msg_from_history',
+									},
+								},
 							},
-						},
+						],
 					},
 					{
 						role: 'user',
@@ -278,10 +329,13 @@ describe('buildCodexRequestBody', () => {
 			'gpt-5.4',
 		)
 
-		expect(body.previous_response_id).toBeUndefined()
+		expect(body.input).toEqual([
+			{ role: 'assistant', content: [{ type: 'output_text', text: 'Earlier answer' }], id: 'msg_from_history' },
+			{ role: 'user', content: [{ type: 'input_text', text: 'Follow up' }] },
+		])
 	})
 
-	test('prefers explicit previousResponseId over derived responseId', () => {
+	test('does not send explicit previousResponseId to the Codex endpoint', () => {
 		const body = buildCodexRequestBody(
 			{
 				prompt: [
@@ -304,10 +358,10 @@ describe('buildCodexRequestBody', () => {
 			'gpt-5.4',
 		)
 
-		expect(body.previous_response_id).toBe('resp_explicit')
+		expect(body.previous_response_id).toBeUndefined()
 	})
 
-	test('does not derive previous_response_id from assistant content part responseId', () => {
+	test('replays function calls with their item id', () => {
 		const body = buildCodexRequestBody(
 			{
 				prompt: [
@@ -315,12 +369,13 @@ describe('buildCodexRequestBody', () => {
 						role: 'assistant',
 						content: [
 							{
-								type: 'text',
-								text: 'Earlier answer',
+								type: 'tool-call',
+								toolCallId: 'call_123',
+								toolName: 'search',
+								input: { query: 'test' },
 								providerOptions: {
 									openai: {
-										itemId: 'msg_from_history',
-										responseId: 'resp_from_part',
+										itemId: 'fc_123',
 									},
 								},
 							},
@@ -331,6 +386,14 @@ describe('buildCodexRequestBody', () => {
 			'gpt-5.4',
 		)
 
-		expect(body.previous_response_id).toBeUndefined()
+		expect(body.input).toEqual([
+			{
+				type: 'function_call',
+				call_id: 'call_123',
+				name: 'search',
+				arguments: JSON.stringify({ query: 'test' }),
+				id: 'fc_123',
+			},
+		])
 	})
 })

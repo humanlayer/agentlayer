@@ -147,6 +147,7 @@ describe('createCodelayerAgent', () => {
 			},
 			openai: {
 				store: false,
+				include: ['reasoning.encrypted_content'],
 				reasoningSummary: 'detailed',
 				reasoningEffort: 'medium',
 				fastMode: true,
@@ -162,8 +163,22 @@ describe('createCodelayerAgent', () => {
 		const model = createMockModel('gpt-5.5')
 
 		expect(buildProviderOptions(model).openai).toMatchObject({
+			store: false,
 			fastMode: false,
-			reasoningSummary: 'detailed',
+			include: ['reasoning.encrypted_content'],
+			reasoningSummary: 'auto',
+			reasoningEffort: 'medium',
+		})
+	})
+
+	test('uses medium reasoning for gpt-5.4 codex by default', () => {
+		const model = createMockModel('gpt-5.4')
+
+		expect(buildProviderOptions(model).openai).toMatchObject({
+			store: false,
+			fastMode: false,
+			include: ['reasoning.encrypted_content'],
+			reasoningSummary: 'auto',
 			reasoningEffort: 'medium',
 		})
 	})
