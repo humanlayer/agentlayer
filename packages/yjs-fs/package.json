@@ -42,12 +42,14 @@
 	"exports": {
 		".": {
 			"source": "./src/index.ts",
+			"bun": "./src/index.ts",
 			"types": "./dist/index.d.ts",
 			"import": "./dist/index.js",
 			"default": "./dist/index.js"
 		},
 		"./presence": {
 			"source": "./src/filesystem/presence.ts",
+			"bun": "./src/filesystem/presence.ts",
 			"types": "./dist/filesystem/presence.d.ts",
 			"import": "./dist/filesystem/presence.js",
 			"default": "./dist/filesystem/presence.js"

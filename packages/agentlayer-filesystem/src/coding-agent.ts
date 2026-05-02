@@ -23,6 +23,8 @@ import { createBashTool } from './tools/bash'
 import { createEditTool } from './tools/edit'
 import { createGlobTool } from './tools/glob'
 import { createGrepTool } from './tools/grep'
+import { createHashReadTool } from './tools/hash-read'
+import { createHashlineEditTool } from './tools/hashline-edit'
 import { createListTool } from './tools/list'
 import { createReadTool } from './tools/read'
 import { createSkillToolFromDirs, createSkillToolFromRepoDirs, type SkillDirEntry } from './tools/skill'
@@ -100,6 +102,14 @@ export function createCodexAgentFilesystemToolset(opts: CreateAgentFilesystemToo
 		grep: createGrepTool({ cwd: opts.cwd }),
 		list: createListTool({ cwd: opts.cwd }),
 	} as const
+}
+
+export interface CreateHashlineFilesystemToolsetOptions {
+	cwd?: string
+}
+
+export function createHashlineFilesystemToolset(opts: CreateHashlineFilesystemToolsetOptions = {}) {
+	return [createHashReadTool(opts), createHashlineEditTool(opts)] as const
 }
 
 export interface CreateCodingAgentAuxToolsetOptions {
