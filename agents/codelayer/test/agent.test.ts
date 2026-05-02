@@ -158,13 +158,13 @@ describe('createCodelayerAgent', () => {
 		})
 	})
 
-	test('disables codex fast mode by default', () => {
+	test('uses medium reasoning for gpt-5.5 codex by default', () => {
 		const model = createMockModel('gpt-5.5')
 
 		expect(buildProviderOptions(model).openai).toMatchObject({
 			fastMode: false,
 			reasoningSummary: 'detailed',
-			reasoningEffort: 'low',
+			reasoningEffort: 'medium',
 		})
 	})
 

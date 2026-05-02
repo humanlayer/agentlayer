@@ -94,7 +94,7 @@ describe('streaming events', () => {
 			},
 		}
 		const agent = new Agent({
-			model: mockStreamingModel([mockResponse([reasoningPart])]),
+			model: mockStreamingModel([mockResponse([reasoningPart]), assistantText('Done thinking.')]),
 			tools: {},
 		})
 
@@ -112,6 +112,13 @@ describe('streaming events', () => {
 			'stepFinish',
 			'message',
 			'tokenUsage',
+			'stepStart',
+			'textStart',
+			'textDelta',
+			'textEnd',
+			'stepFinish',
+			'message',
+			'tokenUsage',
 		])
 
 		const reasoningEvents = events.filter(
@@ -119,10 +126,10 @@ describe('streaming events', () => {
 		)
 		expect(reasoningEvents).toHaveLength(1)
 		expect(reasoningEvents[0]).toMatchObject({ type: 'reasoningDelta', text: 'Thinking...', stepIndex: 0 })
-		expect(events.some((event) => event.type === 'textDelta')).toBe(false)
+		expect(events.some((event) => event.type === 'textDelta')).toBe(true)
 
 		const result = await run.result
-		expect(result.newMessages).toHaveLength(1)
+		expect(result.newMessages).toHaveLength(2)
 		expect(result.newMessages[0]).toMatchObject({
 			role: 'assistant',
 			content: [
@@ -138,7 +145,11 @@ describe('streaming events', () => {
 				},
 			],
 		})
-		expect(result.state.messages).toEqual([userMessage('think'), result.newMessages[0]!])
+		expect(result.newMessages[1]).toMatchObject({
+			role: 'assistant',
+			content: [{ type: 'text', text: 'Done thinking.' }],
+		})
+		expect(result.state.messages).toEqual([userMessage('think'), result.newMessages[0]!, result.newMessages[1]!])
 	})
 
 	test('stream=true emits tool input start/delta/end events for streamed tool args', async () => {
