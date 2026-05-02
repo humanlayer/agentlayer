@@ -166,7 +166,7 @@ describe('createCodelayerAgent', () => {
 			store: false,
 			fastMode: false,
 			include: ['reasoning.encrypted_content'],
-			reasoningSummary: 'auto',
+			reasoningSummary: 'detailed',
 			reasoningEffort: 'low',
 		})
 	})
@@ -178,7 +178,7 @@ describe('createCodelayerAgent', () => {
 			store: false,
 			fastMode: false,
 			include: ['reasoning.encrypted_content'],
-			reasoningSummary: 'auto',
+			reasoningSummary: 'detailed',
 			reasoningEffort: 'medium',
 		})
 	})

@@ -116,10 +116,10 @@ function resolveCodexThinking(model: LanguageModel): Record<string, unknown> {
 		return { reasoningEffort: 'high' }
 	}
 	if (modelId.includes('gpt-5.5')) {
-		return { reasoningSummary: 'auto', reasoningEffort: 'low' }
+		return { reasoningSummary: 'detailed', reasoningEffort: 'low' }
 	}
 	if (modelId.includes('gpt-5') && !modelId.includes('gpt-5-pro')) {
-		return { reasoningSummary: 'auto', reasoningEffort: 'medium' }
+		return { reasoningSummary: 'detailed', reasoningEffort: 'medium' }
 	}
 	return {}
 }
