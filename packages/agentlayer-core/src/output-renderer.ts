@@ -118,6 +118,8 @@ export function createOutputRenderer(options: OutputRendererOptions): OutputRend
 	const textBuffers = new Map<string, string>()
 	const thinkingBuffers = new Map<string, string>()
 	const liveToolInputs = new Map<string, LiveToolInputState>()
+	const startedTextBlocks = new Set<string>()
+	const startedThinkingBlocks = new Set<string>()
 	const sawLiveAssistantContentByScope = new Set<string>()
 	const sawLiveToolInputByScope = new Set<string>()
 	const output = options.output
@@ -139,6 +141,10 @@ export function createOutputRenderer(options: OutputRendererOptions): OutputRend
 		return `${color.purple('[Thinking]')} ${color.dim(color.italic(line.replace(/\r$/, '')))}`
 	}
 
+	const formatThinkingContinuationLine = (line: string): string => {
+		return color.dim(color.italic(line.replace(/\r$/, '')))
+	}
+
 	const formatToolLabel = (toolName: string): string => {
 		const colorFn = TOOL_COLORS[toolName.toLowerCase()] ?? color.blue
 		return colorFn(`[Tool] ${toolName}`)
@@ -146,6 +152,14 @@ export function createOutputRenderer(options: OutputRendererOptions): OutputRend
 
 	const formatToolCall = (toolName: string, input: unknown): string => {
 		return `${formatToolLabel(toolName)}${compactInput(input)}`
+	}
+
+	const formatAssistantStartLine = (line: string): string => {
+		return `${color.green('[Assistant]')} ${line.replace(/\r$/, '')}`
+	}
+
+	const formatAssistantContinuationLine = (line: string): string => {
+		return line.replace(/\r$/, '')
 	}
 
 	const streamKey = (parts: { id?: string; agentId?: string; parentToolCallId?: string }): string => {
@@ -233,10 +247,50 @@ export function createOutputRenderer(options: OutputRendererOptions): OutputRend
 		}
 	}
 
+	const emitBufferedBlockLines = (
+		buffers: Map<string, string>,
+		key: string,
+		chunk: string,
+		formatStart: (line: string) => string,
+		formatContinuation: (line: string) => string,
+		startedBlocks: Set<string>,
+	): void => {
+		const next = `${buffers.get(key) ?? ''}${chunk}`
+		const lines = next.split('\n')
+		const remainder = lines.pop() ?? ''
+
+		lines.forEach((line, index) => {
+			const formatter = !startedBlocks.has(key) && index === 0 ? formatStart : formatContinuation
+			writeLine(formatter(line))
+			startedBlocks.add(key)
+		})
+
+		if (remainder.length > 0) {
+			buffers.set(key, remainder)
+		} else {
+			buffers.delete(key)
+		}
+	}
+
 	const flushBuffer = (buffers: Map<string, string>, key: string, prefix: string): void => {
 		const remainder = buffers.get(key)
 		if (!remainder) return
 		writeLine(prefix.length > 0 ? `${prefix}${remainder.replace(/\r$/, '')}` : remainder.replace(/\r$/, ''))
+		buffers.delete(key)
+	}
+
+	const flushBlockBuffer = (
+		buffers: Map<string, string>,
+		key: string,
+		formatStart: (line: string) => string,
+		formatContinuation: (line: string) => string,
+		startedBlocks: Set<string>,
+	): void => {
+		const remainder = buffers.get(key)
+		if (!remainder) return
+		const formatter = startedBlocks.has(key) ? formatContinuation : formatStart
+		writeLine(formatter(remainder))
+		startedBlocks.add(key)
 		buffers.delete(key)
 	}
 
@@ -252,11 +306,12 @@ export function createOutputRenderer(options: OutputRendererOptions): OutputRend
 	}
 
 	const flushAllBuffers = (): void => {
-		for (const [key] of textBuffers) flushBuffer(textBuffers, key, '')
+		for (const [key] of textBuffers) flushBlockBuffer(textBuffers, key, formatAssistantStartLine, formatAssistantContinuationLine, startedTextBlocks)
 		for (const [key] of thinkingBuffers) {
 			const remainder = thinkingBuffers.get(key)
 			if (!remainder) continue
-			writeLine(formatThinkingLine(remainder))
+			writeLine(startedThinkingBlocks.has(key) ? formatThinkingContinuationLine(remainder) : formatThinkingLine(remainder))
+			startedThinkingBlocks.add(key)
 			thinkingBuffers.delete(key)
 		}
 		for (const [toolCallId] of liveToolInputs) flushToolInputLine(toolCallId)
@@ -275,8 +330,8 @@ export function createOutputRenderer(options: OutputRendererOptions): OutputRend
 		}
 
 		if (message.role === 'assistant' && typeof message.content === 'string') {
-			for (const line of message.content.split('\n')) {
-				writeLine(line.replace(/\r$/, ''))
+			for (const [index, line] of message.content.split('\n').entries()) {
+				writeLine(index === 0 ? formatAssistantStartLine(line) : formatAssistantContinuationLine(line))
 			}
 			return
 		}
@@ -290,8 +345,8 @@ export function createOutputRenderer(options: OutputRendererOptions): OutputRend
 			for (const part of message.content) {
 				if (part.type === 'text') {
 					if (!skipFinalAssistantText) {
-						for (const line of part.text.split('\n')) {
-							writeLine(line.replace(/\r$/, ''))
+						for (const [index, line] of part.text.split('\n').entries()) {
+							writeLine(index === 0 ? formatAssistantStartLine(line) : formatAssistantContinuationLine(line))
 						}
 					}
 					continue
@@ -299,8 +354,8 @@ export function createOutputRenderer(options: OutputRendererOptions): OutputRend
 
 				if (part.type === 'reasoning') {
 					if (!skipFinalAssistantText) {
-						for (const line of part.text.split('\n')) {
-							writeLine(formatThinkingLine(line))
+						for (const [index, line] of part.text.split('\n').entries()) {
+							writeLine(index === 0 ? formatThinkingLine(line) : formatThinkingContinuationLine(line))
 						}
 					}
 					continue
@@ -352,10 +407,11 @@ export function createOutputRenderer(options: OutputRendererOptions): OutputRend
 				}
 				case 'textDelta':
 					sawLiveAssistantContentByScope.add(scopeKey(event))
-					emitBufferedLines(textBuffers, streamKey(event), event.text, '')
+				emitBufferedBlockLines(textBuffers, streamKey(event), event.text, formatAssistantStartLine, formatAssistantContinuationLine, startedTextBlocks)
 					return
 				case 'textEnd':
-					flushBuffer(textBuffers, streamKey(event), '')
+					flushBlockBuffer(textBuffers, streamKey(event), formatAssistantStartLine, formatAssistantContinuationLine, startedTextBlocks)
+					startedTextBlocks.delete(streamKey(event))
 					return
 				case 'toolInputStart':
 					activateToolLine(event.id, event.toolName)
@@ -376,8 +432,9 @@ export function createOutputRenderer(options: OutputRendererOptions): OutputRend
 					const next = `${thinkingBuffers.get(key) ?? ''}${event.text}`
 					const lines = next.split('\n')
 					const remainder = lines.pop() ?? ''
-					for (const line of lines) {
-						writeLine(formatThinkingLine(line))
+					for (const [index, line] of lines.entries()) {
+						writeLine(!startedThinkingBlocks.has(key) && index === 0 ? formatThinkingLine(line) : formatThinkingContinuationLine(line))
+						startedThinkingBlocks.add(key)
 					}
 					if (remainder.length > 0) {
 						thinkingBuffers.set(key, remainder)
@@ -389,11 +446,13 @@ export function createOutputRenderer(options: OutputRendererOptions): OutputRend
 				case 'reasoningStart':
 					return
 				case 'reasoningEnd': {
-					const remainder = thinkingBuffers.get(streamKey(event))
+					const key = streamKey(event)
+					const remainder = thinkingBuffers.get(key)
 					if (remainder) {
-						writeLine(formatThinkingLine(remainder))
-						thinkingBuffers.delete(streamKey(event))
+						writeLine(startedThinkingBlocks.has(key) ? formatThinkingContinuationLine(remainder) : formatThinkingLine(remainder))
+						thinkingBuffers.delete(key)
 					}
+					startedThinkingBlocks.delete(key)
 					return
 				}
 				case 'message':
@@ -411,7 +470,8 @@ export function createOutputRenderer(options: OutputRendererOptions): OutputRend
 					}
 					for (const [key] of textBuffers) {
 						if (key.startsWith(`${scopeKey(event)}:`)) {
-							flushBuffer(textBuffers, key, '')
+							flushBlockBuffer(textBuffers, key, formatAssistantStartLine, formatAssistantContinuationLine, startedTextBlocks)
+							startedTextBlocks.delete(key)
 						}
 					}
 					for (const [key] of thinkingBuffers) {
