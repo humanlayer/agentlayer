@@ -4,6 +4,24 @@ import { streamText, tool as toAiSdkTool } from 'ai'
 type ProviderOptions = Parameters<typeof streamText>[0]['providerOptions']
 type StreamPart = TextStreamPart<any>
 
+function isReasoningOnlyAssistantMessage(message: ModelMessage): boolean {
+	if (message.role !== 'assistant' || !Array.isArray(message.content)) return false
+	let hasReasoning = false
+	for (const part of message.content) {
+		if (part.type === 'reasoning') {
+			hasReasoning = true
+			continue
+		}
+		if (part.type === 'text' && part.text.trim().length === 0) continue
+		return false
+	}
+	return hasReasoning
+}
+
+function hasReasoningOnlyAssistantResponse(messages: ModelMessage[]): boolean {
+	return messages.some(isReasoningOnlyAssistantMessage)
+}
+
 import { type AgentEvent, AgentRun } from './agent-run'
 import type { Tool } from './define-tool'
 import { AgentError, InvalidMessagesError } from './errors'
@@ -394,7 +412,7 @@ export class Agent<TTools extends Record<string, Tool<any, any>> = Record<string
 					},
 				})
 
-				if (result.toolCalls.length === 0) {
+				if (result.toolCalls.length === 0 && !hasReasoningOnlyAssistantResponse(result.response.messages)) {
 					this.finishRun(agentRun, {
 						state: buildState(),
 						newMessages,
