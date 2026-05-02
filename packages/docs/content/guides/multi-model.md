@@ -4,11 +4,14 @@ AgentLayer supports multiple LLM providers through the AI SDK.
 
 ## Supported Providers
 
-| Provider | Model Examples |
-|----------|---------------|
-| Anthropic | `claude-sonnet-4-20250514`, `claude-opus-4-20250514` |
-| OpenAI | `gpt-4o`, `gpt-4-turbo`, `o1-preview` |
-| Google | `gemini-2.0-flash`, `gemini-1.5-pro` |
+| Provider | Model Examples | Environment Variable |
+|----------|---------------|---------------------|
+| Anthropic | `claude-sonnet-4-20250514`, `claude-opus-4-20250514` | `ANTHROPIC_API_KEY` |
+| OpenAI | `gpt-4o`, `gpt-4-turbo`, `o1-preview` | `OPENAI_API_KEY` |
+| Google | `gemini-2.0-flash`, `gemini-1.5-pro` | `GOOGLE_API_KEY` |
+| Fireworks (Firepass) | `accounts/fireworks/routers/kimi-k2p5-turbo` | `FIREWORKS_API_KEY` |
+| GitHub Copilot | `gpt-5.4` | Via AgentLayer auth store |
+| OpenAI Codex | `gpt-5.5` | Via AgentLayer auth store |
 
 ## Basic Usage
 
@@ -229,4 +232,21 @@ export OPENAI_API_KEY=sk-...
 
 # Google
 export GOOGLE_API_KEY=...
+
+# Fireworks
+export FIREWORKS_API_KEY=fw-...
 ```
+
+## Auth Store API Keys
+
+For Anthropic and Fireworks, you can store API keys in the AgentLayer auth store instead of environment variables:
+
+```ts
+import { ensureFileAuthStore } from '@humanlayer/agentlayer-provider-auth'
+
+const authStore = await ensureFileAuthStore()
+await authStore.set('anthropic', { kind: 'api', apiKey: 'sk-ant-...' })
+await authStore.set('fireworks', { kind: 'api', apiKey: 'fw-...' })
+```
+
+The provider resolution checks environment variables first, then falls back to the auth store.
