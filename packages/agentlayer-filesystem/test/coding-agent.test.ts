@@ -1,9 +1,7 @@
 import { describe, expect, test } from 'bun:test'
-import { execFile } from 'node:child_process'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { promisify } from 'node:util'
 import { defineTool } from '@humanlayer/agentlayer-core'
 import { claudePrompt, codexPrompt } from '@humanlayer/agentlayer-core/prompts'
 import { z } from 'zod'
@@ -19,10 +17,8 @@ function mockModel(modelId: string) {
 	return { modelId } as any
 }
 
-const execFileAsync = promisify(execFile)
-
 async function initGitRepo(cwd: string) {
-	await execFileAsync('git', ['init'], { cwd })
+	await mkdir(join(cwd, '.git'), { recursive: true })
 }
 
 describe('createSkillToolFromRepoDirs', () => {
