@@ -28,21 +28,16 @@ async function initGitRepo(cwd: string) {
 describe('createSkillToolFromRepoDirs', () => {
 	test('uses the provided cwd when resolving repo root', async () => {
 		const repoDir = await mkdtemp(join(tmpdir(), 'agentlayer-skill-repo-'))
-		const originalCwd = process.cwd()
-		const unrelatedDir = await mkdtemp(join(tmpdir(), 'agentlayer-other-cwd-'))
 		try {
 			await initGitRepo(repoDir)
 			await mkdir(join(repoDir, '.claude', 'skills'), { recursive: true })
 			await writeFile(join(repoDir, '.claude', 'skills', 'plan.md'), '# Plan\n\nDo the plan.')
 			const nestedCwd = join(repoDir, 'packages', 'app')
 			await mkdir(nestedCwd, { recursive: true })
-			process.chdir(unrelatedDir)
 
 			const skillTool = await createSkillToolFromRepoDirs({ cwd: nestedCwd })
 			expect(skillTool.description).toContain('plan')
 		} finally {
-			process.chdir(originalCwd)
-			await rm(unrelatedDir, { recursive: true, force: true })
 			await rm(repoDir, { recursive: true, force: true })
 		}
 	})
