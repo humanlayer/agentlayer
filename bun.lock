@@ -186,6 +186,7 @@
       },
       "devDependencies": {
         "@types/bun": "latest",
+        "yjs": "13.6.30",
       },
       "peerDependencies": {
         "@humanlayer/yjs-fs": "workspace:*",
