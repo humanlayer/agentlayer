@@ -1,27 +1,5 @@
 import type { FinishReason as AiSdkFinishReason, LanguageModel, ModelMessage, TextStreamPart, ToolChoice } from 'ai'
 import { streamText, tool as toAiSdkTool } from 'ai'
-
-type ProviderOptions = Parameters<typeof streamText>[0]['providerOptions']
-type StreamPart = TextStreamPart<any>
-
-function isReasoningOnlyAssistantMessage(message: ModelMessage): boolean {
-	if (message.role !== 'assistant' || !Array.isArray(message.content)) return false
-	let hasReasoning = false
-	for (const part of message.content) {
-		if (part.type === 'reasoning') {
-			hasReasoning = true
-			continue
-		}
-		if (part.type === 'text' && part.text.trim().length === 0) continue
-		return false
-	}
-	return hasReasoning
-}
-
-function hasReasoningOnlyAssistantResponse(messages: ModelMessage[]): boolean {
-	return messages.some(isReasoningOnlyAssistantMessage)
-}
-
 import { type AgentEvent, AgentRun } from './agent-run'
 import type { Tool } from './define-tool'
 import { AgentError, InvalidMessagesError } from './errors'
@@ -47,6 +25,36 @@ import type { AgentState, ApprovalDecision, ApprovalHistoryEntry } from './state
 import type { Step, StepToolResult, StopResult, StopTiming, StopWhen } from './stop-conditions'
 import { shouldStop } from './stop-conditions'
 import { extractUsage, getModelKey, type TokenUsage, TokenUsageAccumulator } from './token-usage'
+
+type ProviderOptions = Parameters<typeof streamText>[0]['providerOptions']
+type StreamPart = TextStreamPart<any>
+
+function isReasoningOnlyAssistantMessage(message: ModelMessage): boolean {
+	if (message.role !== 'assistant' || !Array.isArray(message.content)) return false
+	let hasReasoning = false
+	for (const part of message.content) {
+		if (part.type === 'reasoning') {
+			hasReasoning = true
+			continue
+		}
+		if (part.type === 'text' && part.text.trim().length === 0) continue
+		return false
+	}
+	return hasReasoning
+}
+
+function isReasoningOnlyAssistantResponse(messages: ModelMessage[]): boolean {
+	let hasReasoning = false
+	for (const message of messages) {
+		if (message.role === 'tool') continue
+		if (isReasoningOnlyAssistantMessage(message)) {
+			hasReasoning = true
+			continue
+		}
+		return false
+	}
+	return hasReasoning
+}
 
 export interface AgentConfig<TTools extends Record<string, Tool<any, any>> = Record<string, Tool<any, any>>> {
 	model: LanguageModel
@@ -251,7 +259,7 @@ export class Agent<TTools extends Record<string, Tool<any, any>> = Record<string
 		this.tools = config.tools
 		this.toolChoice = config.toolChoice
 		this.providerOptions = config.providerOptions
-		this.maxStepsLimit = config.maxSteps
+		this.maxStepsLimit = config.maxSteps ?? 20
 		this.stopWhen = config.stopWhen
 		this.aiSdkTools = convertTools(config.tools)
 		this.onError = config.onError
@@ -391,6 +399,7 @@ export class Agent<TTools extends Record<string, Tool<any, any>> = Record<string
 				// auto-generate tool-result messages for invalid tool calls (e.g.
 				// schema validation failures), which would duplicate the results
 				// the agent produces via executeToolCall.
+				const hasReasoningOnlyResponse = isReasoningOnlyAssistantResponse(result.response.messages)
 				for (const msg of result.response.messages) {
 					if (msg.role === 'tool') continue
 					sink.append(msg)
@@ -412,7 +421,7 @@ export class Agent<TTools extends Record<string, Tool<any, any>> = Record<string
 					},
 				})
 
-				if (result.toolCalls.length === 0 && !hasReasoningOnlyAssistantResponse(result.response.messages)) {
+				if (result.toolCalls.length === 0 && !hasReasoningOnlyResponse) {
 					this.finishRun(agentRun, {
 						state: buildState(),
 						newMessages,

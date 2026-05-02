@@ -87,6 +87,7 @@ export interface CodelayerProviderOptions extends Record<string, Record<string, 
 	}
 	openai: {
 		store: false
+		include?: string[]
 		reasoningEffort?: ReasoningEffort
 		reasoningSummary?: ReasoningSummary
 		fastMode?: boolean
@@ -115,13 +116,10 @@ function resolveCodexThinking(model: LanguageModel): Record<string, unknown> {
 		return { reasoningEffort: 'high' }
 	}
 	if (modelId.includes('gpt-5.5')) {
-		return { reasoningSummary: 'detailed', reasoningEffort: 'medium' }
+		return { reasoningSummary: 'auto', reasoningEffort: 'low' }
 	}
-	if (modelId.includes('gpt-5.4') || modelId.includes('gpt-5.3') || modelId.includes('gpt-5.2')) {
-		return { reasoningSummary: 'detailed', reasoningEffort: 'high' }
-	}
-	if (modelId.includes('gpt-5.1-codex-max')) {
-		return { reasoningSummary: 'detailed', reasoningEffort: 'xhigh' }
+	if (modelId.includes('gpt-5') && !modelId.includes('gpt-5-pro')) {
+		return { reasoningSummary: 'auto', reasoningEffort: 'medium' }
 	}
 	return {}
 }
@@ -174,6 +172,7 @@ export function buildProviderOptions(
 		},
 		openai: {
 			store: false as const,
+			include: ['reasoning.encrypted_content'],
 			...codexOptions,
 		},
 		copilot: {
