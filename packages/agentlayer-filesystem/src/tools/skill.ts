@@ -44,6 +44,7 @@ function getRepoRoot(cwd: string): string | undefined {
 			stdio: ['ignore', 'pipe', 'ignore'],
 		}).trim()
 	} catch {
+	} finally {
 		process.chdir(originalCwd)
 	}
 
