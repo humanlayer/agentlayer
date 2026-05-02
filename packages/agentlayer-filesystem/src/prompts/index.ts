@@ -25,13 +25,16 @@ export {
 const DEFAULT_REPO_INSTRUCTION_CANDIDATES = ['CLAUDE.md', 'AGENTS.md', 'CONTEXT.md']
 
 function getRepoRoot(cwd: string): string | undefined {
+	const originalCwd = process.cwd()
 	try {
+		process.chdir(cwd)
 		return execSync('git rev-parse --show-toplevel', {
-			cwd,
 			encoding: 'utf-8',
 			stdio: ['ignore', 'pipe', 'ignore'],
 		}).trim()
-	} catch {}
+	} catch {
+		process.chdir(originalCwd)
+	}
 
 	let current = resolve(cwd)
 	while (true) {
