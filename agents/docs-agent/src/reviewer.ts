@@ -55,8 +55,11 @@ export async function runDocsReviewer(opts: DocsReviewerOptions) {
 		return ['## Verdict', 'No relevant source changes were detected for docs review.', '', '## Recommended Updates', '- None.', '', '## Files Worth Updating', '- none'].join('\n')
 	}
 
-	if (!process.env.FIREWORKS_API_KEY || opts.dryRun) {
+	if (opts.dryRun) {
 		return buildHeuristicReview(opts.changedFiles)
+	}
+	if (!process.env.FIREWORKS_API_KEY) {
+		throw new Error('FIREWORKS_API_KEY is required to run docs-agent review mode.')
 	}
 
 	const agent = new Agent({
