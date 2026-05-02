@@ -35,18 +35,21 @@
 	"exports": {
 		".": {
 			"source": "./src/index.ts",
+			"bun": "./src/index.ts",
 			"types": "./dist/index.d.ts",
 			"import": "./dist/index.js",
 			"default": "./dist/index.js"
 		},
 		"./prompts": {
 			"source": "./src/prompts/index.ts",
+			"bun": "./src/prompts/index.ts",
 			"types": "./dist/prompts/index.d.ts",
 			"import": "./dist/prompts/index.js",
 			"default": "./dist/prompts/index.js"
 		},
 		"./tools": {
 			"source": "./src/tools/index.ts",
+			"bun": "./src/tools/index.ts",
 			"types": "./dist/tools/index.d.ts",
 			"import": "./dist/tools/index.js",
 			"default": "./dist/tools/index.js"
