@@ -1,0 +1,6 @@
+export type { ArtifactPath } from './artifact-path'
+export { artifactFragmentName, InvalidArtifactPathError, normalizeArtifactPath } from './artifact-path'
+export type { ArtifactMetadata, CreateArtifactOptions } from './artifact-store'
+export { ArtifactAlreadyExistsError, ArtifactNotFoundError, RichMarkdownArtifactStore } from './artifact-store'
+export type { ArtifactCollaborationMode, ArtifactCollaborationOptions } from './tiptap-bindings'
+export { artifactCollaborationExtension, artifactFragment, defaultRichMarkdownExtensions } from './tiptap-bindings'

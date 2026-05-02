@@ -1,0 +1,50 @@
+{
+	"name": "@humanlayer/yjs-rich-markdown",
+	"source": "./src/index.ts",
+	"type": "module",
+	"version": "0.0.0",
+	"private": false,
+	"main": "./dist/index.js",
+	"module": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"publishConfig": {
+		"access": "public"
+	},
+	"files": [
+		"src",
+		"dist"
+	],
+	"exports": {
+		".": {
+			"source": "./src/index.ts",
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js",
+			"default": "./dist/index.js",
+			"bun": "./src/index.ts"
+		}
+	},
+	"scripts": {
+		"typecheck": "tsgo --noEmit",
+		"build": "bun run build:js && bunx tsc -p tsconfig.build.json",
+		"build:js": "bun run build.ts",
+		"build:types": "bunx tsc -p tsconfig.build.json"
+	},
+	"devDependencies": {
+		"@durable-streams/server": "^0.3.1",
+		"@durable-streams/y-durable-streams": "^0.2.4",
+		"@types/bun": "latest"
+	},
+	"peerDependencies": {
+		"@tiptap/core": "^2.11.0",
+		"@tiptap/extension-collaboration": "^2.11.0",
+		"@tiptap/starter-kit": "^2.11.0",
+		"typescript": "^5",
+		"yjs": "13.6.30",
+		"y-protocols": "1.0.7"
+	},
+	"dependencies": {},
+	"author": {
+		"name": "Kyle Mistele",
+		"url": "https://x.com/0xblacklight"
+	}
+}

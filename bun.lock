@@ -77,6 +77,33 @@
         "typescript": "^5",
       },
     },
+    "examples/yjs-rich-markdown-demo": {
+      "name": "@humanlayer/yjs-rich-markdown-demo",
+      "version": "0.0.1",
+      "dependencies": {
+        "@durable-streams/server": "^0.3.1",
+        "@durable-streams/y-durable-streams": "^0.2.4",
+        "@humanlayer/yjs-rich-markdown": "workspace:*",
+        "@tanstack/react-router": "^1.93.0",
+        "@tiptap/extension-collaboration": "^2.11.0",
+        "@tiptap/extension-collaboration-cursor": "^2.11.0",
+        "@tiptap/pm": "^2.11.0",
+        "@tiptap/react": "^2.11.0",
+        "@tiptap/starter-kit": "^2.11.0",
+        "react": "^18.3.1",
+        "react-dom": "^18.3.1",
+        "y-protocols": "1.0.7",
+        "yjs": "13.6.30",
+      },
+      "devDependencies": {
+        "@tanstack/router-plugin": "^1.93.0",
+        "@types/react": "^18.3.12",
+        "@types/react-dom": "^18.3.1",
+        "@vitejs/plugin-react": "^4.3.4",
+        "typescript": "^5.6.3",
+        "vite": "^6.0.0",
+      },
+    },
     "packages/agentlayer-core": {
       "name": "@humanlayer/agentlayer-core",
       "version": "0.0.0",
@@ -271,6 +298,23 @@
       },
       "peerDependencies": {
         "react": "^18.3.1",
+        "y-protocols": "1.0.7",
+        "yjs": "13.6.30",
+      },
+    },
+    "packages/yjs-rich-markdown": {
+      "name": "@humanlayer/yjs-rich-markdown",
+      "version": "0.0.0",
+      "devDependencies": {
+        "@durable-streams/server": "^0.3.1",
+        "@durable-streams/y-durable-streams": "^0.2.4",
+        "@types/bun": "latest",
+      },
+      "peerDependencies": {
+        "@tiptap/core": "^2.11.0",
+        "@tiptap/extension-collaboration": "^2.11.0",
+        "@tiptap/starter-kit": "^2.11.0",
+        "typescript": "^5",
         "y-protocols": "1.0.7",
         "yjs": "13.6.30",
       },
@@ -511,6 +555,10 @@
     "@humanlayer/yjs-fs-editor": ["@humanlayer/yjs-fs-editor@workspace:packages/yjs-fs-editor"],
 
     "@humanlayer/yjs-fs-react": ["@humanlayer/yjs-fs-react@workspace:packages/yjs-fs-react"],
+
+    "@humanlayer/yjs-rich-markdown": ["@humanlayer/yjs-rich-markdown@workspace:packages/yjs-rich-markdown"],
+
+    "@humanlayer/yjs-rich-markdown-demo": ["@humanlayer/yjs-rich-markdown-demo@workspace:examples/yjs-rich-markdown-demo"],
 
     "@iconify-json/simple-icons": ["@iconify-json/simple-icons@1.2.78", "", { "dependencies": { "@iconify/types": "*" } }, "sha512-I3lkNp0Qu7q2iZWkdcf/I2hqGhzK6qxdILh9T7XqowQrnpmG/BayDsiCf6PktDoWlW0U971xA5g+panm+NFrfQ=="],
 
@@ -1252,7 +1300,7 @@
 
     "escalade": ["escalade@3.2.0", "", {}, "sha512-WUj2qlxaQtO4g6Pq5c29GTcWGDyd8itL8zTlipgECz3JesAiiOKotd8JU6otB3PACgG6xkJUyVhboMS+bje/jA=="],
 
-    "escape-string-regexp": ["escape-string-regexp@5.0.0", "", {}, "sha512-/veY75JbMK4j1yjvuUxuVsiS/hr/4iHs9FTT6cgTexxdE0Ly/glccBAkloH/DofkjRbZU3bnoj38mOmhkZ0lHw=="],
+    "escape-string-regexp": ["escape-string-regexp@4.0.0", "", {}, "sha512-TtpcNJ3XAzx3Gq8sWRzJaVajRs0uVxA2YAkdb1jm2YkPz4G6egUFAyA3n5vtEIZefPk5Wa4UXbKuS5fKkJWdgA=="],
 
     "esprima": ["esprima@4.0.1", "", { "bin": { "esparse": "./bin/esparse.js", "esvalidate": "./bin/esvalidate.js" } }, "sha512-eGuFFw7Upda+g4p+QHvnW0RyTX/SVeJBDM/gCtMARO0cLuT2HcEKnTPvhjV6aGeqrCB/sbNop0Kszm0jsaWU4A=="],
 
@@ -2056,6 +2104,8 @@
 
     "@humanlayer/yjs-fs-editor/@durable-streams/server": ["@durable-streams/server@0.1.7", "", { "dependencies": { "@durable-streams/client": "0.2.0", "@durable-streams/state": "0.2.0", "@neophi/sieve-cache": "^1.0.0", "lmdb": "^3.3.0" } }, "sha512-JaCzfKS/GI3ZlbmInHvqX/fAh6XENTjc+acfhRlZH9iaRQiD1rOjfircj+jFDTIHgeT9oPqOVscmISGot8kI3w=="],
 
+    "@humanlayer/yjs-rich-markdown/@types/bun": ["@types/bun@1.3.13", "", { "dependencies": { "bun-types": "1.3.13" } }, "sha512-9fqXWk5YIHGGnUau9TEi+qdlTYDAnOj+xLCmSTwXfAIqXr2x4tytJb43E9uCvt09zJURKXwAtkoH4nLQfzeTXw=="],
+
     "@mermaid-js/mermaid-mindmap/@braintree/sanitize-url": ["@braintree/sanitize-url@6.0.4", "", {}, "sha512-s3jaWicZd0pkP0jf5ysyHUI/RE7MHos6qlToFcGWXVp+ykHOy77OUMrfbgJ9it2C5bow7OIQwYYaHjk9XlBQ2A=="],
 
     "@npmcli/git/ini": ["ini@6.0.0", "", {}, "sha512-IBTdIkzZNOpqm7q3dRqJvMaldXjDHWkEDfrwGEQTs5eaQMWV+djAhR+wahyNNMAa+qpbDUhBMVt4ZKNwpPm7xQ=="],
@@ -2098,6 +2148,8 @@
 
     "markdown-it/argparse": ["argparse@2.0.1", "", {}, "sha512-8+9WqebbFzpX9OR+Wa6O29asIogeRMzcGtAINdpMHHyAg10f05aSFVBbcEqGf/PXw1EjAZ+q2/bEBg3DvurK3Q=="],
 
+    "mdast-util-frontmatter/escape-string-regexp": ["escape-string-regexp@5.0.0", "", {}, "sha512-/veY75JbMK4j1yjvuUxuVsiS/hr/4iHs9FTT6cgTexxdE0Ly/glccBAkloH/DofkjRbZU3bnoj38mOmhkZ0lHw=="],
+
     "minipass-fetch/iconv-lite": ["iconv-lite@0.7.2", "", { "dependencies": { "safer-buffer": ">= 2.1.2 < 3.0.0" } }, "sha512-im9DjEDQ55s9fL4EYzOAv0yMqmMBSZp6G0VvFyTMPKWxiSBHUj9NW/qqLmXUwXrrM7AvqSlTCfvqRb0cM8yYqw=="],
 
     "minipass-flush/minipass": ["minipass@3.3.6", "", { "dependencies": { "yallist": "^4.0.0" } }, "sha512-DxiNidxSEK+tHG6zOIklvNOwm3hvCrbUrdtzY74U6HKTJxvIDfOUL5W5P2Ghd3DTkhhKPYGqeNUIh5qcM4YBfw=="],
@@ -2107,8 +2159,6 @@
     "node-gyp/which": ["which@6.0.1", "", { "dependencies": { "isexe": "^4.0.0" }, "bin": { "node-which": "bin/which.js" } }, "sha512-oGLe46MIrCRqX7ytPUf66EAYvdeMIZYn3WaocqqKZAxrBpkqHfL/qvTyJ/bTk5+AqHCjXmrv3CEWgy368zhRUg=="],
 
     "normalize-package-data/hosted-git-info": ["hosted-git-info@7.0.2", "", { "dependencies": { "lru-cache": "^10.0.1" } }, "sha512-puUZAUKT5m8Zzvs72XWy3HtvVbTWljRE66cP60bxJzAqf2DgICo7lYTY2IHUmLnNpjYvw5bvmoHvPc0QO2a62w=="],
-
-    "prosemirror-trailing-node/escape-string-regexp": ["escape-string-regexp@4.0.0", "", {}, "sha512-TtpcNJ3XAzx3Gq8sWRzJaVajRs0uVxA2YAkdb1jm2YkPz4G6egUFAyA3n5vtEIZefPk5Wa4UXbKuS5fKkJWdgA=="],
 
     "rc/ini": ["ini@1.3.8", "", {}, "sha512-JV/yugV2uzW5iMRSiZAyDtQd+nxtUnjeLt0acNdw98kKLrvuRVyB80tsREOE7yvGVgalhZ6RNXCmEHkUKBKxew=="],
 
@@ -2155,6 +2205,8 @@
     "@humanlayer/yjs-fs-editor/@durable-streams/server/@durable-streams/state": ["@durable-streams/state@0.2.0", "", { "dependencies": { "@durable-streams/client": "0.2.0", "@standard-schema/spec": "^1.0.0" }, "peerDependencies": { "@tanstack/db": ">=0.5.0" } }, "sha512-9XKSKkubcCbbRgUHJCENTw3351uJ4hfi8GLmYWD8l5OCEjvhVegUF06utFKehIRy3xTr57t5MC78weBfVlD2Dg=="],
 
     "@humanlayer/yjs-fs/@types/bun/bun-types": ["bun-types@1.3.13", "", { "dependencies": { "@types/node": "*" } }, "sha512-QXKeHLlOLqQX9LgYaHJfzdBaV21T63HhFJnvuRCcjZiaUDpbs5ED1MgxbMra71CsryN/1dAoXuJJJwIv/2drVA=="],
+
+    "@humanlayer/yjs-rich-markdown/@types/bun/bun-types": ["bun-types@1.3.13", "", { "dependencies": { "@types/node": "*" } }, "sha512-QXKeHLlOLqQX9LgYaHJfzdBaV21T63HhFJnvuRCcjZiaUDpbs5ED1MgxbMra71CsryN/1dAoXuJJJwIv/2drVA=="],
 
     "@npmcli/git/which/isexe": ["isexe@4.0.0", "", {}, "sha512-FFUtZMpoZ8RqHS3XeXEmHWLA4thH+ZxCv2lOiPIn1Xc7CxrqhWzNSDzD+/chS/zbYezmiwWLdQC09JdQKmthOw=="],
 

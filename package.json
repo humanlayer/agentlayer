@@ -33,7 +33,8 @@
     },
     "workspaces": [
         "packages/*",
-        "agents/*"
+        "agents/*",
+        "examples/*"
     ],
     "catalog": {
         "@ai-sdk/anthropic": "3.0.69",
