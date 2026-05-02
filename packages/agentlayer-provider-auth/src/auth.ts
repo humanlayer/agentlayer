@@ -265,12 +265,13 @@ function decodeAuthInfo(value: unknown): AuthInfo | undefined {
 }
 
 function decodeOAuthAuthInfo(value: Record<string, unknown>): OAuthAuthInfo | undefined {
-	if (typeof value.accessToken !== 'string') return undefined
+	const accessToken = typeof value.accessToken === 'string' ? value.accessToken : value.access
+	if (typeof accessToken !== 'string') return undefined
 	return {
 		kind: 'oauth',
-		accessToken: value.accessToken,
-		...optionalString('refreshToken', value.refreshToken),
-		...optionalNumber('expiresAt', value.expiresAt),
+		accessToken,
+		...optionalString('refreshToken', value.refreshToken ?? value.refresh),
+		...optionalNumber('expiresAt', value.expiresAt ?? value.expires),
 		...optionalString('idToken', value.idToken),
 		...optionalString('scope', value.scope),
 		...optionalString('tokenType', value.tokenType),

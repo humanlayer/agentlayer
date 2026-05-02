@@ -231,22 +231,6 @@ export function createOutputRenderer(options: OutputRendererOptions): OutputRend
 		options.writeLine?.(line)
 	}
 
-	const emitBufferedLines = (buffers: Map<string, string>, key: string, chunk: string, prefix: string): void => {
-		const next = `${buffers.get(key) ?? ''}${chunk}`
-		const lines = next.split('\n')
-		const remainder = lines.pop() ?? ''
-
-		for (const line of lines) {
-			writeLine(`${prefix}${line.replace(/\r$/, '')}`)
-		}
-
-		if (remainder.length > 0) {
-			buffers.set(key, remainder)
-		} else {
-			buffers.delete(key)
-		}
-	}
-
 	const emitBufferedBlockLines = (
 		buffers: Map<string, string>,
 		key: string,
@@ -270,13 +254,6 @@ export function createOutputRenderer(options: OutputRendererOptions): OutputRend
 		} else {
 			buffers.delete(key)
 		}
-	}
-
-	const flushBuffer = (buffers: Map<string, string>, key: string, prefix: string): void => {
-		const remainder = buffers.get(key)
-		if (!remainder) return
-		writeLine(prefix.length > 0 ? `${prefix}${remainder.replace(/\r$/, '')}` : remainder.replace(/\r$/, ''))
-		buffers.delete(key)
 	}
 
 	const flushBlockBuffer = (
@@ -306,11 +283,22 @@ export function createOutputRenderer(options: OutputRendererOptions): OutputRend
 	}
 
 	const flushAllBuffers = (): void => {
-		for (const [key] of textBuffers) flushBlockBuffer(textBuffers, key, formatAssistantStartLine, formatAssistantContinuationLine, startedTextBlocks)
+		for (const [key] of textBuffers)
+			flushBlockBuffer(
+				textBuffers,
+				key,
+				formatAssistantStartLine,
+				formatAssistantContinuationLine,
+				startedTextBlocks,
+			)
 		for (const [key] of thinkingBuffers) {
 			const remainder = thinkingBuffers.get(key)
 			if (!remainder) continue
-			writeLine(startedThinkingBlocks.has(key) ? formatThinkingContinuationLine(remainder) : formatThinkingLine(remainder))
+			writeLine(
+				startedThinkingBlocks.has(key)
+					? formatThinkingContinuationLine(remainder)
+					: formatThinkingLine(remainder),
+			)
 			startedThinkingBlocks.add(key)
 			thinkingBuffers.delete(key)
 		}
@@ -346,7 +334,9 @@ export function createOutputRenderer(options: OutputRendererOptions): OutputRend
 				if (part.type === 'text') {
 					if (!skipFinalAssistantText) {
 						for (const [index, line] of part.text.split('\n').entries()) {
-							writeLine(index === 0 ? formatAssistantStartLine(line) : formatAssistantContinuationLine(line))
+							writeLine(
+								index === 0 ? formatAssistantStartLine(line) : formatAssistantContinuationLine(line),
+							)
 						}
 					}
 					continue
@@ -407,10 +397,23 @@ export function createOutputRenderer(options: OutputRendererOptions): OutputRend
 				}
 				case 'textDelta':
 					sawLiveAssistantContentByScope.add(scopeKey(event))
-				emitBufferedBlockLines(textBuffers, streamKey(event), event.text, formatAssistantStartLine, formatAssistantContinuationLine, startedTextBlocks)
+					emitBufferedBlockLines(
+						textBuffers,
+						streamKey(event),
+						event.text,
+						formatAssistantStartLine,
+						formatAssistantContinuationLine,
+						startedTextBlocks,
+					)
 					return
 				case 'textEnd':
-					flushBlockBuffer(textBuffers, streamKey(event), formatAssistantStartLine, formatAssistantContinuationLine, startedTextBlocks)
+					flushBlockBuffer(
+						textBuffers,
+						streamKey(event),
+						formatAssistantStartLine,
+						formatAssistantContinuationLine,
+						startedTextBlocks,
+					)
 					startedTextBlocks.delete(streamKey(event))
 					return
 				case 'toolInputStart':
@@ -433,7 +436,11 @@ export function createOutputRenderer(options: OutputRendererOptions): OutputRend
 					const lines = next.split('\n')
 					const remainder = lines.pop() ?? ''
 					for (const [index, line] of lines.entries()) {
-						writeLine(!startedThinkingBlocks.has(key) && index === 0 ? formatThinkingLine(line) : formatThinkingContinuationLine(line))
+						writeLine(
+							!startedThinkingBlocks.has(key) && index === 0
+								? formatThinkingLine(line)
+								: formatThinkingContinuationLine(line),
+						)
 						startedThinkingBlocks.add(key)
 					}
 					if (remainder.length > 0) {
@@ -449,7 +456,11 @@ export function createOutputRenderer(options: OutputRendererOptions): OutputRend
 					const key = streamKey(event)
 					const remainder = thinkingBuffers.get(key)
 					if (remainder) {
-						writeLine(startedThinkingBlocks.has(key) ? formatThinkingContinuationLine(remainder) : formatThinkingLine(remainder))
+						writeLine(
+							startedThinkingBlocks.has(key)
+								? formatThinkingContinuationLine(remainder)
+								: formatThinkingLine(remainder),
+						)
 						thinkingBuffers.delete(key)
 					}
 					startedThinkingBlocks.delete(key)
@@ -470,7 +481,13 @@ export function createOutputRenderer(options: OutputRendererOptions): OutputRend
 					}
 					for (const [key] of textBuffers) {
 						if (key.startsWith(`${scopeKey(event)}:`)) {
-							flushBlockBuffer(textBuffers, key, formatAssistantStartLine, formatAssistantContinuationLine, startedTextBlocks)
+							flushBlockBuffer(
+								textBuffers,
+								key,
+								formatAssistantStartLine,
+								formatAssistantContinuationLine,
+								startedTextBlocks,
+							)
 							startedTextBlocks.delete(key)
 						}
 					}
