@@ -16,9 +16,9 @@
 		}
 	},
 	"devDependencies": {
-		"@ai-sdk/anthropic": "catalog:",
 		"@humanlayer/agentlayer-core": "workspace:*",
 		"@humanlayer/agentlayer-filesystem": "workspace:*",
+		"@humanlayer/codelayer": "workspace:*",
 		"@types/bun": "latest",
 		"commander": "catalog:",
 		"zod": "catalog:"
