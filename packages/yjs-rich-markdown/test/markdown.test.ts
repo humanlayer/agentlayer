@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import * as Y from 'yjs'
-import { readArtifactMarkdown, RichMarkdownArtifactStore, writeArtifactMarkdown } from '../src'
+import { RichMarkdownArtifactStore, readArtifactMarkdown, writeArtifactMarkdown } from '../src'
 
 function syncDoc(source: Y.Doc, target: Y.Doc): void {
 	Y.applyUpdate(target, Y.encodeStateAsUpdate(source))

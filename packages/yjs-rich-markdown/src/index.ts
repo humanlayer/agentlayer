@@ -1,6 +1,6 @@
 export type { ArtifactPath } from './artifact-path'
-export { readArtifact } from './artifact-read'
 export { artifactFragmentName, InvalidArtifactPathError, normalizeArtifactPath } from './artifact-path'
+export { readArtifact } from './artifact-read'
 export type { ArtifactMetadata, CreateArtifactOptions } from './artifact-store'
 export { ArtifactAlreadyExistsError, ArtifactNotFoundError, RichMarkdownArtifactStore } from './artifact-store'
 export { markdownToTiptapJson, readArtifactMarkdown, tiptapJsonToMarkdown, writeArtifactMarkdown } from './markdown'
