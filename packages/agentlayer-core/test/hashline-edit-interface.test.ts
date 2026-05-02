@@ -6,13 +6,23 @@ const ctx = {} as ToolContext
 
 describe('HashlineEditTool interface', () => {
 	test('accepts oh-my-pi loc variants', () => {
-		expect(hashlineEditInput.safeParse({ path: 'a.ts', edits: [{ loc: 'append', content: ['x'] }] }).success).toBe(true)
-		expect(hashlineEditInput.safeParse({ path: 'a.ts', edits: [{ loc: 'prepend', content: ['x'] }] }).success).toBe(true)
-		expect(hashlineEditInput.safeParse({ path: 'a.ts', edits: [{ loc: { append: '9th' }, content: ['x'] }] }).success).toBe(true)
-		expect(hashlineEditInput.safeParse({ path: 'a.ts', edits: [{ loc: { prepend: '9th' }, content: ['x'] }] }).success).toBe(true)
+		expect(hashlineEditInput.safeParse({ path: 'a.ts', edits: [{ loc: 'append', content: ['x'] }] }).success).toBe(
+			true,
+		)
+		expect(hashlineEditInput.safeParse({ path: 'a.ts', edits: [{ loc: 'prepend', content: ['x'] }] }).success).toBe(
+			true,
+		)
 		expect(
-			hashlineEditInput.safeParse({ path: 'a.ts', edits: [{ loc: { range: { pos: '1st', end: '1st' } }, content: null }] })
-				.success,
+			hashlineEditInput.safeParse({ path: 'a.ts', edits: [{ loc: { append: '9th' }, content: ['x'] }] }).success,
+		).toBe(true)
+		expect(
+			hashlineEditInput.safeParse({ path: 'a.ts', edits: [{ loc: { prepend: '9th' }, content: ['x'] }] }).success,
+		).toBe(true)
+		expect(
+			hashlineEditInput.safeParse({
+				path: 'a.ts',
+				edits: [{ loc: { range: { pos: '1st', end: '1st' } }, content: null }],
+			}).success,
 		).toBe(true)
 	})
 
@@ -23,7 +33,13 @@ describe('HashlineEditTool interface', () => {
 
 	test('serializes edit metadata', () => {
 		const serialized = HashlineEditTool.serialize?.(
-			{ content: 'changed', editCount: 1, firstChangedLine: 3, warnings: ['rebased'], noopEdits: [{ editIndex: 1, loc: 'append', current: 'x' }] },
+			{
+				content: 'changed',
+				editCount: 1,
+				firstChangedLine: 3,
+				warnings: ['rebased'],
+				noopEdits: [{ editIndex: 1, loc: 'append', current: 'x' }],
+			},
 			{ path: 'a.ts', edits: [] },
 			ctx,
 		)

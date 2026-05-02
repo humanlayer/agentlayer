@@ -5,7 +5,7 @@ describe('line-hash utilities', () => {
 	test('contains the exact 647-entry bigram table', () => {
 		expect(HASHLINE_BIGRAMS).toHaveLength(647)
 		expect(HASHLINE_BIGRAMS[0]).toBe('aa')
-		expect(HASHLINE_BIGRAMS[487] as string).toBe('sr')
+		expect(HASHLINE_BIGRAMS[469] as string).toBe('sr')
 		expect(HASHLINE_BIGRAMS.at(-1)).toBe('zz')
 	})
 
