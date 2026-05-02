@@ -115,6 +115,9 @@ function resolveCodexThinking(model: LanguageModel): Record<string, unknown> {
 	if (modelId.includes('kimi')) {
 		return { reasoningEffort: 'high' }
 	}
+	if (modelId.includes('gpt-5.5')) {
+		return { reasoningSummary: 'auto', reasoningEffort: 'low' }
+	}
 	if (modelId.includes('gpt-5') && !modelId.includes('gpt-5-pro')) {
 		return { reasoningSummary: 'auto', reasoningEffort: 'medium' }
 	}

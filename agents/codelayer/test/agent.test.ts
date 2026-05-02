@@ -159,7 +159,7 @@ describe('createCodelayerAgent', () => {
 		})
 	})
 
-	test('uses medium reasoning for gpt-5.5 codex by default', () => {
+	test('uses low reasoning for gpt-5.5 codex by default', () => {
 		const model = createMockModel('gpt-5.5')
 
 		expect(buildProviderOptions(model).openai).toMatchObject({
@@ -167,7 +167,7 @@ describe('createCodelayerAgent', () => {
 			fastMode: false,
 			include: ['reasoning.encrypted_content'],
 			reasoningSummary: 'auto',
-			reasoningEffort: 'medium',
+			reasoningEffort: 'low',
 		})
 	})
 
