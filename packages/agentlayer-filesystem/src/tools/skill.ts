@@ -2,7 +2,7 @@ import { execSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { readdir, readFile, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
-import { basename, join } from 'node:path'
+import { basename, dirname, join, resolve } from 'node:path'
 import { createSkillTool } from '@humanlayer/agentlayer-core'
 import type { Skill } from '@humanlayer/agentlayer-core/interfaces'
 
@@ -42,8 +42,14 @@ function getRepoRoot(cwd: string): string | undefined {
 			encoding: 'utf-8',
 			stdio: ['ignore', 'pipe', 'ignore'],
 		}).trim()
-	} catch {
-		return undefined
+	} catch {}
+
+	let current = resolve(cwd)
+	while (true) {
+		if (existsSync(join(current, '.git'))) return current
+		const parent = dirname(current)
+		if (parent === current) return undefined
+		current = parent
 	}
 }
 

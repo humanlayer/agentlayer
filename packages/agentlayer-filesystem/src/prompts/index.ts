@@ -1,7 +1,7 @@
 import { execSync } from 'node:child_process'
-import { constants } from 'node:fs'
+import { constants, existsSync } from 'node:fs'
 import { access, readFile } from 'node:fs/promises'
-import { isAbsolute, resolve } from 'node:path'
+import { dirname, isAbsolute, resolve } from 'node:path'
 import {
 	type CodingPromptKey,
 	type EnvironmentPromptOptions as CoreEnvironmentPromptOptions,
@@ -31,8 +31,16 @@ function getRepoRoot(cwd: string): string | undefined {
 			encoding: 'utf-8',
 			stdio: ['ignore', 'pipe', 'ignore'],
 		}).trim()
-	} catch {
-		return undefined
+	} catch {}
+
+	let current = resolve(cwd)
+	while (true) {
+		if (existsSync(resolve(current, '.git'))) {
+			return current
+		}
+		const parent = dirname(current)
+		if (parent === current) return undefined
+		current = parent
 	}
 }
 
