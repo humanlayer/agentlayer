@@ -12,8 +12,8 @@
 		"docs:build": "bun --filter '@humanlayer/agentlayer-docs' build",
 		"githooks": "mkdir -p scripts/hooks && cp scripts/hooks/pre-push $(git rev-parse --git-common-dir)/hooks/pre-push && chmod +x $(git rev-parse --git-common-dir)/hooks/pre-push",
 		"hook:prepush": "bun run check",
-		"test": "bun test --conditions=source ./packages/*/test/*.test.ts ./agents/*/test/*.test.ts",
-        "test:ci": "bun test --conditions=source ./packages/*/test/*.test.ts ./agents/*/test/*.test.ts",
+		"test": "bun test ./packages/*/test/*.test.ts ./agents/*/test/*.test.ts",
+		"test:ci": "bun test ./packages/*/test/*.test.ts ./agents/*/test/*.test.ts",
         "typecheck": "bun --filter '*' --parallel typecheck",
         "release:prepare": "bun run scripts/release/prepare.ts",
         "release:publish": "bun run scripts/release/publish.ts"
