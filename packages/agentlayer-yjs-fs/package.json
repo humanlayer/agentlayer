@@ -23,11 +23,15 @@
 	},
 	"dependencies": {
 		"@humanlayer/agentlayer-core": "workspace:*",
+		"lib0": "0.2.117",
 		"minimatch": "catalog:"
 	},
 	"devDependencies": {
+		"@durable-streams/server": "^0.3.1",
+		"@durable-streams/y-durable-streams": "^0.2.4",
 		"@types/bun": "latest",
-		"yjs": "13.6.30"
+		"yjs": "13.6.30",
+		"y-protocols": "1.0.7"
 	},
 	"peerDependencies": {
 		"@humanlayer/yjs-fs": "workspace:*",

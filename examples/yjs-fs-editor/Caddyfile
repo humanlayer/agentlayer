@@ -9,8 +9,8 @@ https://localhost:4000 {
 	# Y.js server + durable-streams proxy. Keep the upstream path intact so
 	# Yjs snapshot discovery redirects stay on a proxied route.
 	handle /v1/* {
-		reverse_proxy localhost:4438 {
-			# Required for SSE streaming - disable response buffering
+		reverse_proxy localhost:{$YJS_PORT:6438} {
+			# Required for long-lived long-poll responses - disable response buffering
 			flush_interval -1
 			transport http {
 				# Allow long-lived SSE connections (no timeouts)
@@ -22,7 +22,7 @@ https://localhost:4000 {
 
 	# Vite dev server (React app + HMR)
 	handle {
-		reverse_proxy localhost:5175 {
+			reverse_proxy localhost:{$VITE_PORT:6175} {
 			flush_interval -1
 		}
 	}

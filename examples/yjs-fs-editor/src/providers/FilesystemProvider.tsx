@@ -25,8 +25,11 @@ export const FilesystemProvider: React.FC<PropsWithChildren> = ({ children }) =>
 		initializeLocalPresence()
 		const docId = new URLSearchParams(window.location.search).get('doc') ?? 'default-workspace'
 
-		const serviceName = 'yjs-fs-editor'
-		const yServerOrigin = import.meta.env.Y_SERVER_ORIGIN ?? 'https://localhost:4000'
+		const serviceName = import.meta.env.VITE_YJS_SERVICE_NAME ?? 'yjs-fs-editor'
+		const yServerOrigin = import.meta.env.VITE_Y_SERVER_ORIGIN ?? 'https://localhost:4000'
+		console.info(
+			`Connecting to Yjs provider: baseUrl=${yServerOrigin}/v1/yjs/${serviceName} docId=${docId} liveMode=long-poll`,
+		)
 		const provider = new YjsProvider({
 			doc,
 			awareness,

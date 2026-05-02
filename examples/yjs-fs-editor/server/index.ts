@@ -1,8 +1,8 @@
 import { DurableStreamTestServer } from '@durable-streams/server'
 import { YjsServer } from '@durable-streams/y-durable-streams/server'
 
-const DS_PORT = 4437
-const YJS_PORT = 4438
+const DS_PORT = Number(process.env.DURABLE_STREAMS_PORT ?? 6437)
+const YJS_PORT = Number(process.env.YJS_PORT ?? 6438)
 
 async function main() {
 	console.log('Starting Durable Streams server...')

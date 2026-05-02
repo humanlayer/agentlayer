@@ -5,9 +5,9 @@
 	"type": "module",
 	"scripts": {
 		"dev": "bun run --parallel dev:caddy dev:server dev:vite",
-		"dev:vite": "vite --port 5175",
-		"dev:server": "bun run server/index.ts",
-		"dev:caddy": "caddy run --config Caddyfile",
+		"dev:vite": "vite --port 6175",
+		"dev:server": "DURABLE_STREAMS_PORT=6437 YJS_PORT=6438 bun run server/index.ts",
+		"dev:caddy": "YJS_PORT=6438 VITE_PORT=6175 caddy run --config Caddyfile --adapter caddyfile",
 		"build": "tsc -b && vite build",
 		"preview": "vite preview",
 		"typecheck": "tsc --noEmit"
