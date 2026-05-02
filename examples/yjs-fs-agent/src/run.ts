@@ -14,6 +14,7 @@ import {
 	createYjsFsReadTool,
 	createYjsFsWriteTool,
 } from '@humanlayer/agentlayer-yjs-fs/tools'
+import { createYjsFsBashTool } from '@humanlayer/agentlayer-yjs-fs-justbash/tools'
 import { colorFromId, YjsFilesystem } from '@humanlayer/yjs-fs'
 import { Awareness } from 'y-protocols/awareness.js'
 import * as Y from 'yjs'
@@ -26,6 +27,7 @@ const docId = process.env.YJS_DOC_ID ?? 'default-workspace'
 const yServerOrigin = process.env.Y_SERVER_ORIGIN ?? 'https://localhost:4000'
 const providerBaseUrl = `${yServerOrigin}/v1/yjs/${serviceName}`
 const agentId = process.env.AGENT_ID ?? crypto.randomUUID()
+const prompt = getPromptArg()
 
 const doc = new Y.Doc()
 const awareness = new Awareness(doc)
@@ -65,6 +67,7 @@ const agent = new Agent({
 		list: createYjsFsListTool(fs),
 		glob: createYjsFsGlobTool(fs),
 		grep: createYjsFsGrepTool(fs),
+		bash: createYjsFsBashTool(fs),
 	},
 	hooks: {
 		postToolUse: [readTruncationHook, ...createYjsFsPresenceHooks(fs)],
@@ -74,30 +77,50 @@ const agent = new Agent({
 
 let state = startState([])
 const renderer = createOutputRenderer({ output: process.stdout })
-const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
 
 try {
-	for (;;) {
-		const line = await rl.question('> ')
-		const text = line.trim()
-		if (!text) continue
-		if (text === 'exit' || text === '/exit') break
+	if (prompt) {
+		state = await runPrompt(prompt, state)
+	} else {
+		const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
+		try {
+			for (;;) {
+				const line = await rl.question('> ')
+				const text = line.trim()
+				if (!text) continue
+				if (text === 'exit' || text === '/exit') break
 
-		state.messages.push({ role: 'user', content: text })
-		const run = agent.run({ state, stream: true })
-		for await (const event of run) {
-			renderer.onEvent(event)
+				state = await runPrompt(text, state)
+			}
+		} finally {
+			rl.close()
 		}
-		const result = await run.result
-		state = result.state
-		renderer.flush()
-		renderFinish(result)
 	}
 } finally {
-	rl.close()
 	fs.updateLocalPresence({ action: 'offline' })
 	await provider.flush()
+	await provider.disconnect()
 	provider.destroy()
+}
+
+async function runPrompt(text: string, currentState: typeof state): Promise<typeof state> {
+	currentState.messages.push({ role: 'user', content: text })
+	const run = agent.run({ state: currentState, stream: true })
+	for await (const event of run) {
+		renderer.onEvent(event)
+	}
+	const result = await run.result
+	renderer.flush()
+	renderFinish(result)
+	return result.state
+}
+
+function getPromptArg(): string | undefined {
+	const index = Bun.argv.indexOf('--prompt')
+	if (index === -1) return undefined
+	const value = Bun.argv[index + 1]
+	if (!value) throw new Error('Missing value for --prompt')
+	return value
 }
 
 async function waitForProviderSync(provider: YjsProvider, timeoutMs = 10_000): Promise<void> {

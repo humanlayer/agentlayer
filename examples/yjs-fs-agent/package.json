@@ -12,6 +12,7 @@
 		"@durable-streams/y-durable-streams": "^0.2.4",
 		"@humanlayer/agentlayer-core": "workspace:*",
 		"@humanlayer/agentlayer-yjs-fs": "workspace:*",
+		"@humanlayer/agentlayer-yjs-fs-justbash": "workspace:*",
 		"@humanlayer/yjs-fs": "workspace:*",
 		"ai": "catalog:",
 		"y-protocols": "1.0.7",

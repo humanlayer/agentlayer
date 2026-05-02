@@ -26,6 +26,10 @@ export const publishablePackages = [
         dir: "packages/agentlayer-yjs-fs",
     },
     {
+        name: "@humanlayer/agentlayer-yjs-fs-justbash",
+        dir: "packages/agentlayer-yjs-fs-justbash",
+    },
+    {
         name: "@humanlayer/agentlayer-provider-auth",
         dir: "packages/agentlayer-provider-auth",
     },
