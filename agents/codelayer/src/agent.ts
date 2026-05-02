@@ -111,6 +111,9 @@ function resolveAnthropicThinking(model: LanguageModel): Record<string, unknown>
 
 function resolveCodexThinking(model: LanguageModel): Record<string, unknown> {
 	const modelId = ((model as { modelId?: string }).modelId ?? '').toLowerCase()
+	if (modelId.includes('kimi')) {
+		return { reasoningEffort: 'high' }
+	}
 	if (modelId.includes('gpt-5.5')) {
 		return { reasoningSummary: 'detailed', reasoningEffort: 'low' }
 	}

@@ -168,6 +168,15 @@ describe('createCodelayerAgent', () => {
 		})
 	})
 
+	test('uses high reasoning effort for kimi models', () => {
+		const model = createMockModel('accounts/fireworks/routers/kimi-k2p5-turbo')
+
+		expect(buildProviderOptions(model).openai).toMatchObject({
+			fastMode: false,
+			reasoningEffort: 'high',
+		})
+	})
+
 	test('allows disabling anthropic thinking defaults', () => {
 		const model = createMockModel('claude-sonnet-4-5')
 
