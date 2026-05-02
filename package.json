@@ -10,7 +10,7 @@
         "check": "bun --parallel 'typecheck' 'biome' 'test:ci'",
         "dev": "bun --filter '*' dev",
         "docs:build": "bun --filter '@humanlayer/agentlayer-docs' build",
-        "hook:prepush": "bun check",
+        "hook:prepush": "unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE; bun check",
         "test": "bun test --concurrency 16 **/*",
         "test:ci": "bun test --conditions=source ./packages/*/test/*.test.ts ./agents/*/test/*.test.ts",
         "typecheck": "bun --filter '*' --parallel typecheck",
