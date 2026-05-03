@@ -134,19 +134,17 @@ async function ensureOnlyAllowlistedPackagesAreStaged() {
     }
 }
 
-async function ensureVersionDoesNotAlreadyExist(packageName: string, version: string) {
+async function versionAlreadyExists(packageName: string, version: string) {
     const result = await runCommand("npm", ["view", packageName, "versions", "--json"], {
         allowFailure: true,
     });
 
     if (result.exitCode !== 0 || !result.stdout.trim()) {
-        return;
+        return false;
     }
 
     const parsed = JSON.parse(result.stdout) as string[];
-    if (parsed.includes(version)) {
-        throw new Error(`Version ${version} already exists for ${packageName}`);
-    }
+    return parsed.includes(version);
 }
 
 function publishArgs(opts: { dryRun?: boolean; tag?: string }) {
@@ -184,7 +182,10 @@ async function main() {
             throw new Error(`Staged manifest mismatch for ${pkg.name}: expected version ${version}, found ${manifest.version}`);
         }
 
-        await ensureVersionDoesNotAlreadyExist(manifest.name, version);
+        if (await versionAlreadyExists(manifest.name, version)) {
+            console.log(`skipping ${manifest.name}@${version}; already published`);
+            continue;
+        }
 
         if (dryRun) {
             console.log(`[dry-run] packaging ${manifest.name} from ${stagedPackageDir}`);
