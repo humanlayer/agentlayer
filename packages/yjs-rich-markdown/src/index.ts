@@ -6,3 +6,6 @@ export { ArtifactAlreadyExistsError, ArtifactNotFoundError, RichMarkdownArtifact
 export { markdownToTiptapJson, readArtifactMarkdown, tiptapJsonToMarkdown, writeArtifactMarkdown } from './markdown'
 export type { ArtifactCollaborationMode, ArtifactCollaborationOptions } from './tiptap-bindings'
 export { artifactCollaborationExtension, artifactFragment, defaultRichMarkdownExtensions } from './tiptap-bindings'
+export type { YXmlNodeKind, YXmlNodeRef, YXmlNodeSpec, YXmlNodeSummary, YXmlProxy } from './yxml-proxy'
+export { YXmlProxyBindings } from './yxml-proxy'
+export { YXML_PROXY_AGENT_PROMPT } from './yxml-proxy-prompt'
