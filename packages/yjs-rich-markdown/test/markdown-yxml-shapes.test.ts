@@ -41,11 +41,15 @@ describe('Markdown to YXml shapes', () => {
 	})
 
 	test('horizontal rule', () => {
-		expect(xmlFor('Before\n\n---\n\nAfter')).toBe('<paragraph>Before</paragraph><horizontalrule></horizontalrule><paragraph>After</paragraph>')
+		expect(xmlFor('Before\n\n---\n\nAfter')).toBe(
+			'<paragraph>Before</paragraph><horizontalrule></horizontalrule><paragraph>After</paragraph>',
+		)
 	})
 
 	test('hard break inside paragraph', () => {
-		expect(xmlFor('First line\\\nSecond line')).toBe('<paragraph>First line<hardbreak></hardbreak>Second line</paragraph>')
+		expect(xmlFor('First line\\\nSecond line')).toBe(
+			'<paragraph>First line<hardbreak></hardbreak>Second line</paragraph>',
+		)
 	})
 
 	test('single-line fenced code block', () => {
@@ -59,7 +63,9 @@ describe('Markdown to YXml shapes', () => {
 	})
 
 	test('indented code block', () => {
-		expect(xmlFor('    const value = 1\n    console.log(value)')).toBe('<codeblock>const value = 1\nconsole.log(value)</codeblock>')
+		expect(xmlFor('    const value = 1\n    console.log(value)')).toBe(
+			'<codeblock>const value = 1\nconsole.log(value)</codeblock>',
+		)
 	})
 
 	test('strikethrough', () => {

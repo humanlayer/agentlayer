@@ -56,7 +56,9 @@ describe('YXml proxy', () => {
 			content: [{ kind: 'element', nodeName: 'paragraph', children: [{ kind: 'text', text: 'After' }] }],
 		})
 
-		expect(proxy.toString()).toBe('<paragraph>Before</paragraph><paragraph>Middle</paragraph><paragraph>After</paragraph>')
+		expect(proxy.toString()).toBe(
+			'<paragraph>Before</paragraph><paragraph>Middle</paragraph><paragraph>After</paragraph>',
+		)
 	})
 
 	test('appends nested content inside an element parent', () => {
@@ -78,7 +80,9 @@ describe('YXml proxy', () => {
 				{
 					kind: 'element',
 					nodeName: 'listItem',
-					children: [{ kind: 'element', nodeName: 'paragraph', children: [{ kind: 'text', text: 'Second' }] }],
+					children: [
+						{ kind: 'element', nodeName: 'paragraph', children: [{ kind: 'text', text: 'Second' }] },
+					],
 				},
 			],
 		})
@@ -94,7 +98,14 @@ describe('YXml proxy', () => {
 		const proxy = new YXmlProxyBindings(fragment)
 
 		const [heading] = proxy.append({
-			content: [{ kind: 'element', nodeName: 'heading', attributes: { level: '2' }, children: [{ kind: 'text', text: 'Title' }] }],
+			content: [
+				{
+					kind: 'element',
+					nodeName: 'heading',
+					attributes: { level: '2' },
+					children: [{ kind: 'text', text: 'Title' }],
+				},
+			],
 		})
 		if (!heading) throw new Error('Expected heading node')
 
@@ -121,7 +132,13 @@ describe('YXml proxy', () => {
 						{
 							kind: 'element',
 							nodeName: 'listItem',
-							children: [{ kind: 'element', nodeName: 'paragraph', children: [{ kind: 'text', text: 'Existing bullet' }] }],
+							children: [
+								{
+									kind: 'element',
+									nodeName: 'paragraph',
+									children: [{ kind: 'text', text: 'Existing bullet' }],
+								},
+							],
 						},
 					],
 				},
@@ -135,7 +152,9 @@ describe('YXml proxy', () => {
 				{
 					kind: 'element',
 					nodeName: 'listItem',
-					children: [{ kind: 'element', nodeName: 'paragraph', children: [{ kind: 'text', text: 'Added bullet' }] }],
+					children: [
+						{ kind: 'element', nodeName: 'paragraph', children: [{ kind: 'text', text: 'Added bullet' }] },
+					],
 				},
 			],
 		})
@@ -151,7 +170,14 @@ describe('YXml proxy', () => {
 		const proxy = new YXmlProxyBindings(fragment)
 
 		const [heading] = proxy.append({
-			content: [{ kind: 'element', nodeName: 'heading', attributes: { level: '2' }, children: [{ kind: 'text', text: 'Details' }] }],
+			content: [
+				{
+					kind: 'element',
+					nodeName: 'heading',
+					attributes: { level: '2' },
+					children: [{ kind: 'text', text: 'Details' }],
+				},
+			],
 		})
 		if (!heading) throw new Error('Expected heading node')
 
@@ -172,19 +198,29 @@ describe('YXml proxy', () => {
 					kind: 'element',
 					nodeName: 'section',
 					attributes: { id: 'intro' },
-					children: [{ kind: 'element', nodeName: 'paragraph', children: [{ kind: 'text', text: 'Keep intro.' }] }],
+					children: [
+						{ kind: 'element', nodeName: 'paragraph', children: [{ kind: 'text', text: 'Keep intro.' }] },
+					],
 				},
 				{
 					kind: 'element',
 					nodeName: 'section',
 					attributes: { id: 'obsolete' },
-					children: [{ kind: 'element', nodeName: 'paragraph', children: [{ kind: 'text', text: 'Delete this section.' }] }],
+					children: [
+						{
+							kind: 'element',
+							nodeName: 'paragraph',
+							children: [{ kind: 'text', text: 'Delete this section.' }],
+						},
+					],
 				},
 				{
 					kind: 'element',
 					nodeName: 'section',
 					attributes: { id: 'ending' },
-					children: [{ kind: 'element', nodeName: 'paragraph', children: [{ kind: 'text', text: 'Keep ending.' }] }],
+					children: [
+						{ kind: 'element', nodeName: 'paragraph', children: [{ kind: 'text', text: 'Keep ending.' }] },
+					],
 				},
 			],
 		})
@@ -230,7 +266,10 @@ describe('YXml proxy', () => {
 		if (!text) throw new Error('Expected text node')
 
 		expect(() =>
-			proxy.append({ parent: text, content: [{ kind: 'element', nodeName: 'paragraph', children: [{ kind: 'text', text: 'Nope' }] }] }),
+			proxy.append({
+				parent: text,
+				content: [{ kind: 'element', nodeName: 'paragraph', children: [{ kind: 'text', text: 'Nope' }] }],
+			}),
 		).toThrow('Expected a fragment or element node')
 	})
 })

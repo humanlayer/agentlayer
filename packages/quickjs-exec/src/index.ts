@@ -42,7 +42,10 @@ export async function withQuickJsMode<T>(bindings: QuickJsBindings, cb: WithQuic
 	}
 }
 
-export async function withAsyncQuickJsMode<T>(bindings: QuickJsBindings, cb: WithAsyncQuickJsModeCallback<T>): Promise<T> {
+export async function withAsyncQuickJsMode<T>(
+	bindings: QuickJsBindings,
+	cb: WithAsyncQuickJsModeCallback<T>,
+): Promise<T> {
 	const context = await newAsyncContext()
 	const disposableHandles: QuickJSHandle[] = []
 
@@ -81,7 +84,11 @@ async function runAsync<T>(context: Awaited<ReturnType<typeof newAsyncContext>>,
 	}
 }
 
-function installSyncBindings(input: { vm: QuickJSContext; bindings: QuickJsBindings; disposableHandles: QuickJSHandle[] }): void {
+function installSyncBindings(input: {
+	vm: QuickJSContext
+	bindings: QuickJsBindings
+	disposableHandles: QuickJSHandle[]
+}): void {
 	for (const [name, fn] of Object.entries(input.bindings)) {
 		const handle = input.vm.newFunction(name, (...args) => {
 			const output = fn(...args.map((arg) => input.vm.dump(arg)))

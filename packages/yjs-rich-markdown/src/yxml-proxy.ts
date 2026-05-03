@@ -45,7 +45,6 @@ type YXmlContainer = Y.XmlFragment | Y.XmlElement
 type YXmlNode = YXmlContainer | Y.XmlText
 type InsertableYXmlNode = Y.XmlElement | Y.XmlText
 
-
 export class YXmlProxyBindings implements YXmlProxy {
 	private readonly nodes = new Map<string, YXmlNode>()
 	private readonly refs = new WeakMap<object, YXmlNodeRef>()
@@ -72,7 +71,9 @@ export class YXmlProxyBindings implements YXmlProxy {
 	}
 
 	children(input: { node?: YXmlNodeRef } = {}): YXmlNodeRef[] {
-		return this.resolveContainer(input.node).slice().map((node) => this.register(node))
+		return this.resolveContainer(input.node)
+			.slice()
+			.map((node) => this.register(node))
 	}
 
 	get({ node, index }: { node?: YXmlNodeRef; index: number }): YXmlNodeRef {
