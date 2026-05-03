@@ -82,6 +82,7 @@
       "devDependencies": {
         "@ai-sdk/provider": "catalog:",
         "@humanlayer/agentlayer-core": "workspace:*",
+        "@humanlayer/quickjs-exec": "workspace:*",
         "@tanstack/ai": "0.14.0",
         "@tanstack/ai-code-mode": "0.1.8",
         "@tanstack/ai-isolate-quickjs": "0.1.8",
@@ -243,6 +244,19 @@
         "vitepress-plugin-search": "1.0.4-alpha.22",
         "vitepress-sidebar": "1.33.1",
         "vue": "3.5.32",
+      },
+      "peerDependencies": {
+        "typescript": "^5",
+      },
+    },
+    "packages/quickjs-exec": {
+      "name": "@humanlayer/quickjs-exec",
+      "version": "0.0.0",
+      "dependencies": {
+        "quickjs-emscripten": "^0.31.0",
+      },
+      "devDependencies": {
+        "@types/bun": "latest",
       },
       "peerDependencies": {
         "typescript": "^5",
@@ -594,6 +608,8 @@
     "@humanlayer/codelayer": ["@humanlayer/codelayer@workspace:agents/codelayer"],
 
     "@humanlayer/docs-agent": ["@humanlayer/docs-agent@workspace:agents/docs-agent"],
+
+    "@humanlayer/quickjs-exec": ["@humanlayer/quickjs-exec@workspace:packages/quickjs-exec"],
 
     "@humanlayer/yjs-fs": ["@humanlayer/yjs-fs@workspace:packages/yjs-fs"],
 
@@ -2429,6 +2445,8 @@
 
     "@humanlayer/codelayer/@types/bun": ["@types/bun@1.3.13", "", { "dependencies": { "bun-types": "1.3.13" } }, "sha512-9fqXWk5YIHGGnUau9TEi+qdlTYDAnOj+xLCmSTwXfAIqXr2x4tytJb43E9uCvt09zJURKXwAtkoH4nLQfzeTXw=="],
 
+    "@humanlayer/quickjs-exec/@types/bun": ["@types/bun@1.3.13", "", { "dependencies": { "bun-types": "1.3.13" } }, "sha512-9fqXWk5YIHGGnUau9TEi+qdlTYDAnOj+xLCmSTwXfAIqXr2x4tytJb43E9uCvt09zJURKXwAtkoH4nLQfzeTXw=="],
+
     "@humanlayer/yjs-fs/@types/bun": ["@types/bun@1.3.13", "", { "dependencies": { "bun-types": "1.3.13" } }, "sha512-9fqXWk5YIHGGnUau9TEi+qdlTYDAnOj+xLCmSTwXfAIqXr2x4tytJb43E9uCvt09zJURKXwAtkoH4nLQfzeTXw=="],
 
     "@humanlayer/yjs-fs-editor/@durable-streams/server": ["@durable-streams/server@0.1.7", "", { "dependencies": { "@durable-streams/client": "0.2.0", "@durable-streams/state": "0.2.0", "@neophi/sieve-cache": "^1.0.0", "lmdb": "^3.3.0" } }, "sha512-JaCzfKS/GI3ZlbmInHvqX/fAh6XENTjc+acfhRlZH9iaRQiD1rOjfircj+jFDTIHgeT9oPqOVscmISGot8kI3w=="],
@@ -2638,6 +2656,8 @@
     "@humanlayer/agentlayer-provider-openai-codex/@types/bun/bun-types": ["bun-types@1.3.13", "", { "dependencies": { "@types/node": "*" } }, "sha512-QXKeHLlOLqQX9LgYaHJfzdBaV21T63HhFJnvuRCcjZiaUDpbs5ED1MgxbMra71CsryN/1dAoXuJJJwIv/2drVA=="],
 
     "@humanlayer/codelayer/@types/bun/bun-types": ["bun-types@1.3.13", "", { "dependencies": { "@types/node": "*" } }, "sha512-QXKeHLlOLqQX9LgYaHJfzdBaV21T63HhFJnvuRCcjZiaUDpbs5ED1MgxbMra71CsryN/1dAoXuJJJwIv/2drVA=="],
+
+    "@humanlayer/quickjs-exec/@types/bun/bun-types": ["bun-types@1.3.13", "", { "dependencies": { "@types/node": "*" } }, "sha512-QXKeHLlOLqQX9LgYaHJfzdBaV21T63HhFJnvuRCcjZiaUDpbs5ED1MgxbMra71CsryN/1dAoXuJJJwIv/2drVA=="],
 
     "@humanlayer/yjs-fs-editor/@durable-streams/server/@durable-streams/client": ["@durable-streams/client@0.2.0", "", { "dependencies": { "@microsoft/fetch-event-source": "^2.0.1", "fastq": "^1.19.1" } }, "sha512-nlrbXDjQDqOsFbVFplg0OHkXwy4EAtztARg4zvaTn53WHzMCUwuiIY+V+u3AGvUWA9GJnnjRrbPKIXGkvak1CQ=="],
 

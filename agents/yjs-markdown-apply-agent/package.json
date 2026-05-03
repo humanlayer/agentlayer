@@ -16,6 +16,7 @@
 	"devDependencies": {
 		"@ai-sdk/provider": "catalog:",
 		"@humanlayer/agentlayer-core": "workspace:*",
+		"@humanlayer/quickjs-exec": "workspace:*",
 		"@tanstack/ai": "0.14.0",
 		"@tanstack/ai-code-mode": "0.1.8",
 		"@tanstack/ai-isolate-quickjs": "0.1.8",

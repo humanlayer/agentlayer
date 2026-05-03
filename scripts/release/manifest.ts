@@ -34,6 +34,10 @@ export const publishablePackages = [
         dir: "packages/agentlayer-provider-openai-codex",
     },
     {
+        name: "@humanlayer/quickjs-exec",
+        dir: "packages/quickjs-exec",
+    },
+    {
         name: "@humanlayer/yjs-fs",
         dir: "packages/yjs-fs",
     },

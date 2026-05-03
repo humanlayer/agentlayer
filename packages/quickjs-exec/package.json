@@ -1,0 +1,45 @@
+{
+	"name": "@humanlayer/quickjs-exec",
+	"source": "./src/index.ts",
+	"type": "module",
+	"version": "0.0.0",
+	"private": false,
+	"main": "./dist/index.js",
+	"module": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"publishConfig": {
+		"access": "public"
+	},
+	"files": [
+		"src",
+		"dist"
+	],
+	"exports": {
+		".": {
+			"bun": "./src/index.ts",
+			"source": "./src/index.ts",
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js",
+			"default": "./dist/index.js"
+		}
+	},
+	"scripts": {
+		"typecheck": "tsgo --noEmit",
+		"build": "bun run build:js && bunx tsc -p tsconfig.build.json",
+		"build:js": "bun run build.ts",
+		"build:types": "bunx tsc -p tsconfig.build.json"
+	},
+	"devDependencies": {
+		"@types/bun": "latest"
+	},
+	"peerDependencies": {
+		"typescript": "^5"
+	},
+	"dependencies": {
+		"quickjs-emscripten": "^0.31.0"
+	},
+	"author": {
+		"name": "Kyle Mistele",
+		"url": "https://x.com/0xblacklight"
+	}
+}
