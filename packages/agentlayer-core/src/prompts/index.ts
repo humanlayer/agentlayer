@@ -18,6 +18,7 @@ import GLOB_DESCRIPTION from './glob.txt'
 import GREP_DESCRIPTION from './grep.txt'
 import LIST_DESCRIPTION from './list.txt'
 import MULTI_EDIT_DESCRIPTION from './multiedit.txt'
+import ORCHESTRATOR_PROMPT from './orchestrator.txt'
 import { claudePrompt, codexPrompt, defaultPrompt, geminiPrompt, openaiPrompt, tarsPersona } from './providers'
 import READ_DESCRIPTION from './read.txt'
 import { type RepoInstructionsPromptOptions, repoInstructionsPrompt } from './repo-instructions'
@@ -48,6 +49,7 @@ export {
 	LIST_DESCRIPTION,
 	MULTI_EDIT_DESCRIPTION,
 	openaiPrompt,
+	ORCHESTRATOR_PROMPT,
 	READ_DESCRIPTION,
 	repoInstructionsPrompt,
 	resolveCodingModelPrompt,

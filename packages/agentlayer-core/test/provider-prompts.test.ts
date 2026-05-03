@@ -7,6 +7,7 @@ import {
 	detectModelFamily,
 	geminiPrompt,
 	openaiPrompt,
+	ORCHESTRATOR_PROMPT,
 	resolveCodingModelPrompt,
 	systemPrompts,
 	tarsPersona,
@@ -58,5 +59,10 @@ describe('provider system prompts', () => {
 
 	test('exports tars persona factory', () => {
 		expect(tarsPersona(25)).toContain('You are TARS')
+	})
+
+	test('exports orchestrator prompt', () => {
+		expect(ORCHESTRATOR_PROMPT).toContain('# Sub-Agent Orchestration')
+		expect(ORCHESTRATOR_PROMPT).toContain('delegate tasks with significant overlap')
 	})
 })
