@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import type { LanguageModel } from 'ai'
-import type { AgentConfig } from '@humanlayer/agentlayer-core'
+import type { AgentConfig, PostToolUseHook, SubAgentConfig, Tool } from '@humanlayer/agentlayer-core'
+import { saneDefaultOutputTruncationHooks } from '@humanlayer/agentlayer-filesystem/hooks'
 import { buildProviderOptions, createCodelayerAgent } from '../src/agent'
 import { createCodingSubagentTool } from '../src/coding-subagent-tool'
 import { parseProviderOptionOverrides } from '../src/command'
@@ -42,6 +43,16 @@ function getSystemEntries(agent: object): string[] {
 	const system = getAgentConfig(agent).system
 	if (!system) return []
 	return Array.isArray(system) ? system : [system]
+}
+
+function expectDefaultTruncationHooksFirst(hooks: AgentConfig['hooks']) {
+	expect(hooks?.postToolUse?.slice(0, saneDefaultOutputTruncationHooks.length)).toEqual(
+		saneDefaultOutputTruncationHooks,
+	)
+}
+
+function getSubagents(tool: unknown): SubAgentConfig[] {
+	return (tool as Tool & { subagents?: SubAgentConfig[] }).subagents ?? []
 }
 
 describe('createCodelayerAgent', () => {
@@ -157,6 +168,51 @@ describe('createCodelayerAgent', () => {
 		expect(config.tools?.web_fetch).toBeUndefined()
 		expect(config.tools?.read).toBeDefined()
 		expect(config.tools?.agent).toBeDefined()
+	})
+
+	test('prepends default truncation hooks before file-state and user hooks for standard agents', async () => {
+		const userPostHook: PostToolUseHook = (ctx) => ctx.done()
+		const agent = await createCodelayerAgent({
+			model: createMockModel('claude-sonnet-4-5'),
+			cwd: '/tmp',
+			hooks: { postToolUse: [userPostHook] },
+		})
+		const postToolUse = getAgentConfig(agent).hooks?.postToolUse ?? []
+
+		expectDefaultTruncationHooksFirst(getAgentConfig(agent).hooks)
+		expect(postToolUse.at(-1)).toBe(userPostHook)
+		expect(postToolUse.length).toBeGreaterThan(saneDefaultOutputTruncationHooks.length + 1)
+	})
+
+	test('prepends default truncation hooks before file-state and user hooks for rlm agents', async () => {
+		const userPostHook: PostToolUseHook = (ctx) => ctx.done()
+		const agent = await createCodelayerAgent({
+			model: createMockModel('gpt-5.4'),
+			cwd: '/tmp',
+			rlm: true,
+			hooks: { postToolUse: [userPostHook] },
+		})
+		const postToolUse = getAgentConfig(agent).hooks?.postToolUse ?? []
+
+		expectDefaultTruncationHooksFirst(getAgentConfig(agent).hooks)
+		expect(postToolUse.at(-1)).toBe(userPostHook)
+		expect(postToolUse.length).toBeGreaterThan(saneDefaultOutputTruncationHooks.length + 1)
+	})
+
+	test('prepends default truncation hooks before inherited user hooks for subagents', async () => {
+		const userPostHook: PostToolUseHook = (ctx) => ctx.done()
+		const agent = await createCodelayerAgent({
+			model: createMockModel('claude-sonnet-4-5'),
+			cwd: '/tmp',
+			hooks: { postToolUse: [userPostHook] },
+		})
+		const subagentTool = getAgentConfig(agent).tools?.agent
+		const subagent = getSubagents(subagentTool).find((candidate) => candidate.name === 'general-purpose')
+		const postToolUse = getAgentConfig(subagent?.agent ?? {}).hooks?.postToolUse ?? []
+
+		expectDefaultTruncationHooksFirst(getAgentConfig(subagent?.agent ?? {}).hooks)
+		expect(postToolUse.at(-1)).toBe(userPostHook)
+		expect(postToolUse.length).toBeGreaterThan(saneDefaultOutputTruncationHooks.length + 1)
 	})
 
 	test('propagates context7 support into the subagent tool inventory', async () => {
