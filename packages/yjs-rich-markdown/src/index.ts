@@ -7,5 +7,14 @@ export { markdownToTiptapJson, readArtifactMarkdown, tiptapJsonToMarkdown, write
 export type { ArtifactCollaborationMode, ArtifactCollaborationOptions } from './tiptap-bindings'
 export { artifactCollaborationExtension, artifactFragment, defaultRichMarkdownExtensions } from './tiptap-bindings'
 export type { YXmlNodeKind, YXmlNodeRef, YXmlNodeSpec, YXmlNodeSummary, YXmlProxy } from './yxml-proxy'
-export { YXmlProxyBindings } from './yxml-proxy'
+export {
+	DetachedYXmlNodeRefError,
+	UnknownYXmlNodeRefError,
+	YXmlChildIndexOutOfBoundsError,
+	YXmlInvalidNodeKindForOperationError,
+	YXmlNodeRefKindMismatchError,
+	YXmlProxyBindings,
+	YXmlProxyError,
+	YXmlRootOperationError,
+} from './yxml-proxy'
 export { YXML_PROXY_AGENT_PROMPT } from './yxml-proxy-prompt'

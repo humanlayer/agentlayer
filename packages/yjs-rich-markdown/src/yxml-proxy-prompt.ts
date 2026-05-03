@@ -63,7 +63,7 @@ export const YXML_PROXY_AGENT_PROMPT = dedent`
 	- Do not append children to a text node. Only fragment and element nodes can contain children.
 	- Build nested content by nesting \`children\` arrays in \`NodeSpec\` objects.
 	- Prefer structural edits over string replacement of the full XML.
-	- When creating common markdown structures, use the YXml element names listed below. These are the serialized YXml names produced by TipTap StarterKit and y-prosemirror.
+	- When creating common markdown structures, use the canonical TipTap/ProseMirror node names listed below. Some of these serialize to lowercase in XML strings, but generated \`NodeSpec\` content should use canonical names.
 	- Return a small JSON object with \`ok\`, \`beforeXml\`, and \`afterXml\`.
 
 	Common markdown YXml elements:
@@ -75,18 +75,18 @@ export const YXML_PROXY_AGENT_PROMPT = dedent`
 	- Strikethrough mark: \`{ kind: 'element', nodeName: 'strike', children: [...] }\`
 	- Inline code mark: \`{ kind: 'element', nodeName: 'code', children: [{ kind: 'text', text: 'code' }] }\`
 	- Link mark: \`{ kind: 'element', nodeName: 'link', attributes: { href: 'https://example.com', target: '_blank', rel: 'noopener noreferrer nofollow', class: 'null', title: 'null' }, children: [...] }\`
-	- Bullet list: \`{ kind: 'element', nodeName: 'bulletlist', children: [...] }\`
-	- Ordered list: \`{ kind: 'element', nodeName: 'orderedlist', attributes: { start: '1' }, children: [...] }\`
-	- List item: \`{ kind: 'element', nodeName: 'listitem', children: [{ kind: 'element', nodeName: 'paragraph', children: [...] }] }\`
+	- Bullet list: \`{ kind: 'element', nodeName: 'bulletList', children: [...] }\`
+	- Ordered list: \`{ kind: 'element', nodeName: 'orderedList', attributes: { start: '1' }, children: [...] }\`
+	- List item: \`{ kind: 'element', nodeName: 'listItem', children: [{ kind: 'element', nodeName: 'paragraph', children: [...] }] }\`
 	- Blockquote: \`{ kind: 'element', nodeName: 'blockquote', children: [{ kind: 'element', nodeName: 'paragraph', children: [...] }] }\`
-	- Horizontal rule: \`{ kind: 'element', nodeName: 'horizontalrule' }\`
-	- Hard break inside a paragraph: \`{ kind: 'element', nodeName: 'hardbreak' }\`
-	- Fenced code block with language: \`{ kind: 'element', nodeName: 'codeblock', attributes: { language: 'ts' }, children: [{ kind: 'text', text: 'const value = 1' }] }\`
+	- Horizontal rule: \`{ kind: 'element', nodeName: 'horizontalRule' }\`
+	- Hard break inside a paragraph: \`{ kind: 'element', nodeName: 'hardBreak' }\`
+	- Fenced code block with language: \`{ kind: 'element', nodeName: 'codeBlock', attributes: { language: 'ts' }, children: [{ kind: 'text', text: 'const value = 1' }] }\`
 	- Multi-line code block: use one text child containing newline characters, e.g. \`{ kind: 'text', text: 'const value = 1\\nconsole.log(value)' }\`.
 
 	Other elements may appear in normal usage. If you see these, do your best to follow existing patterns. 
 
-	Important casing note: use lowercase multi-word YXml node names when creating nodes manually: \`bulletlist\`, \`listitem\`, \`orderedlist\`, \`codeblock\`, \`hardbreak\`, and \`horizontalrule\`. Do not use TipTap camelCase names like \`bulletList\` or \`codeBlock\` in generated \`NodeSpec\` content.
+	Important casing note: use canonical camelCase names when creating multi-word TipTap nodes manually: \`bulletList\`, \`listItem\`, \`orderedList\`, \`codeBlock\`, \`hardBreak\`, and \`horizontalRule\`. The XML string returned by \`bindings.toString({})\` may show lowercase names like \`<bulletlist>\` or \`<codeblock>\`; do not copy that casing into new \`NodeSpec\` content.
 
 	Example: add a paragraph after the first top-level node.
 
@@ -132,16 +132,16 @@ export const YXML_PROXY_AGENT_PROMPT = dedent`
 	    },
 	    {
 	      kind: 'element',
-	      nodeName: 'bulletlist',
+	      nodeName: 'bulletList',
 	      children: [
 	        {
 	          kind: 'element',
-	          nodeName: 'listitem',
+	          nodeName: 'listItem',
 	          children: [{ kind: 'element', nodeName: 'paragraph', children: [{ kind: 'text', text: 'Use scoped NodeRefs.' }] }],
 	        },
 	        {
 	          kind: 'element',
-	          nodeName: 'listitem',
+	          nodeName: 'listItem',
 	          children: [{ kind: 'element', nodeName: 'paragraph', children: [{ kind: 'text', text: 'Validate after mutation.' }] }],
 	        },
 	      ],
@@ -151,10 +151,10 @@ export const YXML_PROXY_AGENT_PROMPT = dedent`
 	      nodeName: 'blockquote',
 	      children: [{ kind: 'element', nodeName: 'paragraph', children: [{ kind: 'text', text: 'Bindings keep generated code sandbox-safe.' }] }],
 	    },
-	    { kind: 'element', nodeName: 'horizontalrule' },
+	    { kind: 'element', nodeName: 'horizontalRule' },
 	    {
 	      kind: 'element',
-	      nodeName: 'codeblock',
+	      nodeName: 'codeBlock',
 	      attributes: { language: 'ts' },
 	      children: [{ kind: 'text', text: 'const root = bindings.root()\\nconst xml = bindings.toString({})' }],
 	    },
@@ -169,7 +169,7 @@ export const YXML_PROXY_AGENT_PROMPT = dedent`
 	\`\`\`js
 	const beforeXml = bindings.toString({})
 	const rootChildren = bindings.children({})
-	const list = rootChildren.find((node) => bindings.summary({ node }).nodeName === 'bulletlist')
+	const list = rootChildren.find((node) => bindings.summary({ node }).nodeName === 'bulletList')
 	if (!list) throw new Error('Could not find a bullet list')
 
 	bindings.append({
@@ -177,7 +177,7 @@ export const YXML_PROXY_AGENT_PROMPT = dedent`
 	  content: [
 	    {
 	      kind: 'element',
-	      nodeName: 'listitem',
+	      nodeName: 'listItem',
 	      children: [
 	        {
 	          kind: 'element',

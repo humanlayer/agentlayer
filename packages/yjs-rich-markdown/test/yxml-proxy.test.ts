@@ -1,6 +1,14 @@
 import { describe, expect, test } from 'bun:test'
 import * as Y from 'yjs'
-import { YXmlProxyBindings } from '../src'
+import {
+	DetachedYXmlNodeRefError,
+	UnknownYXmlNodeRefError,
+	YXmlChildIndexOutOfBoundsError,
+	YXmlInvalidNodeKindForOperationError,
+	YXmlNodeRefKindMismatchError,
+	YXmlProxyBindings,
+	YXmlRootOperationError,
+} from '../src'
 
 describe('YXml proxy', () => {
 	test('appends XML elements and nested children', () => {
@@ -90,6 +98,7 @@ describe('YXml proxy', () => {
 		expect(proxy.toString()).toBe(
 			'<bulletlist><listitem><paragraph>First</paragraph></listitem><listitem><paragraph>Second</paragraph></listitem></bulletlist>',
 		)
+		expect(proxy.summary({ node: list }).nodeName).toBe('bulletList')
 	})
 
 	test('sets and removes attributes on element refs', () => {
@@ -162,6 +171,7 @@ describe('YXml proxy', () => {
 		expect(proxy.toString()).toBe(
 			'<bulletlist><listitem><paragraph>Existing bullet</paragraph></listitem><listitem><paragraph>Added bullet</paragraph></listitem></bulletlist>',
 		)
+		expect(proxy.summary({ node: list }).nodeName).toBe('bulletList')
 	})
 
 	test('changes an existing element attribute', () => {
@@ -270,6 +280,79 @@ describe('YXml proxy', () => {
 				parent: text,
 				content: [{ kind: 'element', nodeName: 'paragraph', children: [{ kind: 'text', text: 'Nope' }] }],
 			}),
-		).toThrow('Expected a fragment or element node')
+		).toThrow(YXmlInvalidNodeKindForOperationError)
+	})
+
+	test('throws for unknown node refs', () => {
+		const doc = new Y.Doc()
+		const fragment = doc.getXmlFragment('artifact')
+		const proxy = new YXmlProxyBindings(fragment)
+
+		expect(() => proxy.summary({ node: { id: 'missing', kind: 'element' } })).toThrow(UnknownYXmlNodeRefError)
+	})
+
+	test('throws for node ref kind mismatches', () => {
+		const doc = new Y.Doc()
+		const fragment = doc.getXmlFragment('artifact')
+		const proxy = new YXmlProxyBindings(fragment)
+		const [paragraph] = proxy.append({
+			content: [{ kind: 'element', nodeName: 'paragraph', children: [{ kind: 'text', text: 'Text' }] }],
+		})
+		if (!paragraph) throw new Error('Expected paragraph node')
+
+		expect(() => proxy.summary({ node: { ...paragraph, kind: 'text' } })).toThrow(YXmlNodeRefKindMismatchError)
+	})
+
+	test('throws for child index out of bounds', () => {
+		const doc = new Y.Doc()
+		const fragment = doc.getXmlFragment('artifact')
+		const proxy = new YXmlProxyBindings(fragment)
+
+		expect(() => proxy.get({ index: 0 })).toThrow(YXmlChildIndexOutOfBoundsError)
+	})
+
+	test('throws when setting attributes on non-element refs', () => {
+		const doc = new Y.Doc()
+		const fragment = doc.getXmlFragment('artifact')
+		const proxy = new YXmlProxyBindings(fragment)
+		const root = proxy.root()
+
+		expect(() => proxy.setAttribute({ node: root, name: 'id', value: 'root' })).toThrow(
+			YXmlInvalidNodeKindForOperationError,
+		)
+	})
+
+	test('throws when removing or inserting relative to the root fragment', () => {
+		const doc = new Y.Doc()
+		const fragment = doc.getXmlFragment('artifact')
+		const proxy = new YXmlProxyBindings(fragment)
+		const root = proxy.root()
+
+		expect(() => proxy.remove({ node: root })).toThrow(YXmlRootOperationError)
+		expect(() =>
+			proxy.insertAfter({
+				ref: root,
+				content: [{ kind: 'element', nodeName: 'paragraph', children: [{ kind: 'text', text: 'Nope' }] }],
+			}),
+		).toThrow(YXmlRootOperationError)
+	})
+
+	test('throws for operations on detached node refs', () => {
+		const doc = new Y.Doc()
+		const fragment = doc.getXmlFragment('artifact')
+		const proxy = new YXmlProxyBindings(fragment)
+		const [paragraph] = proxy.append({
+			content: [{ kind: 'element', nodeName: 'paragraph', children: [{ kind: 'text', text: 'Delete me' }] }],
+		})
+		if (!paragraph) throw new Error('Expected paragraph node')
+
+		proxy.remove({ node: paragraph })
+
+		expect(() =>
+			proxy.insertAfter({
+				ref: paragraph,
+				content: [{ kind: 'element', nodeName: 'paragraph', children: [{ kind: 'text', text: 'Nope' }] }],
+			}),
+		).toThrow(DetachedYXmlNodeRefError)
 	})
 })
