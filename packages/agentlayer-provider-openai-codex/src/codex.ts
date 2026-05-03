@@ -147,6 +147,20 @@ interface CodexResponseReasoningSummaryTextDeltaEvent {
 	delta: string
 }
 
+interface CodexResponseFunctionCallArgumentsDeltaEvent {
+	type: 'response.function_call_arguments.delta'
+	item_id: string
+	output_index: number
+	delta: string
+}
+
+interface CodexResponseFunctionCallArgumentsDoneEvent {
+	type: 'response.function_call_arguments.done'
+	item_id: string
+	output_index: number
+	arguments: string
+}
+
 interface CodexResponseReasoningSummaryPartDoneEvent {
 	type: 'response.reasoning_summary_part.done'
 	item_id: string
@@ -175,6 +189,8 @@ type CodexSseEvent =
 	| CodexResponseReasoningSummaryPartAddedEvent
 	| CodexResponseReasoningSummaryTextDeltaEvent
 	| CodexResponseReasoningSummaryPartDoneEvent
+	| CodexResponseFunctionCallArgumentsDeltaEvent
+	| CodexResponseFunctionCallArgumentsDoneEvent
 	| CodexResponseFinishedEvent
 
 export function createCodexProvider(options: CodexProviderOptions): ProviderV3 {
@@ -233,7 +249,7 @@ export function createCodexLanguageModel(options: CodexModelOptions): LanguageMo
 			})
 
 			if (!response.ok) {
-				throw new Error(`Codex request failed: ${response.status}`)
+				throw new Error(`Codex request failed: ${response.status} ${await response.text()}`)
 			}
 
 			const streamed = await parseCodexSseResponse(response)
@@ -260,7 +276,7 @@ export function createCodexLanguageModel(options: CodexModelOptions): LanguageMo
 			})
 
 			if (!response.ok) {
-				throw new Error(`Codex request failed: ${response.status}`)
+				throw new Error(`Codex request failed: ${response.status} ${await response.text()}`)
 			}
 
 			return {
@@ -407,19 +423,23 @@ export function transformCodexPrompt(prompt: LanguageModelV3Prompt): {
 				}
 
 				if (part.type === 'text') {
+					const itemId = readItemIdFromProviderOptions(part.providerOptions)
 					input.push({
 						role: 'assistant',
 						content: [{ type: 'output_text', text: part.text }],
+						...(itemId !== undefined ? { id: itemId } : {}),
 					})
 					continue
 				}
 
 				if (part.type === 'tool-call') {
+					const itemId = readItemIdFromProviderOptions(part.providerOptions)
 					input.push({
 						type: 'function_call',
 						call_id: part.toolCallId,
 						name: part.toolName,
 						arguments: typeof part.input === 'string' ? part.input : JSON.stringify(part.input),
+						...(itemId !== undefined ? { id: itemId } : {}),
 					})
 				}
 			}
@@ -513,6 +533,7 @@ export function createCodexSseStream(response: Response): ReadableStream<Languag
 				number,
 				{ canonicalId: string; encryptedContent?: string | null; summaryParts: Set<number> }
 			>()
+			const activeFunctionCalls = new Map<number, { itemId: string; toolCallId: string; toolName: string }>()
 			let responseId: string | undefined
 			controller.enqueue({ type: 'stream-start', warnings: [] })
 
@@ -533,7 +554,13 @@ export function createCodexSseStream(response: Response): ReadableStream<Languag
 							hasFunctionCall = true
 						}
 
-						const streamParts = codexEventToStreamParts(event, hasFunctionCall, responseId, activeReasoning)
+						const streamParts = codexEventToStreamParts(
+							event,
+							hasFunctionCall,
+							responseId,
+							activeReasoning,
+							activeFunctionCalls,
+						)
 						for (const streamPart of streamParts) {
 							controller.enqueue(streamPart)
 							if (streamPart.type === 'finish') {
@@ -553,7 +580,13 @@ export function createCodexSseStream(response: Response): ReadableStream<Languag
 						hasFunctionCall = true
 					}
 
-					const streamParts = codexEventToStreamParts(event, hasFunctionCall, responseId, activeReasoning)
+					const streamParts = codexEventToStreamParts(
+						event,
+						hasFunctionCall,
+						responseId,
+						activeReasoning,
+						activeFunctionCalls,
+					)
 					for (const streamPart of streamParts) {
 						controller.enqueue(streamPart)
 						if (streamPart.type === 'finish') {
@@ -683,6 +716,7 @@ function codexEventToStreamParts(
 	hasFunctionCall: boolean,
 	responseId: string | undefined,
 	activeReasoning: Map<number, { canonicalId: string; encryptedContent?: string | null; summaryParts: Set<number> }>,
+	activeFunctionCalls: Map<number, { itemId: string; toolCallId: string; toolName: string }>,
 ): LanguageModelV3StreamPart[] {
 	if (event.type === 'response.created') {
 		return [
@@ -722,6 +756,23 @@ function codexEventToStreamParts(
 				),
 			},
 		]
+	}
+
+	if (event.type === 'response.output_item.added' && event.item.type === 'function_call') {
+		const toolCallId = event.item.call_id ?? event.item.id
+		const toolName = event.item.name ?? ''
+		activeFunctionCalls.set(event.output_index, { itemId: event.item.id, toolCallId, toolName })
+		return [{ type: 'tool-input-start', id: toolCallId, toolName }]
+	}
+
+	if (event.type === 'response.function_call_arguments.delta') {
+		const call = activeFunctionCalls.get(event.output_index)
+		return call ? [{ type: 'tool-input-delta', id: call.toolCallId, delta: event.delta }] : []
+	}
+
+	if (event.type === 'response.function_call_arguments.done') {
+		const call = activeFunctionCalls.get(event.output_index)
+		return call ? [{ type: 'tool-input-end', id: call.toolCallId }] : []
 	}
 
 	if (event.type === 'response.output_text.delta') {
@@ -792,6 +843,22 @@ function codexEventToStreamParts(
 			}))
 	}
 
+	if (event.type === 'response.output_item.done' && event.item.type === 'function_call') {
+		const call = activeFunctionCalls.get(event.output_index)
+		activeFunctionCalls.delete(event.output_index)
+		const toolCallId = event.item.call_id ?? call?.toolCallId ?? event.item.id
+		const toolName = event.item.name ?? call?.toolName ?? ''
+		return [
+			{
+				type: 'tool-call',
+				toolCallId,
+				toolName,
+				input: event.item.arguments ?? '{}',
+				providerMetadata: buildItemProviderMetadata(event.item.id, undefined, responseId),
+			},
+		]
+	}
+
 	if (
 		event.type === 'response.completed' ||
 		event.type === 'response.incomplete' ||
@@ -838,6 +905,10 @@ function parseSseEvent(rawEvent: string): CodexSseEvent | undefined {
 			return isReasoningSummaryTextDeltaEvent(parsed) ? parsed : undefined
 		case 'response.reasoning_summary_part.done':
 			return isReasoningSummaryPartDoneEvent(parsed) ? parsed : undefined
+		case 'response.function_call_arguments.delta':
+			return isFunctionCallArgumentsDeltaEvent(parsed) ? parsed : undefined
+		case 'response.function_call_arguments.done':
+			return isFunctionCallArgumentsDoneEvent(parsed) ? parsed : undefined
 		case 'response.completed':
 		case 'response.incomplete':
 		case 'response.failed':
@@ -892,6 +963,22 @@ function isReasoningSummaryPartDoneEvent(value: unknown): value is CodexResponse
 	return typeof value.item_id === 'string' && typeof value.summary_index === 'number'
 }
 
+function isFunctionCallArgumentsDeltaEvent(value: unknown): value is CodexResponseFunctionCallArgumentsDeltaEvent {
+	if (!isRecord(value)) return false
+	return (
+		typeof value.item_id === 'string' && typeof value.output_index === 'number' && typeof value.delta === 'string'
+	)
+}
+
+function isFunctionCallArgumentsDoneEvent(value: unknown): value is CodexResponseFunctionCallArgumentsDoneEvent {
+	if (!isRecord(value)) return false
+	return (
+		typeof value.item_id === 'string' &&
+		typeof value.output_index === 'number' &&
+		typeof value.arguments === 'string'
+	)
+}
+
 function isFinishedEvent(value: unknown): value is CodexResponseFinishedEvent {
 	return isRecord(value) && isRecord(value.response)
 }
@@ -913,7 +1000,10 @@ function getCodexProviderOptionRecord(
 	options: LanguageModelV3CallOptions,
 	providerName: 'openai' | 'codex',
 ): Record<string, unknown> | undefined {
-	const providerOptions = options.providerOptions?.[providerName]
+	let providerOptions = options.providerOptions?.[providerName]
+	if (!providerOptions && providerName === 'openai') {
+		providerOptions = options.providerOptions?.openaiCompatible
+	}
 	return isRecord(providerOptions) ? providerOptions : undefined
 }
 
@@ -1036,8 +1126,6 @@ function buildCodexRequestExtras(
 	const metadata = getMetadataRecord(openai, 'metadata') ?? getMetadataRecord(codex, 'metadata')
 	const parallelToolCalls =
 		getNullableBoolean(openai, 'parallelToolCalls') ?? getNullableBoolean(codex, 'parallelToolCalls')
-	const previousResponseId =
-		getNullableString(openai, 'previousResponseId') ?? getNullableString(codex, 'previousResponseId')
 	const promptCacheKey = getNullableString(openai, 'promptCacheKey') ?? getNullableString(codex, 'promptCacheKey')
 	const promptCacheRetention =
 		getNullableString(openai, 'promptCacheRetention') ?? getNullableString(codex, 'promptCacheRetention')
@@ -1051,7 +1139,6 @@ function buildCodexRequestExtras(
 		...(maxToolCalls !== undefined ? { max_tool_calls: maxToolCalls } : {}),
 		...(metadata ? { metadata } : {}),
 		...(parallelToolCalls !== undefined ? { parallel_tool_calls: parallelToolCalls } : {}),
-		...(previousResponseId !== undefined ? { previous_response_id: previousResponseId } : {}),
 		...(promptCacheKey !== undefined ? { prompt_cache_key: promptCacheKey } : {}),
 		...(promptCacheRetention !== undefined ? { prompt_cache_retention: promptCacheRetention } : {}),
 		...(reasoning ? { reasoning } : {}),
@@ -1059,6 +1146,20 @@ function buildCodexRequestExtras(
 		...(truncation !== undefined ? { truncation } : {}),
 		...(user !== undefined ? { user } : {}),
 	}
+}
+
+function readItemIdFromProviderOptions(value: unknown): string | undefined {
+	if (!isRecord(value)) {
+		return undefined
+	}
+
+	const openai = isRecord(value.openai) ? value.openai : undefined
+	const codex = isRecord(value.codex) ? value.codex : undefined
+	return typeof openai?.itemId === 'string'
+		? openai.itemId
+		: typeof codex?.itemId === 'string'
+			? codex.itemId
+			: undefined
 }
 
 function buildReasoningInput(part: {
@@ -1079,7 +1180,6 @@ function buildReasoningInput(part: {
 	if (itemId) {
 		return {
 			type: 'reasoning',
-			id: itemId,
 			...(reasoningEncryptedContent !== undefined ? { encrypted_content: reasoningEncryptedContent } : {}),
 			summary,
 		}

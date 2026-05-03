@@ -73,7 +73,7 @@ Provider options:
   --provider-option anthropic.thinking=enabled
   --provider-option anthropic.budgetTokens=10000`,
 		)
-		.option('-p, --provider <provider>', 'Provider: anthropic, openai, codex, copilot', 'anthropic')
+		.option('-p, --provider <provider>', 'Provider: anthropic, openai, codex, copilot, firepass', 'anthropic')
 		.option('-m, --model <model>', 'Model ID (defaults per provider)')
 		.option('--rlm', 'Run in RLM mode with subagent orchestration')
 		.option('--rpi', 'Enable RPI-style specialist subagents')

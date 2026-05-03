@@ -1,4 +1,3 @@
-import { anthropic } from '@ai-sdk/anthropic'
 import { Agent, extractLastAssistantText, maxSteps, startState } from '@humanlayer/agentlayer-core'
 import {
 	createGlobTool,
@@ -6,6 +5,7 @@ import {
 	createListTool,
 	createReadTool,
 } from '@humanlayer/agentlayer-filesystem/tools'
+import { DEFAULT_MODELS, resolveModel } from '@humanlayer/codelayer'
 
 export interface DocsReviewerOptions {
 	cwd: string
@@ -39,7 +39,7 @@ function buildHeuristicReview(changedFiles: string[]) {
 	const changedList = changedFiles.length > 0 ? changedFiles.map((file) => `- ${file}`).join('\n') : '- none'
 	return [
 		'## Verdict',
-		'Dry-run fallback: the Anthropic reviewer was not invoked, so this is a heuristic pass only.',
+		'Dry-run fallback: the Firepass reviewer was not invoked, so this is a heuristic pass only.',
 		'',
 		'## Recommended Updates',
 		'- Check whether any public API, tool contract, or runtime behavior changes need updates in `packages/docs/content/index.md` or `packages/docs/content/introduction/architecture.md`.',
@@ -55,12 +55,15 @@ export async function runDocsReviewer(opts: DocsReviewerOptions) {
 		return ['## Verdict', 'No relevant source changes were detected for docs review.', '', '## Recommended Updates', '- None.', '', '## Files Worth Updating', '- none'].join('\n')
 	}
 
-	if (!process.env.ANTHROPIC_API_KEY || opts.dryRun) {
+	if (opts.dryRun) {
 		return buildHeuristicReview(opts.changedFiles)
+	}
+	if (!process.env.FIREWORKS_API_KEY) {
+		throw new Error('FIREWORKS_API_KEY is required to run docs-agent review mode.')
 	}
 
 	const agent = new Agent({
-		model: anthropic('claude-sonnet-4-20250514'),
+		model: await resolveModel('firepass', DEFAULT_MODELS.firepass),
 		tools: {
 			read: createReadTool({ cwd: opts.cwd }),
 			glob: createGlobTool({ cwd: opts.cwd }),

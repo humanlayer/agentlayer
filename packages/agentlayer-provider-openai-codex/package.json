@@ -21,6 +21,7 @@
 		"build:types": "bunx tsc -p tsconfig.build.json"
 	},
 	"devDependencies": {
+		"@humanlayer/agentlayer-core": "workspace:*",
 		"@types/bun": "latest"
 	},
 	"peerDependencies": {
