@@ -30,26 +30,26 @@
 	},
 	"peerDependencies": {
 		"typescript": "^5",
-		"just-bash": "^2.0.0"
+		"just-bash": "^2.14.3"
 	},
 	"exports": {
 		".": {
-			"bun": "./src/index.ts",
 			"source": "./src/index.ts",
+			"bun": "./src/index.ts",
 			"types": "./dist/index.d.ts",
 			"import": "./dist/index.js",
 			"default": "./dist/index.js"
 		},
 		"./prompts": {
-			"bun": "./src/prompts/index.ts",
 			"source": "./src/prompts/index.ts",
+			"bun": "./src/prompts/index.ts",
 			"types": "./dist/prompts/index.d.ts",
 			"import": "./dist/prompts/index.js",
 			"default": "./dist/prompts/index.js"
 		},
 		"./tools": {
-			"bun": "./src/tools/index.ts",
 			"source": "./src/tools/index.ts",
+			"bun": "./src/tools/index.ts",
 			"types": "./dist/tools/index.d.ts",
 			"import": "./dist/tools/index.js",
 			"default": "./dist/tools/index.js"

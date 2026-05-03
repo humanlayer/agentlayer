@@ -295,7 +295,19 @@ export function useDirectoryEntries(path = '/'): EntryDirent[] {
 export function useFilesystemTree(path = '/'): FilesystemTreeNode {
 	const filesystem = useYjsFilesystem()
 	const version = useSubscriptionVersion(filesystem.subscribe.bind(filesystem))
-	return useMemo(() => filesystem.tree(path), [filesystem, path, version])
+	return useMemo(() => {
+		try {
+			return filesystem.tree(path)
+		} catch {
+			return {
+				entryId: 'root',
+				name: '',
+				path,
+				type: 'directory',
+				children: [],
+			}
+		}
+	}, [filesystem, path, version])
 }
 
 export const useTree = useFilesystemTree

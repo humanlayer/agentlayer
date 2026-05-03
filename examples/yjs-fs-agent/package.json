@@ -1,0 +1,29 @@
+{
+	"name": "@humanlayer/yjs-fs-agent-example",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"dev": "bun run src/run.ts",
+		"dev:justbash": "bun run src/run.ts --mode justbash",
+		"dev:secure-exec": "bun run src/run.ts --mode secure-exec",
+		"typecheck": "tsgo --noEmit"
+	},
+	"dependencies": {
+		"@ai-sdk/anthropic": "catalog:",
+		"@durable-streams/y-durable-streams": "^0.2.4",
+		"@humanlayer/agentlayer-core": "workspace:*",
+		"@humanlayer/agentlayer-yjs-fs": "workspace:*",
+		"@humanlayer/agentlayer-yjs-fs-justbash": "workspace:*",
+		"@humanlayer/agentlayer-yjs-fs-secure-exec": "workspace:*",
+		"@humanlayer/yjs-fs": "workspace:*",
+		"ai": "catalog:",
+		"secure-exec": "^0.2.1",
+		"y-protocols": "1.0.7",
+		"yjs": "13.6.30"
+	},
+	"devDependencies": {
+		"@types/bun": "latest",
+		"@typescript/native-preview": "7.0.0-dev.20260414.1"
+	}
+}

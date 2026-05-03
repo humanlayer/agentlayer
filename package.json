@@ -3,17 +3,17 @@
     "module": "index.ts",
     "type": "module",
     "scripts": {
-        "biome": "biome check . --write --unsafe",
-        "biome:check": "biome check .",
-        "build": "bun --filter '*' build",
+		"biome": "biome check . --write --unsafe",
+		"biome:check": "biome check .",
+		"build": "bun --filter '*' build",
 		"build:packages": "bun --filter './packages/*' --filter './agents/*' build",
-		"check": "bun --parallel 'typecheck' 'biome' 'test'",
+		"check": "bun --parallel 'typecheck' 'biome' 'test:ci'",
 		"dev": "bun --filter '*' dev",
 		"docs:build": "bun --filter '@humanlayer/agentlayer-docs' build",
 		"githooks": "mkdir -p scripts/hooks && cp scripts/hooks/pre-push $(git rev-parse --git-common-dir)/hooks/pre-push && chmod +x $(git rev-parse --git-common-dir)/hooks/pre-push",
-		"hook:prepush": "bun run check",
-		"test": "bun test ./packages/*/test/*.test.ts ./agents/*/test/*.test.ts",
-		"test:ci": "bun test ./packages/*/test/*.test.ts ./agents/*/test/*.test.ts",
+		"hook:prepush": "env -i HOME=\"$HOME\" PATH=\"$PATH\" TMPDIR=\"$TMPDIR\" bun check",
+		"test": "bun test --concurrency 16 **/*",
+		"test:ci": "bun test --conditions=source ./packages/*/test/*.test.ts ./agents/*/test/*.test.ts",
         "typecheck": "bun --filter '*' --parallel typecheck",
         "release:prepare": "bun run scripts/release/prepare.ts",
         "release:publish": "bun run scripts/release/publish.ts"
@@ -33,10 +33,11 @@
     "peerDependencies": {
         "typescript": "^5"
     },
-    "workspaces": [
-        "packages/*",
-        "agents/*"
-    ],
+	"workspaces": [
+		"packages/*",
+		"agents/*",
+		"examples/*"
+	],
     "catalog": {
         "@ai-sdk/anthropic": "3.0.69",
         "@ai-sdk/openai": "3.0.53",
@@ -47,6 +48,7 @@
         "@pulumi/pulumi": "3.231.0",
         "ai": "6.0.159",
         "commander": "14.0.3",
+        "minimatch": "10.1.1",
         "typescript": "5.9.3",
         "zod": "4.3.6"
     },

@@ -1,0 +1,62 @@
+{
+	"name": "@humanlayer/agentlayer-yjs-fs-justbash",
+	"source": "./src/index.ts",
+	"type": "module",
+	"version": "0.0.0",
+	"private": false,
+	"sideEffects": false,
+	"main": "./dist/index.js",
+	"module": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"publishConfig": {
+		"access": "public"
+	},
+	"files": [
+		"src",
+		"dist"
+	],
+	"scripts": {
+		"typecheck": "tsgo --noEmit",
+		"build": "bun run build:js && bunx tsc -p tsconfig.build.json",
+		"build:js": "bun run build.ts",
+		"build:types": "bunx tsc -p tsconfig.build.json"
+	},
+	"dependencies": {
+		"@humanlayer/agentlayer-core": "workspace:*",
+		"zod": "catalog:"
+	},
+	"devDependencies": {
+		"@types/bun": "latest",
+		"just-bash": "^2.14.3",
+		"yjs": "13.6.30",
+		"y-protocols": "1.0.7"
+	},
+	"peerDependencies": {
+		"@humanlayer/yjs-fs": "workspace:*",
+		"just-bash": "^2.14.3",
+		"typescript": "^5"
+	},
+	"exports": {
+		".": {
+			"source": "./src/index.ts",
+			"bun": "./src/index.ts",
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js",
+			"default": "./dist/index.js"
+		},
+		"./tools": {
+			"source": "./src/tools/index.ts",
+			"bun": "./src/tools/index.ts",
+			"types": "./dist/tools/index.d.ts",
+			"import": "./dist/tools/index.js",
+			"default": "./dist/tools/index.js"
+		},
+		"./hooks": {
+			"source": "./src/hooks/index.ts",
+			"bun": "./src/hooks/index.ts",
+			"types": "./dist/hooks/index.d.ts",
+			"import": "./dist/hooks/index.js",
+			"default": "./dist/hooks/index.js"
+		}
+	}
+}

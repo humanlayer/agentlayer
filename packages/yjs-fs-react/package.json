@@ -36,8 +36,8 @@
 	},
 	"exports": {
 		".": {
-			"bun": "./src/index.tsx",
 			"source": "./src/index.tsx",
+			"bun": "./src/index.tsx",
 			"types": "./dist/index.d.ts",
 			"import": "./dist/index.js",
 			"default": "./dist/index.js"

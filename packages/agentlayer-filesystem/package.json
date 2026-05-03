@@ -36,43 +36,43 @@
 	},
 	"exports": {
 		".": {
-			"bun": "./src/index.ts",
 			"source": "./src/index.ts",
+			"bun": "./src/index.ts",
 			"types": "./dist/index.d.ts",
 			"import": "./dist/index.js",
 			"default": "./dist/index.js"
 		},
 		"./utils": {
-			"bun": "./src/utils/index.ts",
 			"source": "./src/utils/index.ts",
+			"bun": "./src/utils/index.ts",
 			"types": "./dist/utils/index.d.ts",
 			"import": "./dist/utils/index.js",
 			"default": "./dist/utils/index.js"
 		},
 		"./tools": {
-			"bun": "./src/tools/index.ts",
 			"source": "./src/tools/index.ts",
+			"bun": "./src/tools/index.ts",
 			"types": "./dist/tools/index.d.ts",
 			"import": "./dist/tools/index.js",
 			"default": "./dist/tools/index.js"
 		},
 		"./hooks": {
-			"bun": "./src/hooks/index.ts",
 			"source": "./src/hooks/index.ts",
+			"bun": "./src/hooks/index.ts",
 			"types": "./dist/hooks/index.d.ts",
 			"import": "./dist/hooks/index.js",
 			"default": "./dist/hooks/index.js"
 		},
 		"./prompts": {
-			"bun": "./src/prompts/index.ts",
 			"source": "./src/prompts/index.ts",
+			"bun": "./src/prompts/index.ts",
 			"types": "./dist/prompts/index.d.ts",
 			"import": "./dist/prompts/index.js",
 			"default": "./dist/prompts/index.js"
 		},
 		"./coding-agent": {
-			"bun": "./src/coding-agent.ts",
 			"source": "./src/coding-agent.ts",
+			"bun": "./src/coding-agent.ts",
 			"types": "./dist/coding-agent.d.ts",
 			"import": "./dist/coding-agent.js",
 			"default": "./dist/coding-agent.js"
