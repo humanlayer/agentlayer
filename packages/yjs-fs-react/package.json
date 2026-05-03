@@ -24,7 +24,7 @@
 		"react": "^18.3.1",
 		"typescript": "catalog:",
 		"y-protocols": "1.0.7",
-		"yjs": "13.6.30"
+		"yjs": "^13.6.30"
 	},
 	"dependencies": {
 		"@humanlayer/yjs-fs": "workspace:*"
@@ -32,7 +32,7 @@
 	"peerDependencies": {
 		"react": "^18.3.1",
 		"y-protocols": "1.0.7",
-		"yjs": "13.6.30"
+		"yjs": "^13.6.30"
 	},
 	"exports": {
 		".": {

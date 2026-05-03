@@ -1,7 +1,7 @@
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import type { PackageManifest } from '../build/package-build'
+import type { PackageManifest } from '../build/package-build';
 
 export type WorkspaceReleaseEntry = {
     name: string;

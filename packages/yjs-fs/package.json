@@ -36,7 +36,7 @@
 	"peerDependencies": {
 		"lib0": "^0.2.0",
 		"typescript": "^5",
-		"yjs": "13.6.30",
+		"yjs": "^13.6.30",
 		"y-protocols": "1.0.7"
 	},
 	"exports": {
