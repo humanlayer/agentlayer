@@ -8,6 +8,7 @@ import {
 	YXmlNodeRefKindMismatchError,
 	YXmlProxyBindings,
 	YXmlRootOperationError,
+	YXmlTextRangeOutOfBoundsError,
 } from '../src'
 
 describe('YXml proxy', () => {
@@ -43,6 +44,22 @@ describe('YXml proxy', () => {
 		expect(proxy.toString()).toBe(
 			'<section id="intro"><heading level="2">Intro</heading><paragraph>Nested content works.</paragraph></section>',
 		)
+	})
+
+	test('exposes bound bindings for host environments like QuickJS', () => {
+		const doc = new Y.Doc()
+		const fragment = doc.getXmlFragment('artifact')
+		const proxy = new YXmlProxyBindings(fragment)
+
+		expect(proxy.bindings).not.toBe(proxy)
+		expect(proxy.bindings.root?.()).toEqual(proxy.root())
+
+		proxy.bindings.append?.({
+			content: [{ kind: 'element', nodeName: 'paragraph', children: [{ kind: 'text', text: 'Via bindings' }] }],
+		})
+
+		expect(proxy.bindings.toString?.()).toBe('<paragraph>Via bindings</paragraph>')
+		expect(proxy.toString()).toBe('<paragraph>Via bindings</paragraph>')
 	})
 
 	test('inserts before and after refs without passing parent', () => {
@@ -99,6 +116,303 @@ describe('YXml proxy', () => {
 			'<bulletlist><listitem><paragraph>First</paragraph></listitem><listitem><paragraph>Second</paragraph></listitem></bulletlist>',
 		)
 		expect(proxy.summary({ node: list }).nodeName).toBe('bulletList')
+	})
+
+	test('reads interleaved text and element children inside an element', () => {
+		const doc = new Y.Doc()
+		const fragment = doc.getXmlFragment('artifact')
+		const proxy = new YXmlProxyBindings(fragment)
+
+		const [example] = proxy.append({
+			content: [
+				{
+					kind: 'element',
+					nodeName: 'example',
+					children: [
+						{ kind: 'text', text: 'this is an example ' },
+						{ kind: 'element', nodeName: 'nestedExample', children: [{ kind: 'text', text: 'this is a nested example' }] },
+						{ kind: 'text', text: ' This is another example' },
+					],
+				},
+			],
+		})
+		if (!example) throw new Error('Expected example node')
+
+		const children = proxy.children({ node: example })
+		const [firstText, nestedExample, secondText] = children
+		if (!firstText || !nestedExample || !secondText) throw new Error('Expected interleaved children')
+
+		expect(children.map((node) => proxy.summary({ node }).kind)).toEqual(['text', 'element', 'text'])
+		expect(proxy.text({ node: firstText })).toBe('this is an example ')
+		expect(proxy.summary({ node: nestedExample }).nodeName).toBe('nestedExample')
+		expect(proxy.text({ node: secondText })).toBe(' This is another example')
+	})
+
+	test('edits text inside an interleaved text node', () => {
+		const doc = new Y.Doc()
+		const fragment = doc.getXmlFragment('artifact')
+		const proxy = new YXmlProxyBindings(fragment)
+
+		const [example] = proxy.append({
+			content: [
+				{
+					kind: 'element',
+					nodeName: 'example',
+					children: [
+						{ kind: 'text', text: 'this is an example ' },
+						{ kind: 'element', nodeName: 'nestedExample', children: [{ kind: 'text', text: 'this is a nested example' }] },
+						{ kind: 'text', text: ' This is another example' },
+					],
+				},
+			],
+		})
+		if (!example) throw new Error('Expected example node')
+		const [firstText, nestedExample, secondText] = proxy.children({ node: example })
+		if (!firstText || !nestedExample || !secondText) throw new Error('Expected interleaved children')
+
+		proxy.insertText({ node: firstText, index: 0, text: 'Actually, ' })
+		proxy.deleteText({ node: secondText, index: 0, length: 9 })
+
+		expect(proxy.text({ node: firstText })).toBe('Actually, this is an example ')
+		expect(proxy.text({ node: secondText })).toBe('another example')
+		expect(proxy.toString()).toBe(
+			'<example>Actually, this is an example <nestedexample>this is a nested example</nestedexample>another example</example>',
+		)
+	})
+
+	test('splits a text node into interleaved siblings', () => {
+		const doc = new Y.Doc()
+		const fragment = doc.getXmlFragment('artifact')
+		const proxy = new YXmlProxyBindings(fragment)
+
+		const [example] = proxy.append({
+			content: [
+				{ kind: 'element', nodeName: 'example', children: [{ kind: 'text', text: 'this is an example' }] },
+			],
+		})
+		if (!example) throw new Error('Expected example node')
+		const [textNode] = proxy.children({ node: example })
+		if (!textNode) throw new Error('Expected text node')
+
+		const split = proxy.splitText({ node: textNode, index: 8 })
+
+		expect(proxy.text({ node: split.left })).toBe('this is ')
+		expect(proxy.text({ node: split.right })).toBe('an example')
+		expect(proxy.children({ node: example })).toEqual([split.left, split.right])
+	})
+
+	test('wraps only part of a text node while preserving interleaved siblings', () => {
+		const doc = new Y.Doc()
+		const fragment = doc.getXmlFragment('artifact')
+		const proxy = new YXmlProxyBindings(fragment)
+
+		const [example] = proxy.append({
+			content: [
+				{
+					kind: 'element',
+					nodeName: 'example',
+					children: [
+						{ kind: 'text', text: 'this is an example ' },
+						{ kind: 'element', nodeName: 'nestedExample', children: [{ kind: 'text', text: 'this is a nested example' }] },
+						{ kind: 'text', text: ' This is another example' },
+					],
+				},
+			],
+		})
+		if (!example) throw new Error('Expected example node')
+		const [firstText, nestedExample, secondText] = proxy.children({ node: example })
+		if (!firstText || !nestedExample || !secondText) throw new Error('Expected interleaved children')
+
+		const wrapped = proxy.wrapTextRange({ node: firstText, start: 11, end: 18, wrapper: { nodeName: 'bold' } })
+
+		const children = proxy.children({ node: example })
+		const [beforeText, boldNode, afterText, sameNestedExample, sameSecondText] = children
+		if (!beforeText || !boldNode || !afterText || !sameNestedExample || !sameSecondText) throw new Error('Expected wrapped children')
+
+		expect(proxy.text({ node: beforeText })).toBe('this is an ')
+		expect(proxy.toString({ node: boldNode })).toBe('<bold>example</bold>')
+		expect(proxy.text({ node: afterText })).toBe(' ')
+		expect(sameNestedExample).toEqual(nestedExample)
+		expect(sameSecondText).toEqual(secondText)
+		expect(wrapped.wrapper).toEqual(boldNode)
+		expect(proxy.toString()).toBe(
+			'<example>this is an <bold>example</bold> <nestedexample>this is a nested example</nestedexample> This is another example</example>',
+		)
+	})
+
+	test('wraps part of text inside an already marked inline element', () => {
+		const doc = new Y.Doc()
+		const fragment = doc.getXmlFragment('artifact')
+		const proxy = new YXmlProxyBindings(fragment)
+
+		const [paragraph] = proxy.append({
+			content: [
+				{
+					kind: 'element',
+					nodeName: 'paragraph',
+					children: [
+						{ kind: 'text', text: 'prefix ' },
+						{ kind: 'element', nodeName: 'italic', children: [{ kind: 'text', text: 'nested example text' }] },
+						{ kind: 'text', text: ' suffix' },
+					],
+				},
+			],
+		})
+		if (!paragraph) throw new Error('Expected paragraph node')
+
+		const [, italic, suffix] = proxy.children({ node: paragraph })
+		if (!italic || !suffix) throw new Error('Expected italic and suffix nodes')
+		const [italicText] = proxy.children({ node: italic })
+		if (!italicText) throw new Error('Expected italic text node')
+
+		const wrapped = proxy.wrapTextRange({
+			node: italicText,
+			start: 7,
+			end: 14,
+			wrapper: { nodeName: 'bold' },
+		})
+
+		const italicChildren = proxy.children({ node: italic })
+		const [beforeText, boldNode, afterText] = italicChildren
+		if (!beforeText || !boldNode || !afterText) throw new Error('Expected split italic children')
+
+		expect(proxy.text({ node: beforeText })).toBe('nested ')
+		expect(proxy.toString({ node: boldNode })).toBe('<bold>example</bold>')
+		expect(proxy.text({ node: afterText })).toBe(' text')
+		expect(wrapped.wrapper).toEqual(boldNode)
+		expect(proxy.toString({ node: italic })).toBe('<italic>nested <bold>example</bold> text</italic>')
+		expect(proxy.text({ node: suffix })).toBe(' suffix')
+		expect(proxy.toString()).toBe(
+			'<paragraph>prefix <italic>nested <bold>example</bold> text</italic> suffix</paragraph>',
+		)
+	})
+
+	test('can combine splitText and wrapTextRange inside an existing inline mark', () => {
+		const doc = new Y.Doc()
+		const fragment = doc.getXmlFragment('artifact')
+		const proxy = new YXmlProxyBindings(fragment)
+
+		const [paragraph] = proxy.append({
+			content: [
+				{
+					kind: 'element',
+					nodeName: 'paragraph',
+					children: [
+						{ kind: 'element', nodeName: 'italic', children: [{ kind: 'text', text: 'alpha beta gamma' }] },
+					],
+				},
+			],
+		})
+		if (!paragraph) throw new Error('Expected paragraph node')
+
+		const [italic] = proxy.children({ node: paragraph })
+		if (!italic) throw new Error('Expected italic node')
+		const [italicText] = proxy.children({ node: italic })
+		if (!italicText) throw new Error('Expected italic text node')
+
+		const firstSplit = proxy.splitText({ node: italicText, index: 6 })
+		expect(proxy.text({ node: firstSplit.left })).toBe('alpha ')
+		expect(proxy.text({ node: firstSplit.right })).toBe('beta gamma')
+
+		const secondSplit = proxy.splitText({ node: firstSplit.right, index: 4 })
+		expect(proxy.text({ node: secondSplit.left })).toBe('beta')
+		expect(proxy.text({ node: secondSplit.right })).toBe(' gamma')
+
+		proxy.wrap({ node: secondSplit.left, wrapper: { nodeName: 'bold' } })
+
+		expect(proxy.toString({ node: italic })).toBe('<italic>alpha <bold>beta</bold> gamma</italic>')
+		expect(proxy.toString()).toBe('<paragraph><italic>alpha <bold>beta</bold> gamma</italic></paragraph>')
+	})
+
+	test('can edit adjacent to a new bold node inside an existing inline mark', () => {
+		const doc = new Y.Doc()
+		const fragment = doc.getXmlFragment('artifact')
+		const proxy = new YXmlProxyBindings(fragment)
+
+		const [paragraph] = proxy.append({
+			content: [
+				{
+					kind: 'element',
+					nodeName: 'paragraph',
+					children: [
+						{ kind: 'element', nodeName: 'italic', children: [{ kind: 'text', text: 'alpha beta gamma' }] },
+					],
+				},
+			],
+		})
+		if (!paragraph) throw new Error('Expected paragraph node')
+
+		const [italic] = proxy.children({ node: paragraph })
+		if (!italic) throw new Error('Expected italic node')
+		const [italicText] = proxy.children({ node: italic })
+		if (!italicText) throw new Error('Expected italic text node')
+
+		const wrapped = proxy.wrapTextRange({
+			node: italicText,
+			start: 6,
+			end: 10,
+			wrapper: { nodeName: 'bold' },
+		})
+
+		proxy.insertBefore({
+			ref: wrapped.wrapper,
+			content: [{ kind: 'text', text: '[' }],
+		})
+		proxy.insertAfter({
+			ref: wrapped.wrapper,
+			content: [{ kind: 'text', text: ']' }],
+		})
+
+		expect(proxy.toString({ node: italic })).toBe('<italic>alpha [<bold>beta</bold>] gamma</italic>')
+		expect(proxy.toString()).toBe('<paragraph><italic>alpha [<bold>beta</bold>] gamma</italic></paragraph>')
+	})
+
+	test('can nest bold inside italic and then add another mark beside it', () => {
+		const doc = new Y.Doc()
+		const fragment = doc.getXmlFragment('artifact')
+		const proxy = new YXmlProxyBindings(fragment)
+
+		const [paragraph] = proxy.append({
+			content: [
+				{
+					kind: 'element',
+					nodeName: 'paragraph',
+					children: [
+						{ kind: 'element', nodeName: 'italic', children: [{ kind: 'text', text: 'alpha beta gamma' }] },
+					],
+				},
+			],
+		})
+		if (!paragraph) throw new Error('Expected paragraph node')
+
+		const [italic] = proxy.children({ node: paragraph })
+		if (!italic) throw new Error('Expected italic node')
+		const [italicText] = proxy.children({ node: italic })
+		if (!italicText) throw new Error('Expected italic text node')
+
+		proxy.wrapTextRange({
+			node: italicText,
+			start: 6,
+			end: 10,
+			wrapper: { nodeName: 'bold' },
+		})
+
+		const italicChildren = proxy.children({ node: italic })
+		const [, boldNode, afterText] = italicChildren
+		if (!boldNode || !afterText) throw new Error('Expected bold node and trailing text')
+
+		const italicInserted = proxy.insertAfter({
+			ref: boldNode,
+			content: [{ kind: 'element', nodeName: 'italic', children: [{ kind: 'text', text: '!' }] }],
+		})
+		const extraItalic = italicInserted[0]
+		if (!extraItalic) throw new Error('Expected extra italic node')
+
+		proxy.insertText({ node: afterText, index: 0, text: ' ' })
+
+		expect(proxy.toString({ node: extraItalic })).toBe('<italic>!</italic>')
+		expect(proxy.toString({ node: italic })).toBe('<italic>alpha <bold>beta</bold><italic>!</italic>  gamma</italic>')
+		expect(proxy.toString()).toBe('<paragraph><italic>alpha <bold>beta</bold><italic>!</italic>  gamma</italic></paragraph>')
 	})
 
 	test('sets and removes attributes on element refs', () => {
@@ -319,6 +633,25 @@ describe('YXml proxy', () => {
 
 		expect(() => proxy.setAttribute({ node: root, name: 'id', value: 'root' })).toThrow(
 			YXmlInvalidNodeKindForOperationError,
+		)
+	})
+
+	test('throws for invalid text ranges', () => {
+		const doc = new Y.Doc()
+		const fragment = doc.getXmlFragment('artifact')
+		const proxy = new YXmlProxyBindings(fragment)
+		const [paragraph] = proxy.append({
+			content: [{ kind: 'element', nodeName: 'paragraph', children: [{ kind: 'text', text: 'Text' }] }],
+		})
+		if (!paragraph) throw new Error('Expected paragraph node')
+		const [text] = proxy.children({ node: paragraph })
+		if (!text) throw new Error('Expected text node')
+
+		expect(() => proxy.insertText({ node: text, index: 10, text: '!' })).toThrow(YXmlTextRangeOutOfBoundsError)
+		expect(() => proxy.deleteText({ node: text, index: 1, length: 10 })).toThrow(YXmlTextRangeOutOfBoundsError)
+		expect(() => proxy.splitText({ node: text, index: 0 })).toThrow(YXmlTextRangeOutOfBoundsError)
+		expect(() => proxy.wrapTextRange({ node: text, start: 2, end: 2, wrapper: { nodeName: 'bold' } })).toThrow(
+			YXmlTextRangeOutOfBoundsError,
 		)
 	})
 

@@ -42,11 +42,17 @@ export const YXML_PROXY_AGENT_PROMPT = dedent`
 	bindings.summary({ node: NodeRef }): { id: string; kind: string; nodeName: string | null; length: number; xml: string; attributes?: Record<string, string> }
 	bindings.children({ node?: NodeRef }): NodeRef[]
 	bindings.get({ node?: NodeRef; index: number }): NodeRef
+	bindings.text({ node: NodeRef }): string
 	bindings.toString({ node?: NodeRef }): string
 	bindings.append({ parent?: NodeRef; content: NodeSpec[] }): NodeRef[]
 	bindings.prepend({ parent?: NodeRef; content: NodeSpec[] }): NodeRef[]
 	bindings.insertBefore({ ref: NodeRef; content: NodeSpec[] }): NodeRef[]
 	bindings.insertAfter({ ref: NodeRef; content: NodeSpec[] }): NodeRef[]
+	bindings.insertText({ node: NodeRef; index: number; text: string }): void
+	bindings.deleteText({ node: NodeRef; index: number; length: number }): void
+	bindings.splitText({ node: NodeRef; index: number }): { left: NodeRef; right: NodeRef }
+	bindings.wrapTextRange({ node: NodeRef; start: number; end: number; wrapper: { nodeName: string; attributes?: Record<string, string> } }): { wrapper: NodeRef; child: NodeRef; before?: NodeRef; after?: NodeRef }
+	bindings.wrap({ node: NodeRef; wrapper: { nodeName: string; attributes?: Record<string, string> } }): { wrapper: NodeRef; child: NodeRef }
 	bindings.remove({ node: NodeRef }): void
 	bindings.setAttribute({ node: NodeRef; name: string; value: string }): void
 	bindings.removeAttribute({ node: NodeRef; name: string }): void
@@ -57,6 +63,11 @@ export const YXML_PROXY_AGENT_PROMPT = dedent`
 	- Call \`bindings.toString({})\` to inspect the full current XML before editing.
 	- Use \`append\` or \`prepend\` when adding content to the root or to a known parent element.
 	- Use \`insertBefore\` or \`insertAfter\` when adding content relative to an existing node. These do not need a parent; the host infers it from the referenced node.
+	- Use \`text\` to read the literal contents of a text node.
+	- Use \`insertText\` and \`deleteText\` to edit characters inside an existing text node.
+	- Use \`splitText\` to break one text node into two sibling text nodes at a character offset.
+	- Use \`wrapTextRange\` to wrap only part of a text node, such as bolding a single word inside a longer text node.
+	- Use \`wrap\` to surround an existing element or text node with a new element, such as wrapping text in a \`bold\` mark. The old node ref becomes detached; use the returned \`child\` ref if you need to keep editing the wrapped child.
 	- Use \`remove\` to erase a node and all of its nested children.
 	- Use \`setAttribute\` to change an element attribute, such as changing a heading from level 2 to level 3.
 	- Use \`removeAttribute\` to delete an attribute.
@@ -64,7 +75,11 @@ export const YXML_PROXY_AGENT_PROMPT = dedent`
 	- Build nested content by nesting \`children\` arrays in \`NodeSpec\` objects.
 	- Prefer structural edits over string replacement of the full XML.
 	- When creating common markdown structures, use the canonical TipTap/ProseMirror node names listed below. Some of these serialize to lowercase in XML strings, but generated \`NodeSpec\` content should use canonical names.
-	- Return a small JSON object with \`ok\`, \`beforeXml\`, and \`afterXml\`.
+	- Generated code is evaluated as a script. Top-level \`return\` is invalid unless you wrap the code in a function yourself.
+	- If you want to return a final value, end the script with a parenthesized object expression like \`;({ ok: true, beforeXml, afterXml })\`.
+	- Use \`console.log\`, \`console.info\`, \`console.warn\`, or \`console.error\` for diagnostics such as before/after XML, selected refs, summaries, and branch decisions.
+	- Console output is captured by the host and returned to the apply agent even if generated code throws after logging. Runtime failures return \`{ ok: false, error, console }\`; successful runs return \`{ ok: true, value, console }\`.
+	- Log enough context to repair failures: selected \`NodeRef\` values, \`bindings.summary(...)\` output, target text snippets, and final XML.
 
 	Common markdown YXml elements:
 
@@ -93,6 +108,8 @@ export const YXML_PROXY_AGENT_PROMPT = dedent`
 	\`\`\`js
 	const beforeXml = bindings.toString({})
 	const first = bindings.get({ index: 0 })
+	console.log('beforeXml', beforeXml)
+	console.log('first child', first, bindings.summary({ node: first }))
 
 	bindings.insertAfter({
 	  ref: first,
@@ -105,13 +122,16 @@ export const YXML_PROXY_AGENT_PROMPT = dedent`
 	  ],
 	})
 
-	return { ok: true, beforeXml, afterXml: bindings.toString({}) }
+	const afterXml = bindings.toString({})
+	console.log('afterXml', afterXml)
+	;({ ok: true, beforeXml, afterXml })
 	\`\`\`
 
 	Example: add a new section containing a heading, paragraph, list, blockquote, horizontal rule, and code block.
 
 	\`\`\`js
 	const beforeXml = bindings.toString({})
+	console.log('beforeXml', beforeXml)
 
 	bindings.append({
 	  content: [
@@ -161,7 +181,9 @@ export const YXML_PROXY_AGENT_PROMPT = dedent`
 	  ],
 	})
 
-	return { ok: true, beforeXml, afterXml: bindings.toString({}) }
+	const afterXml = bindings.toString({})
+	console.log('afterXml', afterXml)
+	;({ ok: true, beforeXml, afterXml })
 	\`\`\`
 
 	Example: add a bullet to an existing list.
@@ -171,6 +193,7 @@ export const YXML_PROXY_AGENT_PROMPT = dedent`
 	const rootChildren = bindings.children({})
 	const list = rootChildren.find((node) => bindings.summary({ node }).nodeName === 'bulletList')
 	if (!list) throw new Error('Could not find a bullet list')
+	console.log('list', list, bindings.summary({ node: list }))
 
 	bindings.append({
 	  parent: list,
@@ -189,7 +212,9 @@ export const YXML_PROXY_AGENT_PROMPT = dedent`
 	  ],
 	})
 
-	return { ok: true, beforeXml, afterXml: bindings.toString({}) }
+	const afterXml = bindings.toString({})
+	console.log('afterXml', afterXml)
+	;({ ok: true, beforeXml, afterXml })
 	\`\`\`
 
 	Example: change a heading level attribute.
@@ -198,10 +223,14 @@ export const YXML_PROXY_AGENT_PROMPT = dedent`
 	const beforeXml = bindings.toString({})
 	const heading = bindings.children({}).find((node) => bindings.summary({ node }).nodeName === 'heading')
 	if (!heading) throw new Error('Could not find a heading')
+	console.log('heading before', heading, bindings.summary({ node: heading }))
 
 	bindings.setAttribute({ node: heading, name: 'level', value: '3' })
+	console.log('heading after', bindings.summary({ node: heading }))
 
-	return { ok: true, beforeXml, afterXml: bindings.toString({}) }
+	const afterXml = bindings.toString({})
+	console.log('afterXml', afterXml)
+	;({ ok: true, beforeXml, afterXml })
 	\`\`\`
 
 	Example: erase a section.
@@ -213,10 +242,84 @@ export const YXML_PROXY_AGENT_PROMPT = dedent`
 	  return summary.nodeName === 'section' && summary.attributes?.id === 'obsolete'
 	})
 	if (!section) throw new Error('Could not find obsolete section')
+	console.log('removing section', section, bindings.summary({ node: section }))
 
 	bindings.remove({ node: section })
 
-	return { ok: true, beforeXml, afterXml: bindings.toString({}) }
+	const afterXml = bindings.toString({})
+	console.log('afterXml', afterXml)
+	;({ ok: true, beforeXml, afterXml })
+	\`\`\`
+
+	Example: wrap existing deeply nested text in a bold mark.
+
+	\`\`\`js
+	const beforeXml = bindings.toString({})
+	const list = bindings.children({}).find((node) => bindings.summary({ node }).nodeName === 'bulletList')
+	if (!list) throw new Error('Could not find a bullet list')
+	const secondItem = bindings.get({ node: list, index: 1 })
+	const paragraph = bindings.get({ node: secondItem, index: 0 })
+	const text = bindings.children({ node: paragraph }).find((node) => bindings.summary({ node }).kind === 'text')
+	if (!text) throw new Error('Could not find text to bold')
+	console.log('wrapping text', text, bindings.summary({ node: text }))
+
+	bindings.wrap({ node: text, wrapper: { nodeName: 'bold' } })
+
+	const afterXml = bindings.toString({})
+	console.log('afterXml', afterXml)
+	;({ ok: true, beforeXml, afterXml })
+	\`\`\`
+
+	Example: wrap only one word inside an interleaved text node.
+
+	\`\`\`js
+	const beforeXml = bindings.toString({})
+	const example = bindings.children({}).find((node) => bindings.summary({ node }).nodeName === 'example')
+	if (!example) throw new Error('Could not find example element')
+	const firstChild = bindings.get({ node: example, index: 0 })
+	const firstText = bindings.text({ node: firstChild })
+	const start = firstText.indexOf('example')
+	if (start < 0) throw new Error('Could not find target word')
+	console.log('wrapping range', { start, end: start + 'example'.length, firstText })
+
+	bindings.wrapTextRange({
+	  node: firstChild,
+	  start,
+	  end: start + 'example'.length,
+	  wrapper: { nodeName: 'bold' },
+	})
+
+	const afterXml = bindings.toString({})
+	console.log('afterXml', afterXml)
+	;({ ok: true, beforeXml, afterXml })
+	\`\`\`
+
+	Example: wrap one word inside text that already lives under an inline mark.
+
+	\`\`\`js
+	const beforeXml = bindings.toString({})
+	const paragraph = bindings.children({}).find((node) => bindings.summary({ node }).nodeName === 'paragraph')
+	if (!paragraph) throw new Error('Could not find paragraph')
+	const italic = bindings.children({ node: paragraph }).find((node) => bindings.summary({ node }).nodeName === 'italic')
+	if (!italic) throw new Error('Could not find italic mark')
+	const italicTextNode = bindings.children({ node: italic }).find((node) => bindings.summary({ node }).kind === 'text')
+	if (!italicTextNode) throw new Error('Could not find italic text node')
+
+	const italicText = bindings.text({ node: italicTextNode })
+	const start = italicText.indexOf('example')
+	if (start < 0) throw new Error('Could not find target word')
+	console.log('wrapping italic range', { start, end: start + 'example'.length, italicText })
+
+	bindings.wrapTextRange({
+	  node: italicTextNode,
+	  start,
+	  end: start + 'example'.length,
+	  wrapper: { nodeName: 'bold' },
+	})
+
+	const afterXml = bindings.toString({})
+	console.log('afterXml', afterXml)
+	;({ ok: true, beforeXml, afterXml })
 	\`\`\`
 <DSL_INFORMATION>
 `
