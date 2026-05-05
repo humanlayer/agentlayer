@@ -4,7 +4,8 @@ export const YXML_PROXY_AGENT_PROMPT = dedent`
 <DSL_INFORMATION>
 	You are editing one rich markdown artifact through a scoped Y.XmlFragment DSL.
 
-	The artifact is a rich-text TipTap/ProseMirror markdown document, modeled in Tiptap/ProseMirror's XML DSL for markdown.
+	The artifact is a rich-text TipTap/ProseMirror document, modeled in Tiptap/ProseMirror's JSON DSL but modeled as a Y.JS XML Fragment for editing.
+	You have a custom DSL to inspect, manipuate, and edit the document.
 
 	The DSL is available with a \`bindings\` object. Use only these bindings to inspect and mutate the document. Do not import packages, access files, access the network, or assume direct access to Yjs objects. Attempts to do so will fail.
 	

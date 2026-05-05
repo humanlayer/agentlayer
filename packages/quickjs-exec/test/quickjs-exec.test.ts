@@ -176,4 +176,65 @@ describe('quickjs-exec', () => {
 			expect((error as Error).message).toContain('index 0')
 		}
 	})
+
+	test('prints QuickJsExecutionError field shapes for learning', async () => {
+		const cases = [
+			{
+				label: 'syntax error',
+				code: `
+					const ok = 1
+					const broken = { node: bindings.root(), index 0 }
+					broken
+				`,
+			},
+			{
+				label: 'runtime reference error',
+				code: `
+					const ok = 1
+					missingReference.property
+				`,
+			},
+		]
+
+		const examples: unknown[] = []
+
+		for (const example of cases) {
+			try {
+				await withQuickJsMode({}, ({ run }) => run(example.code))
+			} catch (error) {
+				expect(error).toBeInstanceOf(QuickJsExecutionError)
+
+				const quickJsError = error as QuickJsExecutionError & { cause?: unknown }
+				const cause = quickJsError.cause
+				const causeRecord = cause && typeof cause === 'object' ? (cause as Record<string, unknown>) : undefined
+				const ownProperties = Object.fromEntries(
+					Object.getOwnPropertyNames(quickJsError).map((name) => [
+						name,
+						(quickJsError as unknown as Record<string, unknown>)[name],
+					]),
+				)
+
+				examples.push({
+					label: example.label,
+					name: quickJsError.name,
+					message: quickJsError.message,
+					details: quickJsError.details,
+					cause: causeRecord
+						? {
+								name: causeRecord.name,
+								message: causeRecord.message,
+								fileName: causeRecord.fileName,
+								lineNumber: causeRecord.lineNumber,
+								columnNumber: causeRecord.columnNumber,
+							}
+						: cause,
+					ownProperties,
+					stack: quickJsError.stack,
+				})
+			}
+		}
+
+		expect(examples).toHaveLength(cases.length)
+		console.log('QuickJsExecutionError examples:', JSON.stringify(examples, null, 2))
+	})
 })

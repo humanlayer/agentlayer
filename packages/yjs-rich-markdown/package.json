@@ -43,14 +43,15 @@
 		"yjs": "^13.6.30"
 	},
 	"dependencies": {
+		"@humanlayer/quickjs-exec": "workspace:*",
 		"@tiptap/core": "3.22.5",
 		"@tiptap/extension-collaboration": "3.22.5",
 		"@tiptap/markdown": "3.22.5",
 		"@tiptap/pm": "3.22.5",
 		"@tiptap/starter-kit": "3.22.5",
-		"@humanlayer/quickjs-exec": "workspace:*",
 		"dedent": "1.7.2",
-		"y-prosemirror": "1.3.7"
+		"y-prosemirror": "1.3.7",
+		"zod": "catalog:"
 	},
 	"author": {
 		"name": "Kyle Mistele",
