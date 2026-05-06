@@ -32,7 +32,8 @@
 	"devDependencies": {
 		"@durable-streams/server": "^0.3.1",
 		"@durable-streams/y-durable-streams": "^0.2.4",
-		"@types/bun": "latest"
+		"@types/bun": "latest",
+		"@ai-sdk/anthropic": "catalog:"
 	},
 	"peerDependencies": {
 		"@tiptap/core": "3.22.5",

@@ -28,7 +28,7 @@ export const createCodeModeYXmlEditorTool = (options: { fragment: Y.XmlFragment 
 		execute: async ({ code }, ctx) => {
 			try {
 				const proxy = new YXmlProxyBindings(options.fragment)
-				await withQuickJsMode(proxy.bindings, (qjs) => {
+				return await withQuickJsMode(proxy.bindings, (qjs) => {
 					const sandboxedExecutionResult = qjs.runWithConsole<unknown>(code)
 					return formatQuickJsResult(sandboxedExecutionResult)
 				})

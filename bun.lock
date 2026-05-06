@@ -315,6 +315,7 @@
         "zod": "catalog:",
       },
       "devDependencies": {
+        "@ai-sdk/anthropic": "catalog:",
         "@durable-streams/server": "^0.3.1",
         "@durable-streams/y-durable-streams": "^0.2.4",
         "@types/bun": "latest",

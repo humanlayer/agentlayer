@@ -1,4 +1,12 @@
-import { Agent, defineTool, doomLoop, maxSteps, toolCalled } from '@humanlayer/agentlayer-core'
+import {
+	Agent,
+	defineTool,
+	doomLoop,
+	maxSteps,
+	type PostToolUseHook,
+	type PreToolUseHook,
+	toolCalled,
+} from '@humanlayer/agentlayer-core'
 import type { JSONContent } from '@tiptap/core'
 import dedent from 'dedent'
 import { yXmlFragmentToProsemirrorJSON } from 'y-prosemirror'
@@ -31,20 +39,19 @@ const stuckTool = defineTool({
 export const createYXmlFragmentEditorAgent = (agentConfig: {
 	modelConfig: ConstructorParameters<typeof Agent>[0]['model']
 	fragment: Y.XmlFragment
-	oldString: string
-	newString: string
-	replaceAll?: boolean
+	preToolHooks?: Array<PreToolUseHook>
+	postToolHooks?: Array<PostToolUseHook>
 }) => {
-	const { modelConfig, fragment, oldString, newString, replaceAll } = agentConfig
+	const { modelConfig, fragment, preToolHooks, postToolHooks } = agentConfig
 
-	const intructions = editorPrompt(fragment, oldString, newString, !!replaceAll)
+	const intructions = editorPrompt(fragment)
 
-	console.log('Editor Propmt:\n\n', editorPrompt)
+	console.log('Editor Prompt:\n\n', intructions)
 	return new Agent({
 		system: [YXML_PROXY_AGENT_PROMPT, intructions],
 		model: modelConfig,
 		tools: {
-			edit_y_xml_fragment: createCodeModeYXmlEditorTool({ fragment }),
+			edit_yjs_xml_fragment: createCodeModeYXmlEditorTool({ fragment }),
 			done: doneTool,
 			i_am_stuck: stuckTool,
 		},
@@ -54,16 +61,20 @@ export const createYXmlFragmentEditorAgent = (agentConfig: {
 			toolCalled(doneTool.name),
 			toolCalled(stuckTool.name),
 		],
+		hooks: {
+			preToolUse: preToolHooks ?? [],
+			postToolUse: postToolHooks ?? [],
+		},
 	})
 }
 
-const editorPrompt = (fragment: Y.XmlFragment, oldString: string, newString: string, replaceAll: boolean) => dedent`
+const editorPrompt = (fragment: Y.XmlFragment) => dedent`
 
     The document you are editing is a live Y.XMLFragment. Other users may be editing it in live time. 
     The information you see below is a point-in-time snapshot that may be out of date after 1+ edits.
     **IMPORTANT**: If you are unable to complete an edit because the document has changed, use the bindings API to inspect the document.
 
-    This is how the document is currently represented in XML:
+    This is how the document is currently represented in XML (IMPORTANT: the DOCUMENT_XML tags are NOT part of the document's XML structure, they are delimiters in this prompt.):
     <DOCUMENT_XML>  
         ${fragment.toJSON()}
     </DOCUMENT_XML>
@@ -77,16 +88,7 @@ const editorPrompt = (fragment: Y.XmlFragment, oldString: string, newString: str
         ${tiptapJsonToMarkdown(yXmlFragmentToProsemirrorJSON(fragment) as JSONContent)}
     </DOCUMENT_MARKDOWN>
 
-    The user has requested the following edit to the document, based on the markdown that the user is able to see:
-    <EDIT_INSTRUCTION>
-        Replace the Following old string with the new string. 
-
-        <OLD_STRING>${oldString}</OLD_STRING>
-        <NEW_STRING>${newString}</NEW_STRING>
-
-        ${replaceAll ?? '<IMPORTANT>Make sure to replace ALL occurrences of old string with new string</IMPORTANT>'}
-
-    </EDIT_INSTRUCTION>
+    The user has requested the following edit to the document wrapped in <EDIT_INSTRUCTION> XML tags - replace the <OLD_STRING></OLD_STRING> contents with the <NEW_STRING></NEW_STRING> contents., based on the markdown that the user is able to see.
 
     Your job is to interpret this edit instruction in the context of the markdown which the user can see and has requested the edit, and to use the DSL and code execution tool to apply the edit to the Y XML Fragment.
 
@@ -101,3 +103,19 @@ const editorPrompt = (fragment: Y.XmlFragment, oldString: string, newString: str
     </SYSTEM_REMINDERS>
 
 `
+
+export const userInstructionForYXmlFragmentEditorAgent = (options: {
+	oldString: string
+	newString: string
+	replaceAll?: boolean
+}) => dedent`
+    <EDIT_INSTRUCTION>
+        Replace the Following old string with the new string. 
+
+        <OLD_STRING>${options.oldString}</OLD_STRING>
+        <NEW_STRING>${options.newString}</NEW_STRING>
+
+        ${options.replaceAll ?? '<IMPORTANT>Make sure to replace ALL occurrences of old string with new string</IMPORTANT>'}
+
+    </EDIT_INSTRUCTION>
+    `
