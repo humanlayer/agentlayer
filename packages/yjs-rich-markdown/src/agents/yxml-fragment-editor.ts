@@ -41,8 +41,9 @@ export const createYXmlFragmentEditorAgent = (agentConfig: {
 	fragment: Y.XmlFragment
 	preToolHooks?: Array<PreToolUseHook>
 	postToolHooks?: Array<PostToolUseHook>
+	providerOptions?: ConstructorParameters<typeof Agent>[0]['providerOptions']
 }) => {
-	const { modelConfig, fragment, preToolHooks, postToolHooks } = agentConfig
+	const { modelConfig, fragment, preToolHooks, postToolHooks, providerOptions } = agentConfig
 
 	const intructions = editorPrompt(fragment)
 
@@ -55,6 +56,7 @@ export const createYXmlFragmentEditorAgent = (agentConfig: {
 			done: doneTool,
 			i_am_stuck: stuckTool,
 		},
+		providerOptions,
 		stopWhen: [
 			doomLoop(),
 			maxSteps(30), // probably too many but we will see.

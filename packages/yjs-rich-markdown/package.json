@@ -24,6 +24,7 @@
 		}
 	},
 	"scripts": {
+		"agent": "NODE_USE_SYSTEM_CA=1 YJS_RICH_MARKDOWN_BASE_URL=${YJS_RICH_MARKDOWN_BASE_URL:-http://localhost:5176/v1/yjs/rich-markdown-demo} YJS_RICH_MARKDOWN_DOC_ID=${YJS_RICH_MARKDOWN_DOC_ID:-rich-markdown-learning} bun run src/cli/rich-markdown-agent.ts",
 		"typecheck": "tsgo --noEmit",
 		"build": "bun run build:js && bunx tsc -p tsconfig.build.json",
 		"build:js": "bun run build.ts",
@@ -45,6 +46,7 @@
 	},
 	"dependencies": {
 		"@humanlayer/quickjs-exec": "workspace:*",
+		"ai": "catalog:",
 		"@tiptap/core": "3.22.5",
 		"@tiptap/extension-collaboration": "3.22.5",
 		"@tiptap/markdown": "3.22.5",
