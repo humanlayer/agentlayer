@@ -32,7 +32,7 @@ describe('QuickJS Code Mode Tool Tests', async () => {
 			{} as ToolContext,
 		)
 
-		await expect(toolExecution).resolves.toBeUndefined()
+		await expect(toolExecution).resolves.toContain('Execution succeeded')
 		expect(fragment.toJSON()).toEqual('<root><parent></parent></root>')
 
 		const secondToolExecution = tool.execute(
@@ -50,7 +50,7 @@ describe('QuickJS Code Mode Tool Tests', async () => {
 			{} as ToolContext,
 		)
 
-		await expect(secondToolExecution).resolves.toBeUndefined()
+		await expect(secondToolExecution).resolves.toContain('Execution succeeded')
 		expect(fragment.toJSON()).toEqual('<root><parent><child></child></parent></root>')
 	})
 })
