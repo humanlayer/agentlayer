@@ -801,18 +801,21 @@ describe('shouldStop (direct)', () => {
 // ─── edge cases ──────────────────────────────────────────────────────────────
 
 describe('edge cases', () => {
-	test('no stopWhen configured — falls back to maxSteps limit', async () => {
+	test('no maxSteps configured — runs until the model completes', async () => {
 		const agent = new Agent({
-			model: mockModel(Array(5).fill(assistantWithToolCall('bash', { command: 'echo hi' }))),
+			model: mockModel([
+				...Array.from({ length: 25 }, () => assistantWithToolCall('bash', { command: 'echo hi' })),
+				assistantText('done'),
+			]),
 			tools: { bash: bashTool },
-			maxSteps: 3,
-			// no stopWhen
+			// no maxSteps, no stopWhen
 		})
 
 		const result = await agent.run({ state: startState([userMessage('go')]) }).result
 
-		expect(result.finishReason).toBe('maxSteps')
+		expect(result.finishReason).toBe('complete')
 		expect(result.stopCondition).toBeUndefined()
+		expect(result.newMessages).toHaveLength(51) // 25 assistant/tool pairs + final assistant text
 	})
 
 	test('stopWhen and maxSteps both set — stopWhen checked first per step', async () => {
