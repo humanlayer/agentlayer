@@ -1,5 +1,5 @@
-import * as Y from 'yjs'
 import type { QuickJsBindings } from '@humanlayer/quickjs-exec'
+import * as Y from 'yjs'
 
 export type YXmlNodeKind = 'fragment' | 'element' | 'text'
 
@@ -46,12 +46,12 @@ export type YXmlProxy = {
 	insertText(input: { node: YXmlNodeRef; index: number; text: string }): void
 	deleteText(input: { node: YXmlNodeRef; index: number; length: number }): void
 	splitText(input: { node: YXmlNodeRef; index: number }): { left: YXmlNodeRef; right: YXmlNodeRef }
-	wrapTextRange(input: {
-		node: YXmlNodeRef
-		start: number
-		end: number
-		wrapper: YXmlElementWrapperSpec
-	}): { wrapper: YXmlNodeRef; child: YXmlNodeRef; before?: YXmlNodeRef; after?: YXmlNodeRef }
+	wrapTextRange(input: { node: YXmlNodeRef; start: number; end: number; wrapper: YXmlElementWrapperSpec }): {
+		wrapper: YXmlNodeRef
+		child: YXmlNodeRef
+		before?: YXmlNodeRef
+		after?: YXmlNodeRef
+	}
 	wrap(input: { node: YXmlNodeRef; wrapper: YXmlElementWrapperSpec }): { wrapper: YXmlNodeRef; child: YXmlNodeRef }
 	remove(input: { node: YXmlNodeRef }): void
 	setAttribute(input: { node: YXmlNodeRef; name: string; value: string }): void
@@ -82,7 +82,10 @@ export class YXmlNodeRefKindMismatchError extends YXmlProxyError {
 		readonly ref: YXmlNodeRef,
 		readonly actualKind: YXmlNodeKind,
 	) {
-		super(`YXml node ref kind mismatch for ${ref.id}: expected ${ref.kind}, got ${actualKind}`, 'NODE_REF_KIND_MISMATCH')
+		super(
+			`YXml node ref kind mismatch for ${ref.id}: expected ${ref.kind}, got ${actualKind}`,
+			'NODE_REF_KIND_MISMATCH',
+		)
 		this.name = 'YXmlNodeRefKindMismatchError'
 	}
 }
@@ -162,12 +165,14 @@ export class YXmlProxyBindings implements YXmlProxy {
 			deleteText: (input) => this.deleteText(input as { node: YXmlNodeRef; index: number; length: number }),
 			splitText: (input) => this.splitText(input as { node: YXmlNodeRef; index: number }),
 			wrapTextRange: (input) =>
-				this.wrapTextRange(input as {
-					node: YXmlNodeRef
-					start: number
-					end: number
-					wrapper: YXmlElementWrapperSpec
-				}),
+				this.wrapTextRange(
+					input as {
+						node: YXmlNodeRef
+						start: number
+						end: number
+						wrapper: YXmlElementWrapperSpec
+					},
+				),
 			wrap: (input) => this.wrap(input as { node: YXmlNodeRef; wrapper: YXmlElementWrapperSpec }),
 			remove: (input) => this.remove(input as { node: YXmlNodeRef }),
 			setAttribute: (input) => this.setAttribute(input as { node: YXmlNodeRef; name: string; value: string }),
@@ -259,7 +264,12 @@ export class YXmlProxyBindings implements YXmlProxy {
 	deleteText({ node, index, length }: { node: YXmlNodeRef; index: number; length: number }): void {
 		if (this.deletedRefs.has(node.id)) throw new DetachedYXmlNodeRefError('delete text')
 		const target = this.resolveText(node)
-		this.assertTextRange({ operation: 'delete text from', length: target.length, start: index, end: index + length })
+		this.assertTextRange({
+			operation: 'delete text from',
+			length: target.length,
+			start: index,
+			end: index + length,
+		})
 		if (length === 0) return
 		target.delete(index, length)
 	}
@@ -332,7 +342,10 @@ export class YXmlProxyBindings implements YXmlProxy {
 		}
 	}
 
-	wrap({ node, wrapper }: { node: YXmlNodeRef; wrapper: YXmlElementWrapperSpec }): { wrapper: YXmlNodeRef; child: YXmlNodeRef } {
+	wrap({ node, wrapper }: { node: YXmlNodeRef; wrapper: YXmlElementWrapperSpec }): {
+		wrapper: YXmlNodeRef
+		child: YXmlNodeRef
+	} {
 		if (this.deletedRefs.has(node.id)) throw new DetachedYXmlNodeRefError('wrap')
 		const target = this.resolve(node)
 		if (target === this.rootFragment) throw new YXmlRootOperationError('wrap')
@@ -395,19 +408,22 @@ export class YXmlProxyBindings implements YXmlProxy {
 
 	private resolveContainer(ref: YXmlNodeRef | undefined, operation: string): YXmlContainer {
 		const node = this.resolve(ref)
-		if (node instanceof Y.XmlText) throw new YXmlInvalidNodeKindForOperationError(operation, 'fragment or element', 'text')
+		if (node instanceof Y.XmlText)
+			throw new YXmlInvalidNodeKindForOperationError(operation, 'fragment or element', 'text')
 		return node
 	}
 
 	private resolveElement(ref: YXmlNodeRef): Y.XmlElement {
 		const node = this.resolve(ref)
-		if (!(node instanceof Y.XmlElement)) throw new YXmlInvalidNodeKindForOperationError('set or remove attribute', 'element', kindOf(node))
+		if (!(node instanceof Y.XmlElement))
+			throw new YXmlInvalidNodeKindForOperationError('set or remove attribute', 'element', kindOf(node))
 		return node
 	}
 
 	private resolveText(ref: YXmlNodeRef): Y.XmlText {
 		const node = this.resolve(ref)
-		if (!(node instanceof Y.XmlText)) throw new YXmlInvalidNodeKindForOperationError('read or edit text', 'text', kindOf(node))
+		if (!(node instanceof Y.XmlText))
+			throw new YXmlInvalidNodeKindForOperationError('read or edit text', 'text', kindOf(node))
 		return node
 	}
 
@@ -453,7 +469,12 @@ export class YXmlProxyBindings implements YXmlProxy {
 		return element
 	}
 
-	private replaceNode(node: InsertableYXmlNode, operation: string, replacements: InsertableYXmlNode[], deletedRefId: string): void {
+	private replaceNode(
+		node: InsertableYXmlNode,
+		operation: string,
+		replacements: InsertableYXmlNode[],
+		deletedRefId: string,
+	): void {
 		const parent = this.parentContainerOf(node, operation)
 		const index = parent.slice().indexOf(node)
 		if (index < 0) throw new DetachedYXmlNodeRefError(operation)

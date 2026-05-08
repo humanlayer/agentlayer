@@ -1,5 +1,5 @@
-import { Agent, defineTool, doomLoop, maxSteps, startState, userMessage } from '@humanlayer/agentlayer-core'
 import { anthropic } from '@ai-sdk/anthropic'
+import { Agent, defineTool, doomLoop, maxSteps, startState, userMessage } from '@humanlayer/agentlayer-core'
 import dedent from 'dedent'
 import z from 'zod/v4'
 import type { RichMarkdownArtifactStore } from '../artifact-store'
@@ -79,7 +79,9 @@ export function createRichMarkdownCliAgent(options: CreateRichMarkdownCliAgentOp
 			inspect_artifact: inspectArtifactTool,
 			edit: createEditRichMarkdownTool(artifactStore, {
 				model,
-				providerOptions: anthropicEphemeralProviderOptions as ConstructorParameters<typeof Agent>[0]['providerOptions'],
+				providerOptions: anthropicEphemeralProviderOptions as ConstructorParameters<
+					typeof Agent
+				>[0]['providerOptions'],
 			}),
 		},
 		providerOptions: anthropicEphemeralProviderOptions as ConstructorParameters<typeof Agent>[0]['providerOptions'],

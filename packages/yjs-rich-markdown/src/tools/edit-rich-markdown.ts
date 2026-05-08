@@ -1,9 +1,9 @@
 import { EDIT_DESCRIPTION, startState, userMessage } from '@humanlayer/agentlayer-core'
 import { EditTool } from '@humanlayer/agentlayer-core/interfaces'
 import type * as Y from 'yjs'
+import { createYXmlFragmentEditorAgent, userInstructionForYXmlFragmentEditorAgent } from '../agents'
 import type { RichMarkdownArtifactStore } from '../artifact-store'
 import { readArtifactMarkdown } from '../markdown'
-import { createYXmlFragmentEditorAgent, userInstructionForYXmlFragmentEditorAgent } from '../agents'
 
 export type CreateEditRichMarkdownToolOptions = {
 	model: Parameters<typeof createYXmlFragmentEditorAgent>[0]['modelConfig']

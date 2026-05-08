@@ -130,7 +130,11 @@ describe('YXml proxy', () => {
 					nodeName: 'example',
 					children: [
 						{ kind: 'text', text: 'this is an example ' },
-						{ kind: 'element', nodeName: 'nestedExample', children: [{ kind: 'text', text: 'this is a nested example' }] },
+						{
+							kind: 'element',
+							nodeName: 'nestedExample',
+							children: [{ kind: 'text', text: 'this is a nested example' }],
+						},
 						{ kind: 'text', text: ' This is another example' },
 					],
 				},
@@ -160,7 +164,11 @@ describe('YXml proxy', () => {
 					nodeName: 'example',
 					children: [
 						{ kind: 'text', text: 'this is an example ' },
-						{ kind: 'element', nodeName: 'nestedExample', children: [{ kind: 'text', text: 'this is a nested example' }] },
+						{
+							kind: 'element',
+							nodeName: 'nestedExample',
+							children: [{ kind: 'text', text: 'this is a nested example' }],
+						},
 						{ kind: 'text', text: ' This is another example' },
 					],
 				},
@@ -213,7 +221,11 @@ describe('YXml proxy', () => {
 					nodeName: 'example',
 					children: [
 						{ kind: 'text', text: 'this is an example ' },
-						{ kind: 'element', nodeName: 'nestedExample', children: [{ kind: 'text', text: 'this is a nested example' }] },
+						{
+							kind: 'element',
+							nodeName: 'nestedExample',
+							children: [{ kind: 'text', text: 'this is a nested example' }],
+						},
 						{ kind: 'text', text: ' This is another example' },
 					],
 				},
@@ -227,7 +239,8 @@ describe('YXml proxy', () => {
 
 		const children = proxy.children({ node: example })
 		const [beforeText, boldNode, afterText, sameNestedExample, sameSecondText] = children
-		if (!beforeText || !boldNode || !afterText || !sameNestedExample || !sameSecondText) throw new Error('Expected wrapped children')
+		if (!beforeText || !boldNode || !afterText || !sameNestedExample || !sameSecondText)
+			throw new Error('Expected wrapped children')
 
 		expect(proxy.text({ node: beforeText })).toBe('this is an ')
 		expect(proxy.toString({ node: boldNode })).toBe('<bold>example</bold>')
@@ -252,7 +265,11 @@ describe('YXml proxy', () => {
 					nodeName: 'paragraph',
 					children: [
 						{ kind: 'text', text: 'prefix ' },
-						{ kind: 'element', nodeName: 'italic', children: [{ kind: 'text', text: 'nested example text' }] },
+						{
+							kind: 'element',
+							nodeName: 'italic',
+							children: [{ kind: 'text', text: 'nested example text' }],
+						},
 						{ kind: 'text', text: ' suffix' },
 					],
 				},
@@ -411,8 +428,12 @@ describe('YXml proxy', () => {
 		proxy.insertText({ node: afterText, index: 0, text: ' ' })
 
 		expect(proxy.toString({ node: extraItalic })).toBe('<italic>!</italic>')
-		expect(proxy.toString({ node: italic })).toBe('<italic>alpha <bold>beta</bold><italic>!</italic>  gamma</italic>')
-		expect(proxy.toString()).toBe('<paragraph><italic>alpha <bold>beta</bold><italic>!</italic>  gamma</italic></paragraph>')
+		expect(proxy.toString({ node: italic })).toBe(
+			'<italic>alpha <bold>beta</bold><italic>!</italic>  gamma</italic>',
+		)
+		expect(proxy.toString()).toBe(
+			'<paragraph><italic>alpha <bold>beta</bold><italic>!</italic>  gamma</italic></paragraph>',
+		)
 	})
 
 	test('sets and removes attributes on element refs', () => {

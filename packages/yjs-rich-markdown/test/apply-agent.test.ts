@@ -69,7 +69,7 @@ describe.skipIf(!process.env.ANTHROPIC_API_KEY || !!process.env.CI)('Live Apply 
 		})
 
 		await expect(run.result).resolves.not.toBeUndefined()
-		const runResult = await run.result
+		const _runResult = await run.result
 		logToolCallCount('simple apply', toolCalls)
 
 		expect(tiptapJsonToMarkdown(yXmlFragmentToProsemirrorJSON(fragment))).toContain('##')

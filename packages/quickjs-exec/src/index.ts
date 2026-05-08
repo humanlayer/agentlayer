@@ -186,8 +186,14 @@ function unwrapQuickJsResult(
 function createQuickJsExecutionError(error: unknown, code: string): QuickJsExecutionError {
 	const cause = error && typeof error === 'object' && 'cause' in error ? (error as { cause?: unknown }).cause : error
 	const causeRecord = cause && typeof cause === 'object' ? (cause as Record<string, unknown>) : undefined
-	const name = typeof causeRecord?.name === 'string' ? causeRecord.name : error instanceof Error ? error.name : undefined
-	const message = typeof causeRecord?.message === 'string' ? causeRecord.message : error instanceof Error ? error.message : String(error)
+	const name =
+		typeof causeRecord?.name === 'string' ? causeRecord.name : error instanceof Error ? error.name : undefined
+	const message =
+		typeof causeRecord?.message === 'string'
+			? causeRecord.message
+			: error instanceof Error
+				? error.message
+				: String(error)
 	const fileName = typeof causeRecord?.fileName === 'string' ? causeRecord.fileName : undefined
 	const lineNumber = typeof causeRecord?.lineNumber === 'number' ? causeRecord.lineNumber : undefined
 	const columnNumber = typeof causeRecord?.columnNumber === 'number' ? causeRecord.columnNumber : undefined

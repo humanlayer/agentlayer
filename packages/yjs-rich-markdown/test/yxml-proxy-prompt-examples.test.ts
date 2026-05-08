@@ -53,35 +53,61 @@ describe('YXML proxy prompt examples', () => {
 						{
 							kind: 'element',
 							nodeName: 'listItem',
-							children: [{ kind: 'element', nodeName: 'paragraph', children: [{ kind: 'text', text: 'Use scoped NodeRefs.' }] }],
+							children: [
+								{
+									kind: 'element',
+									nodeName: 'paragraph',
+									children: [{ kind: 'text', text: 'Use scoped NodeRefs.' }],
+								},
+							],
 						},
 						{
 							kind: 'element',
 							nodeName: 'listItem',
-							children: [{ kind: 'element', nodeName: 'paragraph', children: [{ kind: 'text', text: 'Validate after mutation.' }] }],
+							children: [
+								{
+									kind: 'element',
+									nodeName: 'paragraph',
+									children: [{ kind: 'text', text: 'Validate after mutation.' }],
+								},
+							],
 						},
 					],
 				},
 				{
 					kind: 'element',
 					nodeName: 'blockquote',
-					children: [{ kind: 'element', nodeName: 'paragraph', children: [{ kind: 'text', text: 'Bindings keep generated code sandbox-safe.' }] }],
+					children: [
+						{
+							kind: 'element',
+							nodeName: 'paragraph',
+							children: [{ kind: 'text', text: 'Bindings keep generated code sandbox-safe.' }],
+						},
+					],
 				},
 				{ kind: 'element', nodeName: 'horizontalRule' },
 				{
 					kind: 'element',
 					nodeName: 'codeBlock',
 					attributes: { language: 'ts' },
-					children: [{ kind: 'text', text: 'const root = bindings.root()\nconst xml = bindings.toString({})' }],
+					children: [
+						{ kind: 'text', text: 'const root = bindings.root()\nconst xml = bindings.toString({})' },
+					],
 				},
 			],
 		})
 
 		expect(proxy.toString({})).toContain('<heading level="2">Implementation Notes</heading>')
-		expect(proxy.toString({})).toContain('<paragraph>The agent edits through <code>bindings</code> instead of direct Yjs objects.</paragraph>')
-		expect(proxy.toString({})).toContain('<blockquote><paragraph>Bindings keep generated code sandbox-safe.</paragraph></blockquote>')
+		expect(proxy.toString({})).toContain(
+			'<paragraph>The agent edits through <code>bindings</code> instead of direct Yjs objects.</paragraph>',
+		)
+		expect(proxy.toString({})).toContain(
+			'<blockquote><paragraph>Bindings keep generated code sandbox-safe.</paragraph></blockquote>',
+		)
 		expect(proxy.toString({})).toContain('<horizontalrule></horizontalrule>')
-		expect(proxy.toString({})).toContain('<codeblock language="ts">const root = bindings.root()\nconst xml = bindings.toString({})</codeblock>')
+		expect(proxy.toString({})).toContain(
+			'<codeblock language="ts">const root = bindings.root()\nconst xml = bindings.toString({})</codeblock>',
+		)
 	})
 
 	test('add a bullet to an existing list', () => {
@@ -232,11 +258,7 @@ function createInlineMarkedExampleProxy(): YXmlProxyBindings {
 	const doc = new Y.Doc()
 	const fragment = doc.getXmlFragment('artifact')
 	const paragraph = new Y.XmlElement('paragraph')
-	paragraph.insert(0, [
-		text('Before '),
-		createElement('italic', [text('nested example text')]),
-		text(' after'),
-	])
+	paragraph.insert(0, [text('Before '), createElement('italic', [text('nested example text')]), text(' after')])
 	fragment.insert(0, [paragraph])
 	return new YXmlProxyBindings(fragment)
 }

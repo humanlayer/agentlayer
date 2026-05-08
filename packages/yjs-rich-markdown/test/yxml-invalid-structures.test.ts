@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import type { JSONContent } from '@tiptap/core'
-import * as Y from 'yjs'
 import { yXmlFragmentToProsemirrorJSON } from 'y-prosemirror'
+import * as Y from 'yjs'
 import { markdownToTiptapJson, tiptapJsonToMarkdown } from '../src'
 
 function text(value: string): Y.XmlText {
@@ -37,7 +37,9 @@ describe('invalid or lossy YXml structures', () => {
 	test('unsupported nested node type survives YXml but is dropped during markdown serialization', () => {
 		const doc = new Y.Doc()
 		const fragment = doc.getXmlFragment('invalid')
-		fragment.insert(0, [element('paragraph', [text('Before '), element('custommark', [text('marked')]), text(' after')])])
+		fragment.insert(0, [
+			element('paragraph', [text('Before '), element('custommark', [text('marked')]), text(' after')]),
+		])
 
 		expect(fragment.toString()).toBe('<paragraph>Before <custommark>marked</custommark> after</paragraph>')
 		expect(jsonFor(fragment)).toEqual({

@@ -1,16 +1,12 @@
 #!/usr/bin/env bun
 import readline from 'node:readline/promises'
 import { YjsProvider } from '@durable-streams/y-durable-streams'
-import { createOutputRenderer, extractLastAssistantText, renderFinish, startState } from '@humanlayer/agentlayer-core'
 import type { Agent, AgentState } from '@humanlayer/agentlayer-core'
+import { createOutputRenderer, extractLastAssistantText, renderFinish, startState } from '@humanlayer/agentlayer-core'
 import { Awareness } from 'y-protocols/awareness'
 import * as Y from 'yjs'
+import { createRichMarkdownCliAgent, createRichMarkdownCliAgentState, defaultRichMarkdownCliModel } from '../agents'
 import { RichMarkdownArtifactStore } from '../artifact-store'
-import {
-	createRichMarkdownCliAgent,
-	createRichMarkdownCliAgentState,
-	defaultRichMarkdownCliModel,
-} from '../agents'
 
 const DEFAULT_BASE_URL = 'https://localhost:4437/v1/yjs/rich-markdown'
 const DEFAULT_DOC_ID = 'rich-artifacts-learning'
@@ -65,7 +61,8 @@ async function main() {
 		throw result.error ?? new Error('Rich markdown CLI agent failed')
 	}
 	const finalText = extractLastAssistantText(result).trim()
-	if (finalText) console.log(`__RICH_MARKDOWN_AGENT_FINAL_MESSAGE_START__${finalText}__RICH_MARKDOWN_AGENT_FINAL_MESSAGE_END__`)
+	if (finalText)
+		console.log(`__RICH_MARKDOWN_AGENT_FINAL_MESSAGE_START__${finalText}__RICH_MARKDOWN_AGENT_FINAL_MESSAGE_END__`)
 	renderFinish(result)
 }
 

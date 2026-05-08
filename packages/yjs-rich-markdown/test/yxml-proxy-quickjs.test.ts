@@ -111,12 +111,12 @@ describe('Y.XMLFragment Proxy tests', () => {
 		let doc: Y.Doc
 		let fragment: Y.XmlFragment
 		let proxy: YXmlProxyBindings
-		let root: Y.XmlElement
+		let _root: Y.XmlElement
 		beforeEach(() => {
 			doc = new Y.Doc()
 			fragment = doc.getXmlFragment('artifact')
 			proxy = new YXmlProxyBindings(fragment)
-			root = new Y.XmlElement('root')
+			_root = new Y.XmlElement('root')
 		})
 
 		test('can edit a deeply nested fragment at multiple tree levels', () => {
