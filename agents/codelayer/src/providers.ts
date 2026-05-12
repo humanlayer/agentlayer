@@ -7,7 +7,7 @@ import { createCodexProvider } from '@humanlayer/agentlayer-provider-openai-code
 
 export type ProviderType = 'anthropic' | 'openai' | 'codex' | 'copilot' | 'firepass'
 
-const FIREWORKS_MODEL_ID = 'accounts/fireworks/routers/kimi-k2p5-turbo'
+const FIREWORKS_MODEL_ID = 'accounts/fireworks/routers/kimi-k2p6-turbo'
 
 export const DEFAULT_MODELS: Record<ProviderType, string> = {
 	anthropic: 'claude-opus-4-5',
