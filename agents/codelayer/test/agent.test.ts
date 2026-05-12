@@ -85,7 +85,7 @@ describe('provider resolution', () => {
 		expect(rootDefaultModels).toBe(DEFAULT_MODELS)
 		expect(resolveExaApiKey).toBeFunction()
 		expect(resolveModel).toBeFunction()
-		expect(DEFAULT_MODELS.firepass).toBe('accounts/fireworks/routers/kimi-k2p5-turbo')
+		expect(DEFAULT_MODELS.firepass).toBe('accounts/fireworks/routers/kimi-k2p6-turbo')
 	})
 
 	test('resolves anthropic from ANTHROPIC_API_KEY before auth store', async () => {
@@ -195,7 +195,7 @@ describe('createCodelayerAgent', () => {
 	})
 
 	test('uses high reasoning effort for kimi models', () => {
-		const model = createMockModel('accounts/fireworks/routers/kimi-k2p5-turbo')
+		const model = createMockModel(DEFAULT_MODELS.firepass)
 
 		expect(buildProviderOptions(model).openai).toMatchObject({
 			fastMode: false,
