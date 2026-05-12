@@ -10,6 +10,10 @@ import {
 	createReadBeforeWriteHooks,
 	createWastedReadHook,
 	createWastedReadHooks,
+	FILE_READ_STATE_KEY,
+	FILE_VERIFICATION_STATE_KEY,
+	type FileReadStateMap,
+	type FileVerificationStateMap,
 } from '../src/hooks'
 import {
 	assistantText,
@@ -1156,6 +1160,85 @@ describe('file-state hooks', () => {
 			expect(getToolResults(result.state.messages).map((part) => part.output.value)).not.toContain(
 				readBeforeWriteReminder(filePath),
 			)
+		} finally {
+			await rm(dir, { recursive: true })
+		}
+	})
+
+	test('read then write then write uses verification state instead of stale read state', async () => {
+		const dir = await mkdtemp(join(tmpdir(), 'file-state-hook-test-'))
+		try {
+			const filePath = join(dir, 'write-then-write.txt')
+			await writeFile(filePath, 'initial\n')
+
+			let readExecuted = 0
+			let writeExecuted = 0
+			let blockCount = 0
+
+			const readTool = defineTool({
+				name: 'read',
+				description: 'Read file',
+				input: z.object({ file_path: z.string() }),
+				output: z.string(),
+				execute: async (input) => {
+					readExecuted += 1
+					return fileText(input.file_path)
+				},
+			})
+
+			const writeTool = defineTool({
+				name: 'write',
+				description: 'Write file',
+				input: z.object({ file_path: z.string(), content: z.string() }),
+				output: z.string(),
+				execute: async (input) => {
+					writeExecuted += 1
+					await writeFile(input.file_path, input.content)
+					return 'wrote'
+				},
+			})
+
+			const baseReadBeforeWriteHook = createReadBeforeWriteHook()
+			const instrumentedReadBeforeWriteHook = async (ctx: Parameters<typeof baseReadBeforeWriteHook>[0]) => {
+				const result = await baseReadBeforeWriteHook(ctx)
+				if (result.type === 'toolResult') {
+					blockCount += 1
+				}
+				return result
+			}
+
+			const result = await new Agent({
+				model: mockModel([
+					assistantWithToolCall('read', { file_path: filePath }),
+					assistantWithToolCall('write', { file_path: filePath, content: 'after-first-write\n' }),
+					assistantWithToolCall('write', { file_path: filePath, content: 'after-second-write\n' }),
+					assistantText('Done.'),
+				]),
+				tools: { read: readTool, write: writeTool },
+				hooks: {
+					preToolUse: [createWastedReadHook(), instrumentedReadBeforeWriteHook],
+					postToolUse: [createFileStateTrackingHook()],
+				},
+			}).run({ state: startState([userMessage('Read then write twice')]) }).result
+
+			expect(readExecuted).toBe(1)
+			expect(writeExecuted).toBe(2)
+			expect(blockCount).toBe(0)
+			expect(await fileText(filePath)).toBe('after-second-write\n')
+			expect(getToolResults(result.state.messages).map((part) => part.output.value)).not.toContain(
+				readBeforeWriteReminder(filePath),
+			)
+
+			const toolState = result.state.toolState
+			expect(toolState).toBeDefined()
+			if (!toolState) {
+				throw new Error('expected tool state to be defined')
+			}
+			const readState = toolState[FILE_READ_STATE_KEY] as FileReadStateMap
+			const verificationState = toolState[FILE_VERIFICATION_STATE_KEY] as FileVerificationStateMap
+			expect(readState[filePath]?.lastReadHash).toBeTruthy()
+			expect(verificationState[filePath]?.lastVerifiedHash).toBeTruthy()
+			expect(readState[filePath]?.lastReadHash).not.toBe(verificationState[filePath]?.lastVerifiedHash)
 		} finally {
 			await rm(dir, { recursive: true })
 		}
