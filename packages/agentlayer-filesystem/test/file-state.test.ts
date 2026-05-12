@@ -2,7 +2,14 @@ import { describe, expect, test } from 'bun:test'
 import { access, mkdtemp, readFile, rm, unlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { Agent, defineTool, startState } from '@humanlayer/agentlayer-core'
+import {
+	Agent,
+	defineTool,
+	runPostToolUseHooks,
+	runPreToolUseHooks,
+	startState,
+	type ToolInfo,
+} from '@humanlayer/agentlayer-core'
 import { z } from 'zod'
 import {
 	createFileStateTrackingHook,
@@ -45,7 +52,111 @@ function readBeforeWriteReminder(filePath: string): string {
 	return `<system-reminder>You must read file ${filePath} before writing to it.</system-reminder>`
 }
 
+type DirectHookState = {
+	[FILE_READ_STATE_KEY]?: FileReadStateMap
+	[FILE_VERIFICATION_STATE_KEY]?: FileVerificationStateMap
+}
+
+type DirectHookHarness = {
+	state: DirectHookState
+	expectMutationAllowed: (toolName: string, input: Record<string, unknown>) => Promise<void>
+	expectMutationBlocked: (toolName: string, input: Record<string, unknown>, filePath: string) => Promise<void>
+	recordReadObservation: (input: Record<string, unknown>, rawOutput: string) => Promise<void>
+	recordMutationVerification: (toolName: string, input: Record<string, unknown>, rawOutput?: unknown) => Promise<void>
+}
+
+function createDirectHookHarness(cwd?: string): DirectHookHarness {
+	const state: DirectHookState = {}
+	const preHook = createReadBeforeWriteHook({ cwd })
+	const postHook = createFileStateTrackingHook({ cwd })
+	let nextToolCallId = 0
+
+	function toolInfo(toolName: string): ToolInfo {
+		return {
+			name: toolName,
+			inputSchema: z.record(z.string(), z.unknown()),
+		}
+	}
+
+	function applyStateUpdates(updates: Array<{ key: string; apply: (current: unknown) => unknown }>) {
+		for (const update of updates) {
+			state[update.key as keyof DirectHookState] = update.apply(state[update.key as keyof DirectHookState]) as never
+		}
+	}
+
+	async function expectMutationAllowed(toolName: string, input: Record<string, unknown>) {
+		const result = await runPreToolUseHooks([preHook], {
+			toolName,
+			toolCallId: `direct-${++nextToolCallId}`,
+			input,
+			tool: toolInfo(toolName),
+			getContextWindow: () => [],
+			state,
+		})
+		applyStateUpdates(result.stateUpdates)
+		expect(result.result.type).toBe('next')
+	}
+
+	async function expectMutationBlocked(toolName: string, input: Record<string, unknown>, filePath: string) {
+		const result = await runPreToolUseHooks([preHook], {
+			toolName,
+			toolCallId: `direct-${++nextToolCallId}`,
+			input,
+			tool: toolInfo(toolName),
+			getContextWindow: () => [],
+			state,
+		})
+		applyStateUpdates(result.stateUpdates)
+		expect(result.result.type).toBe('toolResult')
+		if (result.result.type === 'toolResult') {
+			expect(result.result.output).toBe(readBeforeWriteReminder(filePath))
+			expect(result.result.isError).toBe(true)
+		}
+	}
+
+	async function runPostHook(toolName: string, input: Record<string, unknown>, rawOutput: unknown) {
+		const result = await runPostToolUseHooks([postHook], {
+			toolName,
+			toolCallId: `direct-${++nextToolCallId}`,
+			input,
+			output: typeof rawOutput === 'string' ? rawOutput : JSON.stringify(rawOutput),
+			rawOutput,
+			tool: toolInfo(toolName),
+			getContextWindow: () => [],
+			state,
+		})
+		applyStateUpdates(result.stateUpdates)
+	}
+
+	return {
+		state,
+		expectMutationAllowed,
+		expectMutationBlocked,
+		recordReadObservation: (input, rawOutput) => runPostHook('read', input, rawOutput),
+		recordMutationVerification: (toolName, input, rawOutput = 'ok') => runPostHook(toolName, input, rawOutput),
+	}
+}
+
 describe('file-state hooks', () => {
+	test('direct hook harness records read state and gates mutations', async () => {
+		const dir = await mkdtemp(join(tmpdir(), 'file-state-hook-test-'))
+		try {
+			const filePath = join(dir, 'sample.txt')
+			const initialContent = 'alpha\nbeta\n'
+			await writeFile(filePath, initialContent)
+			const harness = createDirectHookHarness()
+
+			await harness.expectMutationBlocked('write', { file_path: filePath, content: 'blocked\n' }, filePath)
+			await harness.recordReadObservation({ file_path: filePath }, initialContent)
+			await harness.expectMutationAllowed('write', { file_path: filePath, content: 'next\n' })
+
+			expect(harness.state[FILE_READ_STATE_KEY]?.[filePath]?.lastReadHash).toBeString()
+			expect(harness.state[FILE_VERIFICATION_STATE_KEY]?.[filePath]?.lastVerifiedHash).toBeString()
+		} finally {
+			await rm(dir, { recursive: true })
+		}
+	})
+
 	test('unchanged second read short-circuits execution', async () => {
 		const dir = await mkdtemp(join(tmpdir(), 'file-state-hook-test-'))
 		try {
