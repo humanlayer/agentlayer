@@ -29,6 +29,12 @@ export {
 	IMPLEMENTER_AGENT_PROMPT,
 } from './implementer-agent'
 export {
+	createOutlineImplementerAgent,
+	OUTLINE_IMPLEMENTER_AGENT_DESCRIPTION,
+	OUTLINE_IMPLEMENTER_AGENT_NAME,
+	OUTLINE_IMPLEMENTER_AGENT_PROMPT,
+} from './outline-implementer-agent'
+export {
 	createLibraryResearcherAgent,
 	LIBRARY_RESEARCHER_DESCRIPTION,
 	LIBRARY_RESEARCHER_NAME,

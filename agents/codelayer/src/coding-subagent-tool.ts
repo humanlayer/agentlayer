@@ -27,7 +27,10 @@ import {
 	createCodebasePatternFinderAgent,
 	createImplementerAgent,
 	createLibraryResearcherAgent,
+	createOutlineImplementerAgent,
 	createWebSearchResearcherAgent,
+	OUTLINE_IMPLEMENTER_AGENT_DESCRIPTION,
+	OUTLINE_IMPLEMENTER_AGENT_NAME,
 } from './rpi-agents'
 
 const DEFAULT_CODE_SEARCH_TIMEOUT_MS = 30_000
@@ -259,6 +262,14 @@ export async function createCodingSubagentTool(opts: CreateCodingSubagentToolOpt
 		stopWhen,
 		providerOptions: opts.providerOptions,
 	})
+	const outlineImplementerAgent = createOutlineImplementerAgent({
+		model: opts.model,
+		tools: implementerTools,
+		system: baseSystem,
+		hooks,
+		stopWhen,
+		providerOptions: opts.providerOptions,
+	})
 
 	const webResearcherTools: Record<string, Tool<any, any>> = {
 		web_fetch: createWebFetchTool(),
@@ -315,6 +326,11 @@ export async function createCodingSubagentTool(opts: CreateCodingSubagentToolOpt
 			description:
 				'Implements approved plans phase by phase with code changes, verification, and todo tracking. Use when an RPI skill asks for an implementer agent.',
 			agent: implementerAgent,
+		},
+		{
+			name: OUTLINE_IMPLEMENTER_AGENT_NAME,
+			description: OUTLINE_IMPLEMENTER_AGENT_DESCRIPTION,
+			agent: outlineImplementerAgent,
 		},
 		{
 			name: 'codebase-locator',
