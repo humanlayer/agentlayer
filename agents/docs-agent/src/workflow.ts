@@ -75,7 +75,7 @@ function parseLines(text: string) {
 }
 
 async function getSourceChanges(baseRef: string) {
-	const ranges = [`origin/${baseRef}...HEAD`, `${baseRef}...HEAD`]
+	const ranges = [`origin/${baseRef}...HEAD`, `${baseRef}...HEAD`, 'FETCH_HEAD...HEAD']
 	const diff = await gitText(ranges)
 	const changedFiles = parseLines(await gitNameOnly(ranges)).filter((file) => sourceFilePattern.test(file))
 	return { diff, changedFiles }
