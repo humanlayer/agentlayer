@@ -560,7 +560,13 @@ describe('file-state hooks', () => {
 			await unlink(moveSourcePath)
 			await harness.recordMutationVerification('apply_patch', { patch_text: patchText })
 
-			for (const verifiedPath of [firstUpdatePath, secondUpdatePath, firstAddPath, secondAddPath, moveDestinationPath]) {
+			for (const verifiedPath of [
+				firstUpdatePath,
+				secondUpdatePath,
+				firstAddPath,
+				secondAddPath,
+				moveDestinationPath,
+			]) {
 				expect(harness.state[FILE_VERIFICATION_STATE_KEY]?.[verifiedPath]?.lastVerifiedHash).toBeTruthy()
 				await harness.expectMutationAllowed('write', { file_path: verifiedPath, content: 'follow-up\n' })
 			}
@@ -574,7 +580,11 @@ describe('file-state hooks', () => {
 			await writeFile(deletePath, 'external-recreate\n')
 			await writeFile(moveSourcePath, 'external-recreate\n')
 			await harness.expectMutationBlocked('write', { file_path: deletePath, content: 'blocked\n' }, deletePath)
-			await harness.expectMutationBlocked('write', { file_path: moveSourcePath, content: 'blocked\n' }, moveSourcePath)
+			await harness.expectMutationBlocked(
+				'write',
+				{ file_path: moveSourcePath, content: 'blocked\n' },
+				moveSourcePath,
+			)
 		} finally {
 			await rm(dir, { recursive: true })
 		}
