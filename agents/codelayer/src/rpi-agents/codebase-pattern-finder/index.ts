@@ -1,6 +1,6 @@
 import { createSpecialistAgent, type SpecialistAgentOptions } from '../shared'
 
-export const CODEBASE_PATTERN_FINDER_NAME = 'codebase-pattern-finder'
+export const CODEBASE_PATTERN_FINDER_NAME = 'rpi:codebase-pattern-finder'
 
 export const CODEBASE_PATTERN_FINDER_DESCRIPTION =
 	'Finds similar implementations and reusable patterns in the codebase. Use when looking for patterns to follow or examples to model after.'
