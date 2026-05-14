@@ -1,6 +1,6 @@
 import { createSpecialistAgent, type SpecialistAgentOptions } from '../shared'
 
-export const CODEBASE_LOCATOR_NAME = 'codebase-locator'
+export const CODEBASE_LOCATOR_NAME = 'rpi:codebase-locator'
 
 export const CODEBASE_LOCATOR_DESCRIPTION =
 	'Locates files, directories, and components relevant to a task. Use when you need to find WHERE code lives without reading contents.'

@@ -1,6 +1,6 @@
 import { createSpecialistAgent, type SpecialistAgentOptions } from '../shared'
 
-export const CODEBASE_ANALYZER_NAME = 'codebase-analyzer'
+export const CODEBASE_ANALYZER_NAME = 'rpi:codebase-analyzer'
 
 export const CODEBASE_ANALYZER_DESCRIPTION =
 	'Explains how code works with concrete file references. Use when you need to understand HOW code works.'

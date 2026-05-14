@@ -29,6 +29,14 @@ import {
 	createLibraryResearcherAgent,
 	createOutlineImplementerAgent,
 	createWebSearchResearcherAgent,
+	CODEBASE_ANALYZER_DESCRIPTION,
+	CODEBASE_ANALYZER_NAME,
+	CODEBASE_LOCATOR_DESCRIPTION,
+	CODEBASE_LOCATOR_NAME,
+	CODEBASE_PATTERN_FINDER_DESCRIPTION,
+	CODEBASE_PATTERN_FINDER_NAME,
+	IMPLEMENTER_AGENT_DESCRIPTION,
+	IMPLEMENTER_AGENT_NAME,
 	OUTLINE_IMPLEMENTER_AGENT_DESCRIPTION,
 	OUTLINE_IMPLEMENTER_AGENT_NAME,
 } from './rpi-agents'
@@ -322,9 +330,8 @@ export async function createCodingSubagentTool(opts: CreateCodingSubagentToolOpt
 			agent: bashAgent,
 		},
 		{
-			name: 'implementer-agent',
-			description:
-				'Implements approved plans phase by phase with code changes, verification, and todo tracking. Use when an RPI skill asks for an implementer agent.',
+			name: IMPLEMENTER_AGENT_NAME,
+			description: IMPLEMENTER_AGENT_DESCRIPTION,
 			agent: implementerAgent,
 		},
 		{
@@ -333,8 +340,8 @@ export async function createCodingSubagentTool(opts: CreateCodingSubagentToolOpt
 			agent: outlineImplementerAgent,
 		},
 		{
-			name: 'codebase-locator',
-			description: 'Locates files, directories, and components relevant to a task.',
+			name: CODEBASE_LOCATOR_NAME,
+			description: CODEBASE_LOCATOR_DESCRIPTION,
 			agent: createCodebaseLocatorAgent({
 				model: opts.model,
 				tools: {
@@ -349,8 +356,8 @@ export async function createCodingSubagentTool(opts: CreateCodingSubagentToolOpt
 			}),
 		},
 		{
-			name: 'codebase-analyzer',
-			description: 'Explains how code works with concrete file references.',
+			name: CODEBASE_ANALYZER_NAME,
+			description: CODEBASE_ANALYZER_DESCRIPTION,
 			agent: createCodebaseAnalyzerAgent({
 				model: opts.model,
 				tools: {
@@ -366,8 +373,8 @@ export async function createCodingSubagentTool(opts: CreateCodingSubagentToolOpt
 			}),
 		},
 		{
-			name: 'codebase-pattern-finder',
-			description: 'Finds similar implementations and reusable patterns in the codebase.',
+			name: CODEBASE_PATTERN_FINDER_NAME,
+			description: CODEBASE_PATTERN_FINDER_DESCRIPTION,
 			agent: createCodebasePatternFinderAgent({
 				model: opts.model,
 				tools: {

@@ -330,7 +330,7 @@ describe('createCodelayerAgent', () => {
 		const subagent = config.tools?.agent as { description?: string } | undefined
 
 		expect(subagent?.description).toContain('library-researcher')
-		expect(subagent?.description).toContain('implementer-agent')
+		expect(subagent?.description).toContain('rpi:implementer-agent')
 	})
 
 	test('creates an rlm codex agent without bash and with apply_patch', async () => {
@@ -407,8 +407,8 @@ describe('createCodingSubagentTool', () => {
 
 		expect(tool.name).toBe('subagent')
 		expect(tool.description).toContain('general-purpose')
-		expect(tool.description).toContain('implementer-agent')
-		expect(tool.description).toContain('codebase-locator')
+		expect(tool.description).toContain('rpi:implementer-agent')
+		expect(tool.description).toContain('rpi:codebase-locator')
 	})
 
 	test('includes library-researcher when documentation search keys are available', async () => {

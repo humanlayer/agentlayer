@@ -1,6 +1,6 @@
 import { createSpecialistAgent, type SpecialistAgentOptions } from '../shared'
 
-export const IMPLEMENTER_AGENT_NAME = 'implementer-agent'
+export const IMPLEMENTER_AGENT_NAME = 'rpi:implementer-agent'
 
 export const IMPLEMENTER_AGENT_DESCRIPTION =
 	'Implements approved plans phase by phase with code changes, verification, and todo tracking. Use when an RPI skill asks for an implementer agent.'
