@@ -9,7 +9,7 @@ import {
 	type SubAgentConfig,
 	type Tool,
 } from '@humanlayer/agentlayer-core'
-import type { Skill } from '@humanlayer/agentlayer-core/interfaces'
+import type { ReadToolModalities, Skill } from '@humanlayer/agentlayer-core/interfaces'
 import { createFileStateTrackingHook, createReadBeforeWriteHook, createWastedReadHook } from './hooks/file-state'
 import {
 	createBashOutputTruncationHook,
@@ -24,6 +24,7 @@ import { createEditTool } from './tools/edit'
 import { createGlobTool } from './tools/glob'
 import { createGrepTool } from './tools/grep'
 import { createListTool } from './tools/list'
+import { createReadMultimodalTool } from './tools/read-multimodal'
 import { createReadTool } from './tools/read'
 import { createSkillToolFromDirs, createSkillToolFromRepoDirs, type SkillDirEntry } from './tools/skill'
 import { createWebSearchTool } from './tools/web-search'
@@ -77,12 +78,19 @@ export function createAgentFilesystemHooks(opts: CreateAgentFilesystemHooksOptio
 
 export interface CreateAgentFilesystemToolsetOptions {
 	cwd: string
+	readToolModalities?: ReadToolModalities
+}
+
+function createFilesystemReadTool(opts: CreateAgentFilesystemToolsetOptions) {
+	return opts.readToolModalities
+		? createReadMultimodalTool({ cwd: opts.cwd, readToolModalities: opts.readToolModalities })
+		: createReadTool({ cwd: opts.cwd })
 }
 
 export function createClaudeAgentFilesystemToolset(opts: CreateAgentFilesystemToolsetOptions) {
 	return {
 		bash: createBashTool({ cwd: opts.cwd }),
-		read: createReadTool({ cwd: opts.cwd }),
+		read: createFilesystemReadTool(opts),
 		write: createWriteTool({ cwd: opts.cwd }),
 		edit: createEditTool({ cwd: opts.cwd }),
 		glob: createGlobTool({ cwd: opts.cwd }),
@@ -94,7 +102,7 @@ export function createClaudeAgentFilesystemToolset(opts: CreateAgentFilesystemTo
 export function createCodexAgentFilesystemToolset(opts: CreateAgentFilesystemToolsetOptions) {
 	return {
 		bash: createBashTool({ cwd: opts.cwd }),
-		read: createReadTool({ cwd: opts.cwd }),
+		read: createFilesystemReadTool(opts),
 		apply_patch: createApplyPatchTool({ cwd: opts.cwd }),
 		glob: createGlobTool({ cwd: opts.cwd }),
 		grep: createGrepTool({ cwd: opts.cwd }),
@@ -170,18 +178,20 @@ export async function createCodingAgentAuxToolset(opts: CreateCodingAgentAuxTool
 	} as const
 }
 
-export interface CreateCodingAgentToolsetOptions extends CreateCodingAgentAuxToolsetOptions {}
+export interface CreateCodingAgentToolsetOptions extends CreateCodingAgentAuxToolsetOptions {
+	readToolModalities?: ReadToolModalities
+}
 
 export async function createClaudeCodingAgentToolset(opts: CreateCodingAgentToolsetOptions) {
 	return {
-		...createClaudeAgentFilesystemToolset({ cwd: opts.cwd }),
+		...createClaudeAgentFilesystemToolset({ cwd: opts.cwd, readToolModalities: opts.readToolModalities }),
 		...(await createCodingAgentAuxToolset(opts)),
 	} as const
 }
 
 export async function createCodexCodingAgentToolset(opts: CreateCodingAgentToolsetOptions) {
 	return {
-		...createCodexAgentFilesystemToolset({ cwd: opts.cwd }),
+		...createCodexAgentFilesystemToolset({ cwd: opts.cwd, readToolModalities: opts.readToolModalities }),
 		...(await createCodingAgentAuxToolset(opts)),
 	} as const
 }
