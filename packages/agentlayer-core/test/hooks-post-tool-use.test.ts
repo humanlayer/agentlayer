@@ -230,6 +230,7 @@ describe('postToolUse — parallel tool calls', () => {
 		})
 
 		const tagHook: PostToolUseHook = (ctx) => {
+			if (typeof ctx.output !== 'string') return ctx.done()
 			outputs.push(ctx.output)
 			return ctx.done(`[tagged] ${ctx.output}`)
 		}

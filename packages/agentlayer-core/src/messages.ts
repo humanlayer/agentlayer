@@ -1,5 +1,26 @@
-import type { AssistantModelMessage, ModelMessage, SystemModelMessage, ToolModelMessage, UserModelMessage } from 'ai'
+import type {
+	AssistantModelMessage,
+	ModelMessage,
+	SystemModelMessage,
+	ToolModelMessage,
+	ToolResultPart,
+	UserModelMessage,
+} from 'ai'
 import type { RunResult } from './agent'
+
+export type AgentLayerToolOutput = string | ToolResultPart['output']
+
+const TOOL_RESULT_OUTPUT_TYPES = new Set(['text', 'json', 'execution-denied', 'error-text', 'error-json', 'content'])
+
+export function isToolResultOutput(value: unknown): value is ToolResultPart['output'] {
+	return (
+		typeof value === 'object' &&
+		value !== null &&
+		'type' in value &&
+		typeof (value as { type: unknown }).type === 'string' &&
+		TOOL_RESULT_OUTPUT_TYPES.has((value as { type: string }).type)
+	)
+}
 
 type ToolCallInput = {
 	toolCallId: string
@@ -51,9 +72,11 @@ export function toolResult(input: ToolResultInput): ToolModelMessage {
 export function buildToolResultMessage(
 	toolCallId: string,
 	toolName: string,
-	output: string,
+	output: AgentLayerToolOutput,
 	isError: boolean,
 ): ModelMessage {
+	const resolvedOutput = typeof output === 'string' ? { type: 'text' as const, value: output } : output
+
 	return {
 		role: 'tool',
 		content: [
@@ -61,7 +84,7 @@ export function buildToolResultMessage(
 				type: 'tool-result',
 				toolCallId,
 				toolName,
-				output: { type: 'text', value: output },
+				output: resolvedOutput,
 				...(isError ? { isError: true } : {}),
 			},
 		],

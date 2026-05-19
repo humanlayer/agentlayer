@@ -1,4 +1,5 @@
 import type { z } from 'zod'
+import type { AgentLayerToolOutput } from '../messages'
 
 export interface HookStateAccess {
 	getState<T>(key: string): T | undefined
@@ -40,8 +41,8 @@ export interface ApprovalRequestData {
 export interface StopOptions {
 	/** Whether to include this tool's result in the context window. Defaults to true. */
 	include?: boolean
-	/** Optional output string to use as the tool result when include is true. */
-	output?: string
+	/** Optional output to use as the tool result when include is true. */
+	output?: AgentLayerToolOutput
 	/** If true, also drop all sibling tool results from the same parallel batch. */
 	dropParallel?: boolean
 	/** Human-readable reason for stopping. */

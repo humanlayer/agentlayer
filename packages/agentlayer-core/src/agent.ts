@@ -19,7 +19,7 @@ import {
 	type StopOptions,
 	type ToolInfo,
 } from './hooks'
-import { buildToolResultMessage } from './messages'
+import { type AgentLayerToolOutput, buildToolResultMessage } from './messages'
 import { type ModelKey, ModelProvider } from './models'
 import type { AgentState, ApprovalDecision, ApprovalHistoryEntry } from './state'
 import type { Step, StepToolResult, StopResult, StopTiming, StopWhen } from './stop-conditions'
@@ -131,7 +131,7 @@ type ToolOutcome =
 			/** When true, inject a system notification about the mutation into the tool result. */
 			notifyModel?: boolean
 			message: ModelMessage
-			output: string
+			output: AgentLayerToolOutput
 			isError: boolean
 			pendingUpdates: Array<(messages: ModelMessage[]) => ModelMessage[]>
 			stopRequested?: StopOptions
@@ -145,7 +145,7 @@ type ToolOutcome =
 			toolName: string
 			input: Record<string, unknown>
 			message: ModelMessage
-			output: string
+			output: AgentLayerToolOutput
 	  }
 	| {
 			kind: 'toolResult'
@@ -153,7 +153,7 @@ type ToolOutcome =
 			toolName: string
 			input: Record<string, unknown>
 			message: ModelMessage
-			output: string
+			output: AgentLayerToolOutput
 			isError: boolean
 			hookStateUpdate?: HookStateOperation[]
 	  }

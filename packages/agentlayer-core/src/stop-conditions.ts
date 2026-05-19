@@ -1,4 +1,5 @@
 import type { ToolSet, TypedToolCall } from 'ai'
+import type { AgentLayerToolOutput } from './messages'
 
 /**
  * The result of a single tool execution within a step.
@@ -6,7 +7,7 @@ import type { ToolSet, TypedToolCall } from 'ai'
 export interface StepToolResult {
 	toolCallId: string
 	toolName: string
-	output: string
+	output: AgentLayerToolOutput
 	isError: boolean
 }
 
