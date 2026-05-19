@@ -1,4 +1,4 @@
-import type { ModelMessage } from 'ai'
+import type { ModelMessage, ToolResultPart } from 'ai'
 import { z } from 'zod'
 import type { HookStopResult, StopOptions } from './hooks'
 import type { AgentState } from './state'
@@ -166,6 +166,8 @@ export interface ToolStateAccessors<TState> {
  */
 export type ToolContextFor<TState> = [TState] extends [never] ? ToolContext : ToolContext & ToolStateAccessors<TState>
 
+export type ToolSerializedOutput = string | ToolResultPart['output']
+
 export interface Tool<TInput = any, TOutput = string> {
 	name: string
 	description: string
@@ -178,7 +180,7 @@ export interface Tool<TInput = any, TOutput = string> {
 	 * Defaults to: string passed as-is, everything else JSON.stringify'd.
 	 * Note: uses `unknown` parameter type for variance compatibility when storing in Record<string, Tool>.
 	 */
-	serialize?: (raw: any, input: any) => string
+	serialize?: (raw: any, input: any) => ToolSerializedOutput
 	/** Runtime marker: key under which this tool's state is stored in AgentState.toolState. */
 	stateKey?: string
 	/** Runtime marker: Zod schema for the tool's state slice. */
@@ -194,7 +196,7 @@ export function defineTool<TInput, TOutput = string, TState = never>(config: {
 	stateKey: string
 	stateSchema: z.ZodType<TState>
 	execute: (input: TInput, ctx: ToolContext & ToolStateAccessors<TState>) => Promise<TOutput | HookStopResult>
-	serialize?: (raw: any, input: any) => string
+	serialize?: (raw: any, input: any) => ToolSerializedOutput
 }): Tool<TInput, TOutput>
 
 // Overload 2: stateless tool (no stateKey/stateSchema — same as before)
@@ -204,7 +206,7 @@ export function defineTool<TInput, TOutput = string>(config: {
 	input: z.ZodType<TInput>
 	output?: z.ZodType<TOutput>
 	execute: (input: TInput, ctx: ToolContext) => Promise<TOutput | HookStopResult>
-	serialize?: (raw: any, input: any) => string
+	serialize?: (raw: any, input: any) => ToolSerializedOutput
 }): Tool<TInput, TOutput>
 
 // Implementation
@@ -230,7 +232,7 @@ export interface ToolInterfaceConfig<TInput, TOutput = string> {
 	 * for tools that need to inspect the context window during serialization.
 	 * Defaults to: string passed as-is, everything else JSON.stringify'd.
 	 */
-	serialize?: (raw: TOutput, input: TInput, ctx: ToolContext) => string
+	serialize?: (raw: TOutput, input: TInput, ctx: ToolContext) => ToolSerializedOutput
 }
 
 export interface ToolInterface<TInput, TOutput = string, TState = never> {
@@ -241,7 +243,7 @@ export interface ToolInterface<TInput, TOutput = string, TState = never> {
 	stateKey?: string
 	stateSchema?: z.ZodType<unknown>
 	beforeExecutionTransform?: (input: TInput, ctx: ToolContext) => TInput
-	serialize?: (raw: TOutput, input: TInput, ctx: ToolContext) => string
+	serialize?: (raw: TOutput, input: TInput, ctx: ToolContext) => ToolSerializedOutput
 	define(
 		executor: (input: TInput, ctx: ToolContextFor<TState>) => Promise<TOutput>,
 		overrides?: { description?: string },
