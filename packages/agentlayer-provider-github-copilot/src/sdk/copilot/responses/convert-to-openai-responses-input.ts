@@ -7,7 +7,11 @@ import {
 } from '@ai-sdk/provider'
 import { convertToBase64, parseProviderOptions } from '@ai-sdk/provider-utils'
 import { z } from 'zod/v4'
-import type { OpenAIResponsesInput, OpenAIResponsesReasoning, OpenAIResponsesUserMessage } from './openai-responses-api-types'
+import type {
+	OpenAIResponsesInput,
+	OpenAIResponsesReasoning,
+	OpenAIResponsesUserMessage,
+} from './openai-responses-api-types'
 import { localShellInputSchema, localShellOutputSchema } from './tool/local-shell'
 
 /**

@@ -17,7 +17,12 @@ describe('convertToOpenAIResponsesInput', () => {
 								value: [
 									{ type: 'text', text: 'Read image.png' },
 									{ type: 'image-data', data: 'iVBORw0KGgo=', mediaType: 'image/png' },
-									{ type: 'file-data', data: 'JVBERi0=', mediaType: 'application/pdf', filename: 'doc.pdf' },
+									{
+										type: 'file-data',
+										data: 'JVBERi0=',
+										mediaType: 'application/pdf',
+										filename: 'doc.pdf',
+									},
 								],
 							},
 						},
