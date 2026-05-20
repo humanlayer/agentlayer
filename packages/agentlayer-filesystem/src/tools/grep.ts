@@ -1,11 +1,9 @@
-import { spawn } from 'node:child_process'
 import { readdir, readFile, realpath, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { GrepMatch } from '@humanlayer/agentlayer-core/interfaces'
 import { GrepTool } from '@humanlayer/agentlayer-core/interfaces'
 import { GREP_DESCRIPTION } from '@humanlayer/agentlayer-core/prompts'
-import { rgPath } from 'ripgrep'
-import { streamToString } from '../utils/process'
+import { ripgrep } from 'ripgrep'
 
 const MAX_MATCHES = 100
 
@@ -106,20 +104,8 @@ export function createGrepTool(opts?: { cwd?: string; disallowSymlinks?: boolean
 			}
 			args.push(searchPath)
 
-			const proc = spawn(rgPath, args, {
-				stdio: ['ignore', 'pipe', 'pipe'],
-			})
-			const exitCodePromise = new Promise<number>((resolve, reject) => {
-				proc.once('error', reject)
-				proc.once('close', (code) => resolve(code ?? -1))
-			})
-
 			try {
-				const [stdout, stderr, exitCode] = await Promise.all([
-					streamToString(proc.stdout),
-					streamToString(proc.stderr),
-					exitCodePromise,
-				])
+				const { code: exitCode, stdout, stderr } = await ripgrep(args, { buffer: true })
 
 				if (exitCode === 1) {
 					return []
