@@ -1,5 +1,5 @@
-import type { ApprovalRequest, StopOptions } from './shared'
 import type { AgentLayerToolOutput } from '../messages'
+import type { ApprovalRequest, StopOptions } from './shared'
 
 export interface NextOptions {
 	/** When true, patch the tool-call input in the assistant message so the model sees the mutated values. Default: false. */

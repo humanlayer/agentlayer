@@ -152,9 +152,9 @@ describe('coding agent toolsets', () => {
 			await writeFile(join(dir, 'image.png'), Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
 
 			const tools = createClaudeAgentFilesystemToolset({ cwd: dir, readToolModalities: ['text'] })
-			await expect(tools.read.execute({ file_path: 'image.png', limit: 2000 }, makeToolContext())).rejects.toThrow(
-				'image support is unavailable',
-			)
+			await expect(
+				tools.read.execute({ file_path: 'image.png', limit: 2000 }, makeToolContext()),
+			).rejects.toThrow('image support is unavailable')
 		} finally {
 			await rm(dir, { recursive: true, force: true })
 		}
@@ -166,9 +166,9 @@ describe('coding agent toolsets', () => {
 			await writeFile(join(dir, 'image.png'), Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0]))
 
 			const tools = createCodexAgentFilesystemToolset({ cwd: dir })
-			await expect(tools.read.execute({ file_path: 'image.png', limit: 2000 }, makeToolContext())).rejects.toThrow(
-				'Cannot read binary file:',
-			)
+			await expect(
+				tools.read.execute({ file_path: 'image.png', limit: 2000 }, makeToolContext()),
+			).rejects.toThrow('Cannot read binary file:')
 		} finally {
 			await rm(dir, { recursive: true, force: true })
 		}

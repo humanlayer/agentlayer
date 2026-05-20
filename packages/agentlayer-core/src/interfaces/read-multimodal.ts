@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { defineToolInterface } from '../define-tool'
-import { readInput, type ReadInput, ReadTool } from './read'
+import { type ReadInput, ReadTool, readInput } from './read'
 
 export type ModelsDevModality = 'image' | 'audio' | 'video' | 'pdf'
 export type ReadToolModalities = readonly ['text', ...ModelsDevModality[]]

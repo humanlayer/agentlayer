@@ -1,5 +1,12 @@
 import { describe, expect, test } from 'bun:test'
-import { assistantMessage, buildToolResultMessage, systemMessage, toolCall, toolResult, userMessage } from '../src/messages'
+import {
+	assistantMessage,
+	buildToolResultMessage,
+	systemMessage,
+	toolCall,
+	toolResult,
+	userMessage,
+} from '../src/messages'
 
 describe('message helpers', () => {
 	test('builds common text messages', () => {

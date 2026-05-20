@@ -370,9 +370,9 @@ describe('createReadMultimodalTool', () => {
 			await writeFile(join(dir, 'archive.zip'), Buffer.from([0x50, 0x4b, 0x03, 0x04, 0, 0]))
 			const readTool = createReadMultimodalTool({ cwd: dir, readToolModalities: ['text', 'image', 'pdf'] })
 
-			await expect(readTool.execute({ file_path: 'archive.zip', limit: 2000 }, makeToolContext())).rejects.toThrow(
-				'unsupported binary file type',
-			)
+			await expect(
+				readTool.execute({ file_path: 'archive.zip', limit: 2000 }, makeToolContext()),
+			).rejects.toThrow('unsupported binary file type')
 		} finally {
 			await rm(dir, { recursive: true, force: true })
 		}

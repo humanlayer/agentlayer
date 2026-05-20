@@ -85,7 +85,10 @@ describe('detectFileType', () => {
 		await withTempDir(async (dir) => {
 			const path = join(dir, 'document.pdf')
 			await writeFile(path, Buffer.from('%PDF-1.7\n'))
-			expect(await detectFileType(path, await fileSize(path))).toEqual({ type: 'pdf', mediaType: 'application/pdf' })
+			expect(await detectFileType(path, await fileSize(path))).toEqual({
+				type: 'pdf',
+				mediaType: 'application/pdf',
+			})
 		})
 	})
 
