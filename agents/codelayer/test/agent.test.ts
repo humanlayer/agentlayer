@@ -1,4 +1,7 @@
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from 'bun:test'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import type { LanguageModel } from 'ai'
 import type { AgentConfig, PostToolUseHook, SubAgentConfig, Tool } from '@humanlayer/agentlayer-core'
 import { saneDefaultOutputTruncationHooks } from '@humanlayer/agentlayer-filesystem/hooks'
@@ -23,17 +26,17 @@ beforeEach(() => {
 	delete process.env.FIREWORKS_API_KEY
 })
 
-afterEach(() => {
+afterEach(async () => {
 	if (originalAnthropicApiKey === undefined) delete process.env.ANTHROPIC_API_KEY
 	else process.env.ANTHROPIC_API_KEY = originalAnthropicApiKey
 	if (originalFireworksApiKey === undefined) delete process.env.FIREWORKS_API_KEY
 	else process.env.FIREWORKS_API_KEY = originalFireworksApiKey
 })
 
-function createMockModel(modelId: string): LanguageModel {
+function createMockModel(modelId: string, provider = 'mock'): LanguageModel {
 	return {
 		specificationVersion: 'v3',
-		provider: 'mock',
+		provider,
 		modelId,
 		supportedUrls: {},
 		async doGenerate() {
@@ -51,6 +54,27 @@ function createMockModel(modelId: string): LanguageModel {
 			throw new Error('streaming not supported in test')
 		},
 	} as LanguageModel
+}
+
+async function createImageFixture(): Promise<string> {
+	const tempDir = await mkdtemp(join(tmpdir(), 'codelayer-read-test-'))
+	await writeFile(join(tempDir, 'image.png'), Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
+	return tempDir
+}
+
+async function withImageFixture<T>(fn: (cwd: string) => Promise<T>): Promise<T> {
+	const cwd = await createImageFixture()
+	try {
+		return await fn(cwd)
+	} finally {
+		await rm(cwd, { recursive: true, force: true })
+	}
+}
+
+async function expectReadToolSupportsPng(readTool: unknown) {
+	const output = await (readTool as Tool<any, any>).execute({ file_path: 'image.png' }, {} as any)
+	expect(output).toMatchObject({ type: 'image', mediaType: 'image/png' })
+	expect(Buffer.from(output.content)).toEqual(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
 }
 
 function getAgentConfig(agent: object) {
@@ -231,6 +255,48 @@ describe('createCodelayerAgent', () => {
 		expect(config.system?.length).toBeGreaterThan(0)
 	})
 
+	test('hard-codes multimodal read for standard CodeLayer agents', async () => {
+		await withImageFixture(async (cwd) => {
+			const agent = await createCodelayerAgent({
+				model: createMockModel('claude-sonnet-4-5'),
+				cwd,
+				subagentTool: { name: 'agent', description: 'test agent', inputSchema: {} as any, execute: async () => 'ok' } as any,
+			})
+
+			await expectReadToolSupportsPng(getAgentConfig(agent).tools?.read)
+		})
+	})
+
+	test('hard-codes multimodal read for RLM direct read construction', async () => {
+		await withImageFixture(async (cwd) => {
+			const agent = await createCodelayerAgent({
+				model: createMockModel('gpt-5.4'),
+				cwd,
+				rlm: true,
+				subagentTool: { name: 'agent', description: 'test agent', inputSchema: {} as any, execute: async () => 'ok' } as any,
+			})
+
+			await expectReadToolSupportsPng(getAgentConfig(agent).tools?.read)
+		})
+	})
+
+	test('custom codex provider does not trigger read modality inference', async () => {
+		await withImageFixture(async (cwd) => {
+			const agent = await createCodelayerAgent({
+				model: createMockModel('gpt-5.5', 'openai.codex'),
+				cwd,
+				subagentTool: { name: 'agent', description: 'test agent', inputSchema: {} as any, execute: async () => 'ok' } as any,
+			})
+
+			await expectReadToolSupportsPng(getAgentConfig(agent).tools?.read)
+		})
+		expect(buildProviderOptions(createMockModel('gpt-5.5', 'openai.codex')).openai).toMatchObject({
+			reasoningSummary: 'detailed',
+			reasoningEffort: 'low',
+			fastMode: false,
+		})
+	})
+
 	test('creates a standard gpt agent with codex apply_patch tools', async () => {
 		const agent = await createCodelayerAgent({
 			model: createMockModel('gpt-4.1'),
@@ -409,6 +475,28 @@ describe('createCodingSubagentTool', () => {
 		expect(tool.description).toContain('general-purpose')
 		expect(tool.description).toContain('rpi:implementer-agent')
 		expect(tool.description).toContain('rpi:codebase-locator')
+	})
+
+	test('hard-codes multimodal read for coding subagents', async () => {
+		await withImageFixture(async (cwd) => {
+			const tool = await createCodingSubagentTool({
+				cwd,
+				model: createMockModel('claude-sonnet-4-5'),
+			})
+			const subagents = getSubagents(tool)
+
+			for (const name of [
+				'general-purpose',
+				'bash',
+				'rpi:implementer-agent',
+				'rpi:codebase-locator',
+				'rpi:codebase-analyzer',
+				'rpi:codebase-pattern-finder',
+			]) {
+				const subagent = subagents.find((candidate) => candidate.name === name)
+				await expectReadToolSupportsPng(getAgentConfig(subagent?.agent ?? {}).tools?.read)
+			}
+		})
 	})
 
 	test('includes library-researcher when documentation search keys are available', async () => {

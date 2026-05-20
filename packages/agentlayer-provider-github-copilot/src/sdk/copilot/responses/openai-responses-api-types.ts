@@ -60,7 +60,7 @@ export type OpenAIResponsesFunctionCall = {
 export type OpenAIResponsesFunctionCallOutput = {
 	type: 'function_call_output'
 	call_id: string
-	output: string
+	output: string | OpenAIResponsesUserMessage['content']
 }
 
 export type OpenAIResponsesComputerCall = {

@@ -14,7 +14,9 @@ import {
 	listInput,
 	MultiEditTool,
 	multiEditInput,
+	ReadMultimodalTool,
 	ReadTool,
+	readInput,
 	WebFetchTool,
 	WriteTool,
 	writeInput,
@@ -25,10 +27,10 @@ import { makeToolContext } from './mocks'
 
 /** Serialize raw tool output using the tool's serialize fn or default logic. */
 function serializeRaw<TInput, TOutput>(
-	tool: { serialize?: (raw: TOutput, input: TInput) => string },
+	tool: { serialize?: (raw: TOutput, input: TInput) => any },
 	raw: TOutput,
 	input: TInput,
-): string {
+): any {
 	if (tool.serialize) return tool.serialize(raw, input)
 	return typeof raw === 'string' ? raw : JSON.stringify(raw)
 }
@@ -38,6 +40,12 @@ function serializeRaw<TInput, TOutput>(
 describe('All interfaces produce valid tools via .define()', () => {
 	test('ReadTool.define() returns a tool named "read"', () => {
 		const tool = ReadTool.define(async () => 'ok')
+		expect(tool.name).toBe('read')
+	})
+
+	test('ReadMultimodalTool.define() returns a tool named "read"', () => {
+		const tool = ReadMultimodalTool.define(async () => ({ type: 'text', content: 'ok' }))
+		expect(ReadMultimodalTool.name).toBe('read')
 		expect(tool.name).toBe('read')
 	})
 
@@ -80,6 +88,14 @@ describe('All interfaces produce valid tools via .define()', () => {
 // ─── Zod schema validation ────────────────────────────────────────────────────
 
 describe('Zod schemas — valid / invalid inputs', () => {
+	test('readInput parses defaults for multimodal read', () => {
+		const result = readInput.safeParse({ file_path: 'x.png' })
+		expect(result.success).toBe(true)
+		if (result.success) {
+			expect(result.data.limit).toBe(2000)
+		}
+	})
+
 	// ── editInput ──
 	test('editInput requires file_path, old_string, new_string', () => {
 		expect(editInput.safeParse({}).success).toBe(false)
@@ -188,6 +204,19 @@ describe('Zod schemas — valid / invalid inputs', () => {
 			patch_text: '*** Begin Patch\n*** Add File: test.txt\n+hello\n*** End Patch',
 		})
 		expect(result.success).toBe(true)
+	})
+})
+
+describe('ReadMultimodalTool serialize', () => {
+	test('text variant serializes like existing read output', async () => {
+		const tool = ReadMultimodalTool.define(async () => ({ type: 'text', content: 'a\nb' }))
+		const input = { file_path: '/fake/path.txt', limit: 2000 }
+		const raw = await tool.execute(input, makeToolContext())
+		const output = serializeRaw(tool, raw as any, input)
+
+		expect(output).toContain('1→a')
+		expect(output).toContain('2→b')
+		expect(output).toContain('(End of file - total 2 lines)')
 	})
 })
 

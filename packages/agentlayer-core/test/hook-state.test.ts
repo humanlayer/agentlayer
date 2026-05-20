@@ -255,7 +255,9 @@ describe('hook state - merge behavior', () => {
 		})
 
 		const postHook: PostToolUseHook = (ctx) => {
-			ctx.updateState<string[]>('outputs', (current) => [...(current ?? []), ctx.output])
+			if (typeof ctx.output === 'string') {
+				ctx.updateState<string[]>('outputs', (current) => [...(current ?? []), ctx.output as string])
+			}
 			return ctx.done()
 		}
 

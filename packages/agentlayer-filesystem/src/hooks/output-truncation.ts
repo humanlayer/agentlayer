@@ -39,6 +39,10 @@ function createOutputTruncationHook(
 	const customHint = opts?.hint
 
 	return createPostToolUseHook(Tool, async (ctx) => {
+		if (typeof ctx.output !== 'string') {
+			return ctx.done()
+		}
+
 		const result = truncateWithOptions(ctx.output, { maxLines, maxBytes, direction })
 		if (!result.truncated) {
 			return ctx.done()

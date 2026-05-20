@@ -52,7 +52,7 @@ describe('GlobTool serialize — no matches', () => {
 		const tool = GlobTool.define(async () => [])
 		const input = { pattern: '**/*.ts' }
 		const raw = await tool.execute(input, makeToolContext())
-		const output = tool.serialize!(raw as string[], input)
+		const output = tool.serialize!(raw as string[], input) as string
 		expect(output).toBe('No files matched the pattern.')
 	})
 })
@@ -63,7 +63,7 @@ describe('GlobTool serialize — with matches', () => {
 		const tool = GlobTool.define(async () => files)
 		const input = { pattern: '**/*.ts' }
 		const raw = await tool.execute(input, makeToolContext())
-		const output = tool.serialize!(raw as string[], input)
+		const output = tool.serialize!(raw as string[], input) as string
 		expect(output).toContain('/a/b/c.ts')
 		expect(output).toContain('/a/b/d.ts')
 	})
@@ -74,7 +74,7 @@ describe('GlobTool serialize — with matches', () => {
 		const tool = GlobTool.define(async () => files)
 		const input = { pattern: '**/*.ts' }
 		const raw = await tool.execute(input, makeToolContext())
-		const output = tool.serialize!(raw as string[], input)
+		const output = tool.serialize!(raw as string[], input) as string
 		expect(output).not.toContain('[Truncated:')
 		expect(output.split('\n')).toHaveLength(120)
 		expect(output).toContain('/dir/file119.ts')

@@ -10,10 +10,13 @@ import { z } from 'zod'
 import {
 	createAgentFilesystemHooks,
 	createAgentSystemPrompt,
+	createClaudeAgentFilesystemToolset,
 	createClaudeCodingAgentToolset,
+	createCodexAgentFilesystemToolset,
 	createCodexCodingAgentToolset,
 	createSkillToolFromRepoDirs,
 } from '../src'
+import { makeToolContext } from './mocks'
 
 function mockModel(modelId: string) {
 	return { modelId } as any
@@ -103,6 +106,86 @@ describe('createAgentFilesystemHooks', () => {
 })
 
 describe('coding agent toolsets', () => {
+	test('claude filesystem toolset swaps in multimodal read when modalities are provided', async () => {
+		const dir = await mkdtemp(join(tmpdir(), 'agentlayer-toolset-'))
+		try {
+			const bytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+			await writeFile(join(dir, 'image.png'), bytes)
+
+			const tools = createClaudeAgentFilesystemToolset({ cwd: dir, readToolModalities: ['text', 'image'] })
+			const raw = await tools.read.execute({ file_path: 'image.png', limit: 2000 }, makeToolContext())
+
+			expect(typeof raw).toBe('object')
+			expect(raw).toMatchObject({ type: 'image', mediaType: 'image/png' })
+			if (typeof raw === 'object' && raw !== null && raw.type === 'image') {
+				expect(raw.mediaType).toBe('image/png')
+				expect(Array.from(raw.content)).toEqual(Array.from(bytes))
+			}
+		} finally {
+			await rm(dir, { recursive: true, force: true })
+		}
+	})
+
+	test('codex filesystem toolset swaps in multimodal read for PDF modality', async () => {
+		const dir = await mkdtemp(join(tmpdir(), 'agentlayer-toolset-'))
+		try {
+			const bytes = Buffer.from('%PDF-1.7\n')
+			await writeFile(join(dir, 'document.pdf'), bytes)
+
+			const tools = createCodexAgentFilesystemToolset({ cwd: dir, readToolModalities: ['text', 'pdf'] })
+			const raw = await tools.read.execute({ file_path: 'document.pdf', limit: 2000 }, makeToolContext())
+
+			expect(typeof raw).toBe('object')
+			expect(raw).toMatchObject({ type: 'pdf', mediaType: 'application/pdf' })
+			if (typeof raw === 'object' && raw !== null && raw.type === 'pdf') {
+				expect(raw.mediaType).toBe('application/pdf')
+				expect(Array.from(raw.content)).toEqual(Array.from(bytes))
+			}
+		} finally {
+			await rm(dir, { recursive: true, force: true })
+		}
+	})
+
+	test('text-only modalities still use multimodal read with modality rejection', async () => {
+		const dir = await mkdtemp(join(tmpdir(), 'agentlayer-toolset-'))
+		try {
+			await writeFile(join(dir, 'image.png'), Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
+
+			const tools = createClaudeAgentFilesystemToolset({ cwd: dir, readToolModalities: ['text'] })
+			await expect(
+				tools.read.execute({ file_path: 'image.png', limit: 2000 }, makeToolContext()),
+			).rejects.toThrow('image support is unavailable')
+		} finally {
+			await rm(dir, { recursive: true, force: true })
+		}
+	})
+
+	test('omitted modalities preserve text-only binary rejection', async () => {
+		const dir = await mkdtemp(join(tmpdir(), 'agentlayer-toolset-'))
+		try {
+			await writeFile(join(dir, 'image.png'), Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0]))
+
+			const tools = createCodexAgentFilesystemToolset({ cwd: dir })
+			await expect(
+				tools.read.execute({ file_path: 'image.png', limit: 2000 }, makeToolContext()),
+			).rejects.toThrow('Cannot read binary file:')
+		} finally {
+			await rm(dir, { recursive: true, force: true })
+		}
+	})
+
+	test('coding toolset accepts typed modalities without model options', async () => {
+		const dir = await mkdtemp(join(tmpdir(), 'agentlayer-toolset-'))
+		try {
+			const modalities = ['text', 'image', 'pdf'] as const
+			const tools = await createCodexCodingAgentToolset({ cwd: dir, readToolModalities: modalities })
+
+			expect('read' in tools).toBe(true)
+		} finally {
+			await rm(dir, { recursive: true, force: true })
+		}
+	})
+
 	test('creates a claude coding toolset with filesystem and aux tools', async () => {
 		const dir = await mkdtemp(join(tmpdir(), 'agentlayer-toolset-'))
 		try {

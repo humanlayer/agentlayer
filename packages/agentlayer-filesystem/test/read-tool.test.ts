@@ -3,15 +3,15 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { ReadTool, readInput } from '@humanlayer/agentlayer-core/interfaces'
-import { createReadTool } from '../src/tools'
+import { createReadMultimodalTool, createReadTool } from '../src/tools'
 import { makeToolContext } from './mocks'
 
 /** Serialize raw tool output using the tool's serialize fn or default logic. */
 function serializeRaw<TInput, TOutput>(
-	tool: { serialize?: (raw: TOutput, input: TInput) => string },
+	tool: { serialize?: (raw: TOutput, input: TInput) => any },
 	raw: TOutput,
 	input: TInput,
-): string {
+): any {
 	if (tool.serialize) return tool.serialize(raw, input)
 	return typeof raw === 'string' ? raw : JSON.stringify(raw)
 }
@@ -266,5 +266,128 @@ describe('createServerReadTool', () => {
 	test('server read tool has name "read"', () => {
 		const readTool = createReadTool()
 		expect(readTool.name).toBe('read')
+	})
+})
+
+describe('createReadMultimodalTool', () => {
+	test('reads text files with existing line-number serialization', async () => {
+		const dir = await mkdtemp(join(tmpdir(), 'read-multimodal-test-'))
+		try {
+			await writeFile(join(dir, 'relative.txt'), 'alpha\nbeta')
+			const readTool = createReadMultimodalTool({ cwd: dir, readToolModalities: ['text', 'image'] })
+			const input = { file_path: 'relative.txt', limit: 2000 }
+			const raw = await readTool.execute(input, makeToolContext())
+			const output = serializeRaw(readTool, raw as any, input)
+
+			expect(raw).toEqual({ type: 'text', content: 'alpha\nbeta' })
+			expect(output).toContain('1→alpha')
+			expect(output).toContain('2→beta')
+		} finally {
+			await rm(dir, { recursive: true, force: true })
+		}
+	})
+
+	test('text-only read remains unchanged for binary files', async () => {
+		const dir = await mkdtemp(join(tmpdir(), 'read-multimodal-test-'))
+		try {
+			await writeFile(join(dir, 'image.png'), Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0]))
+			const readTool = createReadTool({ cwd: dir })
+			await expect(readTool.execute({ file_path: 'image.png', limit: 2000 }, makeToolContext())).rejects.toThrow(
+				'Cannot read binary file:',
+			)
+		} finally {
+			await rm(dir, { recursive: true, force: true })
+		}
+	})
+
+	test('reads image files when image modality is enabled', async () => {
+		const dir = await mkdtemp(join(tmpdir(), 'read-multimodal-test-'))
+		try {
+			const bytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+			await writeFile(join(dir, 'image.png'), bytes)
+
+			const readTool = createReadMultimodalTool({ cwd: dir, readToolModalities: ['text', 'image'] })
+			const raw = await readTool.execute({ file_path: 'image.png', limit: 2000 }, makeToolContext())
+
+			expect(raw.type).toBe('image')
+			if (raw.type === 'image') {
+				expect(raw.mediaType).toBe('image/png')
+				expect(raw.content).toBeInstanceOf(Uint8Array)
+				expect(Array.from(raw.content)).toEqual(Array.from(bytes))
+			}
+		} finally {
+			await rm(dir, { recursive: true, force: true })
+		}
+	})
+
+	test('reads PDF files when PDF modality is enabled', async () => {
+		const dir = await mkdtemp(join(tmpdir(), 'read-multimodal-test-'))
+		try {
+			const bytes = Buffer.from('%PDF-1.7\n')
+			await writeFile(join(dir, 'document.pdf'), bytes)
+
+			const readTool = createReadMultimodalTool({ cwd: dir, readToolModalities: ['text', 'pdf'] })
+			const raw = await readTool.execute({ file_path: 'document.pdf', limit: 2000 }, makeToolContext())
+
+			expect(raw.type).toBe('pdf')
+			if (raw.type === 'pdf') {
+				expect(raw.mediaType).toBe('application/pdf')
+				expect(raw.content).toBeInstanceOf(Uint8Array)
+				expect(Array.from(raw.content)).toEqual(Array.from(bytes))
+			}
+		} finally {
+			await rm(dir, { recursive: true, force: true })
+		}
+	})
+
+	test('rejects unsupported modalities with clear errors', async () => {
+		const dir = await mkdtemp(join(tmpdir(), 'read-multimodal-test-'))
+		try {
+			await writeFile(join(dir, 'document.pdf'), Buffer.from('%PDF-1.7\n'))
+			await writeFile(join(dir, 'image.png'), Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
+
+			await expect(
+				createReadMultimodalTool({ cwd: dir, readToolModalities: ['text', 'image'] }).execute(
+					{ file_path: 'document.pdf', limit: 2000 },
+					makeToolContext(),
+				),
+			).rejects.toThrow('PDF support is unavailable')
+
+			await expect(
+				createReadMultimodalTool({ cwd: dir, readToolModalities: ['text', 'pdf'] }).execute(
+					{ file_path: 'image.png', limit: 2000 },
+					makeToolContext(),
+				),
+			).rejects.toThrow('image support is unavailable')
+		} finally {
+			await rm(dir, { recursive: true, force: true })
+		}
+	})
+
+	test('rejects unsupported binary files', async () => {
+		const dir = await mkdtemp(join(tmpdir(), 'read-multimodal-test-'))
+		try {
+			await writeFile(join(dir, 'archive.zip'), Buffer.from([0x50, 0x4b, 0x03, 0x04, 0, 0]))
+			const readTool = createReadMultimodalTool({ cwd: dir, readToolModalities: ['text', 'image', 'pdf'] })
+
+			await expect(
+				readTool.execute({ file_path: 'archive.zip', limit: 2000 }, makeToolContext()),
+			).rejects.toThrow('unsupported binary file type')
+		} finally {
+			await rm(dir, { recursive: true, force: true })
+		}
+	})
+
+	test('resolves relative paths against opts.cwd', async () => {
+		const dir = await mkdtemp(join(tmpdir(), 'read-multimodal-test-'))
+		try {
+			await writeFile(join(dir, 'relative.txt'), 'from temp dir')
+			const readTool = createReadMultimodalTool({ cwd: dir, readToolModalities: ['text'] })
+			const raw = await readTool.execute({ file_path: 'relative.txt', limit: 2000 }, makeToolContext())
+
+			expect(raw).toEqual({ type: 'text', content: 'from temp dir' })
+		} finally {
+			await rm(dir, { recursive: true, force: true })
+		}
 	})
 })

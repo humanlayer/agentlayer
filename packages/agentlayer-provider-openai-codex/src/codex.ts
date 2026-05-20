@@ -452,7 +452,7 @@ export function transformCodexPrompt(prompt: LanguageModelV3Prompt): {
 					input.push({
 						type: 'function_call_output',
 						call_id: part.toolCallId,
-						output: stringifyToolResult(part.output),
+						output: convertToolResultOutput(part.output),
 					})
 				}
 			}
@@ -1232,7 +1232,7 @@ function mapCodexToolChoice(
 	return { tool_choice: { type: 'function', name: toolChoice.toolName } }
 }
 
-function stringifyToolResult(output: unknown): string {
+function convertToolResultOutput(output: unknown): unknown {
 	if (!output || typeof output !== 'object') {
 		return JSON.stringify(output)
 	}
@@ -1243,6 +1243,54 @@ function stringifyToolResult(output: unknown): string {
 
 	if ('type' in output && output.type === 'json' && 'value' in output) {
 		return JSON.stringify(output.value)
+	}
+
+	if ('type' in output && output.type === 'content' && 'value' in output && Array.isArray(output.value)) {
+		return output.value
+			.map((item) => {
+				if (!item || typeof item !== 'object' || !('type' in item)) {
+					return undefined
+				}
+
+				if (item.type === 'text' && 'text' in item && typeof item.text === 'string') {
+					return { type: 'input_text', text: item.text }
+				}
+
+				if (
+					item.type === 'image-data' &&
+					'data' in item &&
+					typeof item.data === 'string' &&
+					'mediaType' in item &&
+					typeof item.mediaType === 'string'
+				) {
+					return { type: 'input_image', image_url: `data:${item.mediaType};base64,${item.data}` }
+				}
+
+				if (item.type === 'image-url' && 'url' in item && typeof item.url === 'string') {
+					return { type: 'input_image', image_url: item.url }
+				}
+
+				if (
+					item.type === 'file-data' &&
+					'data' in item &&
+					typeof item.data === 'string' &&
+					'mediaType' in item &&
+					typeof item.mediaType === 'string'
+				) {
+					return {
+						type: 'input_file',
+						filename: 'filename' in item && typeof item.filename === 'string' ? item.filename : 'data',
+						file_data: `data:${item.mediaType};base64,${item.data}`,
+					}
+				}
+
+				if (item.type === 'file-url' && 'url' in item && typeof item.url === 'string') {
+					return { type: 'input_file', file_url: item.url }
+				}
+
+				return undefined
+			})
+			.filter((item) => item !== undefined)
 	}
 
 	return JSON.stringify(output)

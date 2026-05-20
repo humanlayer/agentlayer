@@ -144,6 +144,33 @@ const readTool = createReadTool({ cwd: '/project' })
 **Options:**
 - `cwd`: Working directory for resolving relative paths
 
+### createReadMultimodalTool()
+
+Read files with support for text, images, and PDFs. Automatically detects file type and returns structured output for multimodal models.
+
+```ts
+import { createReadMultimodalTool } from '@humanlayer/agentlayer-filesystem'
+
+const readTool = createReadMultimodalTool({
+  cwd: '/project',
+  readToolModalities: ['text', 'image', 'pdf']
+})
+```
+
+**Options:**
+- `cwd`: Working directory for resolving relative paths
+- `readToolModalities`: Array of enabled modalities. Defaults to `['text']`.
+  - `'text'`: Read text files with line-number serialization (default behavior)
+  - `'image'`: Return image files as `image-data` content objects (PNG, JPEG, GIF, WEBP)
+  - `'pdf'`: Return PDF files as `file-data` content objects
+
+**Output shapes:**
+- Text: `{ type: 'text', content: string }`
+- Image: `{ type: 'image', content: Uint8Array, mediaType: string }`
+- PDF: `{ type: 'pdf', content: Uint8Array, mediaType: 'application/pdf' }`
+
+When the tool's `serialize` method runs, text output is formatted with line numbers as usual. Image and PDF outputs are base64-encoded into structured `content` objects that providers convert to multimodal model inputs.
+
 ### createWriteTool()
 
 Write content to a file.
@@ -254,6 +281,11 @@ const webSearchTool = createWebSearchTool({
 ```ts
 interface ReadToolOptions {
   cwd?: string
+}
+
+interface ReadMultimodalToolOptions {
+  cwd?: string
+  readToolModalities?: ReadToolModalities  // e.g. ['text', 'image', 'pdf']
 }
 
 interface WriteToolOptions {

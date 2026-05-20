@@ -103,6 +103,10 @@ export function createReadTruncationHook(opts?: ReadTruncationOptions): PostTool
 	const customHint = opts?.hint
 
 	return createPostToolUseHook(ReadTool, (ctx) => {
+		if (typeof ctx.output !== 'string') {
+			return ctx.done()
+		}
+
 		const input = ctx.input as ReadInput
 		const result = truncateWithOptions(ctx.output, {
 			maxLines,

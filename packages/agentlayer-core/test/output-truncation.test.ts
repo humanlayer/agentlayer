@@ -1,6 +1,14 @@
 import { describe, expect, test } from 'bun:test'
 import { z } from 'zod'
-import { Agent, createReadTruncationHook, defineTool, startState, truncateWithOptions } from '../src'
+import {
+	Agent,
+	createReadTruncationHook,
+	defineTool,
+	ReadTool,
+	runPostToolUseHooks,
+	startState,
+	truncateWithOptions,
+} from '../src'
 import { assistantText, assistantWithToolCall, getToolResults, mockModel, outputValue, userMessage } from './mocks'
 
 describe('truncateWithOptions', () => {
@@ -81,6 +89,39 @@ describe('truncateWithOptions', () => {
 })
 
 describe('createReadTruncationHook', () => {
+	test('skips multimodal output', async () => {
+		const output = {
+			type: 'content' as const,
+			value: [{ type: 'image-data' as const, data: 'iVBORw0KGgo=', mediaType: 'image/png' }],
+		}
+
+		const result = await runPostToolUseHooks([createReadTruncationHook({ maxLines: 1, maxBytes: 1 })], {
+			toolName: 'read',
+			toolCallId: 'call-1',
+			input: { file_path: 'image.png' },
+			output,
+			rawOutput: output,
+			tool: { name: ReadTool.name, inputSchema: ReadTool.input, outputSchema: ReadTool.output },
+			getContextWindow: () => [],
+		})
+
+		expect(result.result.mutatedResult).toBeUndefined()
+	})
+
+	test('still mutates long text output', async () => {
+		const result = await runPostToolUseHooks([createReadTruncationHook({ maxLines: 1, maxBytes: 100 })], {
+			toolName: 'read',
+			toolCallId: 'call-1',
+			input: { file_path: 'file.txt', offset: 4 },
+			output: 'one\ntwo\nthree',
+			rawOutput: 'one\ntwo\nthree',
+			tool: { name: ReadTool.name, inputSchema: ReadTool.input, outputSchema: ReadTool.output },
+			getContextWindow: () => [],
+		})
+
+		expect(result.result.mutatedResult).toBe('one\n\n(Showing lines 4-4. Use offset=5 to continue.)')
+	})
+
 	test('passes through output unchanged when under limits', async () => {
 		const readTool = defineTool({
 			name: 'read',

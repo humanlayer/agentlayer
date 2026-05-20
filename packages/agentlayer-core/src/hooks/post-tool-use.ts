@@ -1,4 +1,5 @@
 import type { ModelMessage } from 'ai'
+import type { AgentLayerToolOutput } from '../messages'
 import { type DoneResult, hookDone, type PostToolUseResult } from './results'
 import type { HookChainStateResult, HookStateAccess, HookStateOperation, ToolInfo } from './shared'
 
@@ -6,7 +7,7 @@ export interface PostToolUseHookContext extends HookStateAccess {
 	toolName: string
 	toolCallId: string
 	input: Record<string, unknown>
-	output: string
+	output: AgentLayerToolOutput
 	rawOutput: unknown
 	tool: ToolInfo
 	getContextWindow: () => ReadonlyArray<ModelMessage>
@@ -19,7 +20,7 @@ interface PostToolUseChainInput {
 	toolName: string
 	toolCallId: string
 	input: Record<string, unknown>
-	output: string
+	output: AgentLayerToolOutput
 	rawOutput: unknown
 	tool: ToolInfo
 	getContextWindow: () => ReadonlyArray<ModelMessage>
@@ -60,7 +61,7 @@ export async function runPostToolUseHooks(
 		}
 
 		const result = await hook(ctx)
-		if (result.mutatedResult !== undefined) {
+		if (typeof result.mutatedResult === 'string' && typeof currentOutput === 'string') {
 			currentOutput = result.mutatedResult
 		}
 	}

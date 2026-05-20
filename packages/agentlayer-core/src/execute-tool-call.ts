@@ -2,7 +2,7 @@ import type { ModelMessage } from 'ai'
 import type { AgentRun } from './agent-run'
 import type { SubAgentPauseResult, SubAgentResult, SubAgentRunHandle, Tool, ToolContext } from './define-tool'
 import type { HookStopResult, StopOptions } from './hooks'
-import { buildToolResultMessage } from './messages'
+import { type AgentLayerToolOutput, buildToolResultMessage, isToolResultOutput } from './messages'
 import type { AgentState } from './state'
 
 export interface ToolCallRef {
@@ -31,7 +31,7 @@ export interface ToolCallResult {
 	toolCallId: string
 	toolName: string
 	message: ModelMessage
-	output: string
+	output: AgentLayerToolOutput
 	/** The raw, unserialised TOutput value returned by the tool. */
 	rawOutput: unknown
 	isError: boolean
@@ -50,7 +50,10 @@ export interface ToolCallResult {
  *   - strings are passed through as-is
  *   - everything else is JSON.stringify'd
  */
-function serializeOutput<TOutput>(tool: Tool<any, TOutput>, raw: TOutput, input: unknown): string {
+function serializeOutput<TOutput>(tool: Tool<any, TOutput>, raw: TOutput, input: unknown): AgentLayerToolOutput {
+	if (isToolResultOutput(raw)) {
+		return raw
+	}
 	if (tool.serialize) {
 		return tool.serialize(raw, input as any)
 	}
@@ -137,7 +140,7 @@ export async function executeToolCall(tc: ToolCallRef, ctx: ExecuteToolCallConte
 		}
 	}
 
-	let output: string
+	let output: AgentLayerToolOutput
 	let rawOutput: unknown
 	let isError = false
 	let subAgentPause: { agentId: string; childState: AgentState } | undefined

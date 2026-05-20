@@ -1,5 +1,6 @@
 // Re-export from exa/ for backward compatibility
 
+export type { ReadMultimodalOutput, ReadToolModalities } from '@humanlayer/agentlayer-core/interfaces'
 export {
 	type AgentOutputTruncationOptions,
 	type CreateAgentFilesystemHooksOptions,
@@ -20,6 +21,10 @@ export { createGrepTool, fsGrepFallback } from './grep'
 export { createListTool } from './list'
 export { createMultiEditTool } from './multiedit'
 export { createReadTool } from './read'
+export {
+	createReadMultimodalTool,
+	type ReadMultimodalToolOptions,
+} from './read-multimodal'
 export { createSkillToolFromDirs, createSkillToolFromRepoDirs, type SkillDirEntry } from './skill'
 export { createWebSearchTool, type WebSearchToolOptions } from './web-search'
 export { createWriteTool } from './write'

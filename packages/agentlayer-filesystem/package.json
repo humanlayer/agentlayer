@@ -15,6 +15,7 @@
 		"dist"
 	],
 	"scripts": {
+		"test": "bun test",
 		"typecheck": "tsgo --noEmit",
 		"build": "bun run build:js && bunx tsc -p tsconfig.build.json",
 		"build:js": "bun run build.ts",

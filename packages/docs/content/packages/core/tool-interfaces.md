@@ -20,6 +20,27 @@ import { ReadTool, readInput, type ReadInput } from '@humanlayer/agentlayer-core
 
 **Implementations:** [`createReadTool()`](/packages/filesystem/tools#createreadtool), [`createJustBashReadTool()`](/packages/justbash/tools#createjustbashreadtool)
 
+### ReadMultimodalTool
+
+Read files with multimodal support (text, images, PDFs).
+
+```ts
+import { ReadMultimodalTool, readInput, type ReadMultimodalOutput } from '@humanlayer/agentlayer-core/interfaces'
+```
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `file_path` | `string` | Yes | - | Absolute path to the file to read |
+| `offset` | `number` | No | `1` | Line number to start from (1-indexed, text only) |
+| `limit` | `number` | No | `2000` | Maximum number of lines to read (text only) |
+
+**Output:** Discriminated union:
+- `{ type: 'text', content: string }`
+- `{ type: 'image', content: Uint8Array, mediaType: string }`
+- `{ type: 'pdf', content: Uint8Array, mediaType: 'application/pdf' }`
+
+**Implementations:** [`createReadMultimodalTool()`](/packages/filesystem/tools#createreadmultimodaltool)
+
 ### WriteTool
 
 Write content to a file. Creates parent directories if needed.
@@ -257,6 +278,7 @@ import {
 | Interface | Input Schema | Description |
 |-----------|-------------|-------------|
 | `ReadTool` | `readInput` | Read file contents |
+| `ReadMultimodalTool` | `readInput` | Read file contents (text, image, PDF) |
 | `WriteTool` | `writeInput` | Write file contents |
 | `EditTool` | `editInput` | String replacement edit |
 | `MultiEditTool` | `multiEditInput` | Multiple edits in one file |
