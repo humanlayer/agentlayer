@@ -485,7 +485,14 @@ describe('createCodingSubagentTool', () => {
 			})
 			const subagents = getSubagents(tool)
 
-			for (const name of ['general-purpose', 'rpi:implementer-agent', 'rpi:codebase-analyzer', 'rpi:codebase-pattern-finder']) {
+			for (const name of [
+				'general-purpose',
+				'bash',
+				'rpi:implementer-agent',
+				'rpi:codebase-locator',
+				'rpi:codebase-analyzer',
+				'rpi:codebase-pattern-finder',
+			]) {
 				const subagent = subagents.find((candidate) => candidate.name === name)
 				await expectReadToolSupportsPng(getAgentConfig(subagent?.agent ?? {}).tools?.read)
 			}

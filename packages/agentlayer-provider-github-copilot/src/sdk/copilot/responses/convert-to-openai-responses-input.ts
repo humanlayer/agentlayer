@@ -1,12 +1,13 @@
 import {
 	type LanguageModelV3Prompt,
 	type LanguageModelV3ToolCallPart,
+	type LanguageModelV3ToolResultOutput,
 	type SharedV3Warning,
 	UnsupportedFunctionalityError,
 } from '@ai-sdk/provider'
 import { convertToBase64, parseProviderOptions } from '@ai-sdk/provider-utils'
 import { z } from 'zod/v4'
-import type { OpenAIResponsesInput, OpenAIResponsesReasoning } from './openai-responses-api-types'
+import type { OpenAIResponsesInput, OpenAIResponsesReasoning, OpenAIResponsesUserMessage } from './openai-responses-api-types'
 import { localShellInputSchema, localShellOutputSchema } from './tool/local-shell'
 
 /**
@@ -292,7 +293,7 @@ export async function convertToOpenAIResponsesInput({
 						break
 					}
 
-					let contentValue: string
+					let contentValue: string | OpenAIResponsesUserMessage['content']
 					switch (output.type) {
 						case 'text':
 						case 'error-text':
@@ -302,6 +303,8 @@ export async function convertToOpenAIResponsesInput({
 							contentValue = output.reason ?? 'Tool execution denied.'
 							break
 						case 'content':
+							contentValue = convertToolResultContent(output.value, warnings)
+							break
 						case 'json':
 						case 'error-json':
 							contentValue = JSON.stringify(output.value)
@@ -326,6 +329,38 @@ export async function convertToOpenAIResponsesInput({
 	}
 
 	return { input, warnings }
+}
+
+function convertToolResultContent(
+	output: Extract<LanguageModelV3ToolResultOutput, { type: 'content' }>['value'],
+	warnings: Array<SharedV3Warning>,
+): OpenAIResponsesUserMessage['content'] {
+	return output
+		.map((item) => {
+			switch (item.type) {
+				case 'text':
+					return { type: 'input_text' as const, text: item.text }
+				case 'image-data':
+					return { type: 'input_image' as const, image_url: `data:${item.mediaType};base64,${item.data}` }
+				case 'image-url':
+					return { type: 'input_image' as const, image_url: item.url }
+				case 'file-data':
+					return {
+						type: 'input_file' as const,
+						filename: item.filename ?? 'data',
+						file_data: `data:${item.mediaType};base64,${item.data}`,
+					}
+				case 'file-url':
+					return { type: 'input_file' as const, file_url: item.url }
+				default:
+					warnings.push({
+						type: 'other',
+						message: `Unsupported tool content part type: ${item.type}`,
+					})
+					return undefined
+			}
+		})
+		.filter((item) => item !== undefined)
 }
 
 const openaiResponsesReasoningProviderOptionsSchema = z.object({

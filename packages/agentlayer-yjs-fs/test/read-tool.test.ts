@@ -4,11 +4,14 @@ import { createYjsFsReadTool } from '../src/tools'
 import { makeToolContext } from './mocks'
 
 function serializeRaw<TInput, TOutput>(
-	tool: { serialize?: (raw: TOutput, input: TInput) => string },
+	tool: { serialize?: (raw: TOutput, input: TInput) => unknown },
 	raw: TOutput,
 	input: TInput,
 ): string {
-	if (tool.serialize) return tool.serialize(raw, input)
+	if (tool.serialize) {
+		const serialized = tool.serialize(raw, input)
+		return typeof serialized === 'string' ? serialized : JSON.stringify(serialized)
+	}
 	return typeof raw === 'string' ? raw : JSON.stringify(raw)
 }
 

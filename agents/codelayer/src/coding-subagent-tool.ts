@@ -236,7 +236,10 @@ export async function createCodingSubagentTool(opts: CreateCodingSubagentToolOpt
 
 	const bashAgent = createBashSpecialistAgent({
 		model: opts.model,
-		tools: { bash: createBashTool({ cwd: opts.cwd }) },
+		tools: {
+			bash: createBashTool({ cwd: opts.cwd }),
+			read: createReadMultimodalTool({ cwd: opts.cwd, readToolModalities: CODELAYER_READ_TOOL_MODALITIES }),
+		},
 		system: baseSystem,
 		hooks,
 		stopWhen,
@@ -350,6 +353,7 @@ export async function createCodingSubagentTool(opts: CreateCodingSubagentToolOpt
 			agent: createCodebaseLocatorAgent({
 				model: opts.model,
 				tools: {
+					read: createReadMultimodalTool({ cwd: opts.cwd, readToolModalities: CODELAYER_READ_TOOL_MODALITIES }),
 					glob: createGlobTool({ cwd: opts.cwd }),
 					grep: createGrepTool({ cwd: opts.cwd }),
 					list: createListTool({ cwd: opts.cwd }),
