@@ -13,7 +13,7 @@ import {
 	createGlobTool,
 	createGrepTool,
 	createListTool,
-	createReadTool,
+	createReadMultimodalTool,
 	detectModelFamily,
 	type CreateAgentFilesystemHooksOptions,
 	type CreateCodingAgentAuxToolsetOptions,
@@ -44,6 +44,7 @@ import {
 const DEFAULT_CODE_SEARCH_TIMEOUT_MS = 30_000
 const EXA_CONTEXT_ENDPOINT = 'https://api.exa.ai/context'
 const CONTEXT7_BASE_URL = 'https://context7.com'
+const CODELAYER_READ_TOOL_MODALITIES = ['text', 'image', 'pdf'] as const
 
 export interface CreateCodingSubagentToolOptions
 	extends CreateAgentFilesystemHooksOptions,
@@ -207,15 +208,17 @@ export async function createCodingSubagentTool(opts: CreateCodingSubagentToolOpt
 	const skillTool = opts.skillTool
 	const generalPurposeTools =
 		family === 'codex'
-			? await createCodexCodingAgentToolset({
+		? await createCodexCodingAgentToolset({
 					cwd: opts.cwd,
+					readToolModalities: CODELAYER_READ_TOOL_MODALITIES,
 					skillTool,
 					exaApiKey: opts.exaApiKey,
 					additionalTools: opts.additionalTools,
 					allowMissingSkills: opts.allowMissingSkills,
 				})
-			: await createClaudeCodingAgentToolset({
+		: await createClaudeCodingAgentToolset({
 					cwd: opts.cwd,
+					readToolModalities: CODELAYER_READ_TOOL_MODALITIES,
 					skillTool,
 					exaApiKey: opts.exaApiKey,
 					additionalTools: opts.additionalTools,
@@ -244,6 +247,7 @@ export async function createCodingSubagentTool(opts: CreateCodingSubagentToolOpt
 		? {
 				...(await createCodexCodingAgentToolset({
 					cwd: opts.cwd,
+					readToolModalities: CODELAYER_READ_TOOL_MODALITIES,
 					skillTool,
 					exaApiKey: opts.exaApiKey,
 					additionalTools: opts.additionalTools,
@@ -254,6 +258,7 @@ export async function createCodingSubagentTool(opts: CreateCodingSubagentToolOpt
 		: {
 				...(await createClaudeCodingAgentToolset({
 					cwd: opts.cwd,
+					readToolModalities: CODELAYER_READ_TOOL_MODALITIES,
 					skillTool,
 					exaApiKey: opts.exaApiKey,
 					additionalTools: opts.additionalTools,
@@ -281,7 +286,7 @@ export async function createCodingSubagentTool(opts: CreateCodingSubagentToolOpt
 
 	const webResearcherTools: Record<string, Tool<any, any>> = {
 		web_fetch: createWebFetchTool(),
-		read: createReadTool({ cwd: opts.cwd }),
+		read: createReadMultimodalTool({ cwd: opts.cwd, readToolModalities: CODELAYER_READ_TOOL_MODALITIES }),
 		glob: createGlobTool({ cwd: opts.cwd }),
 		grep: createGrepTool({ cwd: opts.cwd }),
 	}
@@ -361,7 +366,7 @@ export async function createCodingSubagentTool(opts: CreateCodingSubagentToolOpt
 			agent: createCodebaseAnalyzerAgent({
 				model: opts.model,
 				tools: {
-					read: createReadTool({ cwd: opts.cwd }),
+					read: createReadMultimodalTool({ cwd: opts.cwd, readToolModalities: CODELAYER_READ_TOOL_MODALITIES }),
 					glob: createGlobTool({ cwd: opts.cwd }),
 					grep: createGrepTool({ cwd: opts.cwd }),
 					list: createListTool({ cwd: opts.cwd }),
@@ -378,7 +383,7 @@ export async function createCodingSubagentTool(opts: CreateCodingSubagentToolOpt
 			agent: createCodebasePatternFinderAgent({
 				model: opts.model,
 				tools: {
-					read: createReadTool({ cwd: opts.cwd }),
+					read: createReadMultimodalTool({ cwd: opts.cwd, readToolModalities: CODELAYER_READ_TOOL_MODALITIES }),
 					glob: createGlobTool({ cwd: opts.cwd }),
 					grep: createGrepTool({ cwd: opts.cwd }),
 					list: createListTool({ cwd: opts.cwd }),

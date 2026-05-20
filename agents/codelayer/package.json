@@ -19,6 +19,7 @@
 	],
 	"scripts": {
 		"start": "bun run cli",
+		"test": "bun test --conditions=source ./test/*.test.ts",
 		"typecheck": "tsgo --noEmit",
 		"build": "bun run build:js && bunx tsc -p tsconfig.build.json",
 		"build:js": "bun run build.ts",

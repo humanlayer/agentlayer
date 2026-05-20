@@ -14,9 +14,11 @@ import {
 import { saneDefaultOutputTruncationHooks } from '@humanlayer/agentlayer-filesystem/hooks'
 import { createApplyPatchTool } from '@humanlayer/agentlayer-filesystem/tools'
 import { createEditTool } from '@humanlayer/agentlayer-filesystem/tools'
-import { createReadTool } from '@humanlayer/agentlayer-filesystem/tools'
+import { createReadMultimodalTool } from '@humanlayer/agentlayer-filesystem/tools'
 import { createWriteTool } from '@humanlayer/agentlayer-filesystem/tools'
 import { createCodingSubagentTool } from './coding-subagent-tool'
+
+const CODELAYER_READ_TOOL_MODALITIES = ['text', 'image', 'pdf'] as const
 
 const ORCHESTRATOR_PROMPT = `# Sub-Agent Orchestration
 
@@ -257,7 +259,7 @@ export async function createCodelayerAgent(opts: CodelayerAgentOptions): Promise
 				? {
 						...withToolSuiteOptions(
 							{
-								read: createReadTool({ cwd }),
+								read: createReadMultimodalTool({ cwd, readToolModalities: CODELAYER_READ_TOOL_MODALITIES }),
 								apply_patch: createApplyPatchTool({ cwd }),
 							},
 							toolOpts,
@@ -267,7 +269,7 @@ export async function createCodelayerAgent(opts: CodelayerAgentOptions): Promise
 				: {
 						...withToolSuiteOptions(
 							{
-								read: createReadTool({ cwd }),
+								read: createReadMultimodalTool({ cwd, readToolModalities: CODELAYER_READ_TOOL_MODALITIES }),
 								write: createWriteTool({ cwd }),
 								edit: createEditTool({ cwd }),
 							},
@@ -291,6 +293,7 @@ export async function createCodelayerAgent(opts: CodelayerAgentOptions): Promise
 			? withToolSuiteOptions(
 					await createCodexCodingAgentToolset({
 						cwd,
+						readToolModalities: CODELAYER_READ_TOOL_MODALITIES,
 						agentTool,
 						skillTool,
 						exaApiKey,
@@ -301,6 +304,7 @@ export async function createCodelayerAgent(opts: CodelayerAgentOptions): Promise
 			: withToolSuiteOptions(
 					await createClaudeCodingAgentToolset({
 						cwd,
+						readToolModalities: CODELAYER_READ_TOOL_MODALITIES,
 						agentTool,
 						skillTool,
 						exaApiKey,
