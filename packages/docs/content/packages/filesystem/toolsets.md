@@ -30,6 +30,9 @@ const tools = await createClaudeCodingAgentToolset({
 interface CreateCodingAgentToolsetOptions {
   cwd: string
   
+  // Read tool configuration
+  readToolModalities?: ReadToolModalities  // e.g. ['text', 'image', 'pdf']
+  
   // Skill configuration
   skillDirs?: string | string[] | SkillDirEntry[]
   skills?: Skill[]

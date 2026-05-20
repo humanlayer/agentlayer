@@ -211,7 +211,7 @@ hookStop({ reason: '...' })   // Stop the entire agent run
 ```ts
 // PostToolUse hooks can ONLY return DoneResult
 ctx.done()                    // Continue with original result
-ctx.done(mutatedResult)       // Replace the result with mutatedResult
+ctx.done(mutatedResult)       // Replace the result with mutatedResult (string or structured)
 // Or use hookDone() directly
 hookDone()                    // Continue with original result
 hookDone(mutatedResult)       // Replace the result
@@ -258,7 +258,7 @@ interface PreToolUseHookContext extends HookStateAccess {
   tool: ToolInfo
   getContextWindow: () => ReadonlyArray<ModelMessage>
   next(updatedInput?: Record<string, unknown>, opts?: NextOptions): NextResult
-  toolResult(output: string, opts?: ToolResultOptions): ToolResultResult
+  toolResult(output: AgentLayerToolOutput, opts?: ToolResultOptions): ToolResultResult
   stop(options?: StopOptions): HookStopResult
 }
 ```
@@ -270,11 +270,11 @@ interface PostToolUseHookContext extends HookStateAccess {
   toolName: string
   toolCallId: string
   input: Record<string, unknown>
-  output: string
+  output: AgentLayerToolOutput  // string or structured multimodal content
   rawOutput: unknown
   tool: ToolInfo
   getContextWindow: () => ReadonlyArray<ModelMessage>
-  done(mutatedResult?: string): DoneResult
+  done(mutatedResult?: AgentLayerToolOutput): DoneResult
 }
 ```
 
@@ -404,5 +404,6 @@ import type {
   ToolResultResult,
   HookStopResult,
   DoneResult,
+  AgentLayerToolOutput,
 } from '@humanlayer/agentlayer-core/hooks'
 ```

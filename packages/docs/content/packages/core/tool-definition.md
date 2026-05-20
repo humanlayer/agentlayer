@@ -34,7 +34,7 @@ const readFile = defineTool({
 | `input` | `ZodSchema` | Zod schema for input validation |
 | `output` | `ZodSchema` | Optional Zod schema for output validation (defaults to `z.string()`) |
 | `execute` | `(input: TInput, ctx: ToolContext) => Promise<TOutput>` | Execution function |
-| `serialize` | `(raw: TOutput, input: TInput) => string` | Optional custom serialization for output |
+| `serialize` | `(raw: TOutput, input: TInput) => ToolSerializedOutput` | Optional custom serialization for output. Returns `string` or structured `content`/`image-data`/`file-data` objects for multimodal models. |
 | `stateKey` | `string` | Optional key for stateful tools |
 | `stateSchema` | `ZodSchema` | Optional Zod schema for tool state (required with `stateKey`) |
 
@@ -138,6 +138,7 @@ import type {
   Tool,
   ToolInterface,
   ToolInterfaceConfig,
+  ToolSerializedOutput,
   ToolContext,
   ToolContextFor,
   ToolStateAccessors,
