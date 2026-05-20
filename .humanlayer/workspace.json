@@ -1,0 +1,22 @@
+{
+  "disabled": false,
+  "pathTemplate": "~/.humanlayer/workspaces/{{ TASKSLUG }}/{{ REPOBASENAME }}",
+  "branchTemplate": "{{ TASKSLUG }}",
+  "sourceRef": "HEAD",
+  "setupCommand": "bun install",
+  "copyGlobs": [
+    ".env",
+    ".env.local",
+    ".env.development.local",
+    "packages/db/.env",
+    ".claude/settings.local.json",
+    ".humanlayer/workspace.json",
+    ".humanlayer/workspace.local.json"
+  ],
+  "repos": [
+    {
+      "localPath": ".",
+      "description": "Selected repository"
+    }
+  ]
+}

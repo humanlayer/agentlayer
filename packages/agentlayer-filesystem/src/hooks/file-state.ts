@@ -16,15 +16,20 @@ export interface WastedReadTracking {
 	ranges: LineRange[]
 }
 
-export interface FileStateEntry {
+export interface FileReadStateEntry {
 	lastReadHash?: string
-	lastVerifiedHash?: string
 	wastedRead?: WastedReadTracking
 }
 
-export type FileStateMap = Record<string, FileStateEntry>
+export interface FileVerificationStateEntry {
+	lastVerifiedHash?: string
+}
 
-export const FILE_STATE_KEY = 'fileState'
+export type FileReadStateMap = Record<string, FileReadStateEntry>
+export type FileVerificationStateMap = Record<string, FileVerificationStateEntry>
+
+export const FILE_READ_STATE_KEY = 'fileReadState'
+export const FILE_VERIFICATION_STATE_KEY = 'fileVerificationState'
 
 export interface FileStateHookOptions {
 	cwd?: string
@@ -46,10 +51,10 @@ type TrackedPath = {
 type ResolvedWriteTarget = TrackedPath & {
 	exists: boolean
 	currentHash?: string
-	tracked?: FileStateEntry
+	tracked?: FileVerificationStateEntry
 }
 
-type FileStateAction =
+type FileReadStateAction =
 	| {
 			kind: 'setReadObservation'
 			path: string
@@ -57,6 +62,18 @@ type FileStateAction =
 			totalLines: number
 			readRange: LineRange
 	  }
+	| {
+			kind: 'delete'
+			path: string
+	  }
+	| {
+			kind: 'move'
+			from: string
+			to: string
+			targetHash?: string
+	  }
+
+type FileVerificationStateAction =
 	| {
 			kind: 'setVerified'
 			path: string
@@ -285,7 +302,7 @@ function getWritePathTargets(toolName: string, input: Record<string, unknown>, c
 async function resolveWriteTargets(
 	toolName: string,
 	input: Record<string, unknown>,
-	fileState: FileStateMap,
+	verificationState: FileVerificationStateMap,
 	cwd?: string,
 ): Promise<ResolvedWriteTarget[]> {
 	const targets = getWritePathTargets(toolName, input, cwd)
@@ -299,15 +316,18 @@ async function resolveWriteTargets(
 			...target,
 			exists,
 			currentHash,
-			tracked: fileState[target.resolvedPath],
+			tracked: verificationState[target.resolvedPath],
 		})
 	}
 
 	return resolvedTargets
 }
 
-function applyFileStateActions(current: FileStateMap | undefined, actions: FileStateAction[]): FileStateMap {
-	const next: FileStateMap = { ...(current ?? {}) }
+function applyFileReadStateActions(
+	current: FileReadStateMap | undefined,
+	actions: FileReadStateAction[],
+): FileReadStateMap {
+	const next: FileReadStateMap = { ...(current ?? {}) }
 
 	for (const action of actions) {
 		if (action.kind === 'setReadObservation') {
@@ -316,22 +336,11 @@ function applyFileStateActions(current: FileStateMap | undefined, actions: FileS
 			const mergedRanges = addCoveredRange(previousRanges, action.readRange)
 			next[action.path] = {
 				lastReadHash: action.hash,
-				lastVerifiedHash: action.hash,
 				wastedRead: {
 					hash: action.hash,
 					totalLines: action.totalLines,
 					ranges: mergedRanges,
 				},
-			}
-			continue
-		}
-
-		if (action.kind === 'setVerified') {
-			const existing = next[action.path]
-			next[action.path] = {
-				...(existing?.lastReadHash ? { lastReadHash: existing.lastReadHash } : {}),
-				...(existing?.wastedRead?.hash === action.hash ? { wastedRead: existing.wastedRead } : {}),
-				lastVerifiedHash: action.hash,
 			}
 			continue
 		}
@@ -342,23 +351,39 @@ function applyFileStateActions(current: FileStateMap | undefined, actions: FileS
 		}
 
 		const sourceEntry = next[action.from]
-		const targetEntry = next[action.to]
 		delete next[action.from]
-		if (!action.targetHash) {
+		if (!action.targetHash || sourceEntry?.lastReadHash !== action.targetHash) {
 			continue
 		}
 		next[action.to] = {
-			...(sourceEntry?.lastReadHash
-				? { lastReadHash: sourceEntry.lastReadHash }
-				: targetEntry?.lastReadHash
-					? { lastReadHash: targetEntry.lastReadHash }
-					: {}),
-			...(sourceEntry?.wastedRead?.hash === action.targetHash
-				? { wastedRead: sourceEntry.wastedRead }
-				: targetEntry?.wastedRead?.hash === action.targetHash
-					? { wastedRead: targetEntry.wastedRead }
-					: {}),
-			lastVerifiedHash: action.targetHash,
+			lastReadHash: sourceEntry.lastReadHash,
+			...(sourceEntry.wastedRead?.hash === action.targetHash ? { wastedRead: sourceEntry.wastedRead } : {}),
+		}
+	}
+
+	return next
+}
+
+function applyFileVerificationStateActions(
+	current: FileVerificationStateMap | undefined,
+	actions: FileVerificationStateAction[],
+): FileVerificationStateMap {
+	const next: FileVerificationStateMap = { ...(current ?? {}) }
+
+	for (const action of actions) {
+		if (action.kind === 'setVerified') {
+			next[action.path] = { lastVerifiedHash: action.hash }
+			continue
+		}
+
+		if (action.kind === 'delete') {
+			delete next[action.path]
+			continue
+		}
+
+		delete next[action.from]
+		if (action.targetHash) {
+			next[action.to] = { lastVerifiedHash: action.targetHash }
 		}
 	}
 
@@ -374,8 +399,8 @@ export function createWastedReadHook(opts?: FileStateHookOptions): PreToolUseHoo
 		}
 
 		const resolvedPath = resolveTrackedPath(readPath, opts?.cwd)
-		const fileState = ctx.getState<FileStateMap>(FILE_STATE_KEY) ?? {}
-		const tracked = fileState[resolvedPath]
+		const readState = ctx.getState<FileReadStateMap>(FILE_READ_STATE_KEY) ?? {}
+		const tracked = readState[resolvedPath]
 		if (!tracked?.lastReadHash) {
 			return ctx.next()
 		}
@@ -412,11 +437,11 @@ export function createWastedReadHooks(opts?: FileStateHookOptions): FileStateHoo
 
 export function createReadBeforeWriteHook(opts?: FileStateHookOptions): PreToolUseHook {
 	return createPreToolUseHook([WriteTool, EditTool, ApplyPatchTool], async (ctx) => {
-		const fileState = ctx.getState<FileStateMap>(FILE_STATE_KEY) ?? {}
+		const verificationState = ctx.getState<FileVerificationStateMap>(FILE_VERIFICATION_STATE_KEY) ?? {}
 		const targets = await resolveWriteTargets(
 			ctx.toolName,
 			ctx.input as Record<string, unknown>,
-			fileState,
+			verificationState,
 			opts?.cwd,
 		)
 
@@ -468,8 +493,8 @@ export function createFileStateTrackingHook(opts?: FileStateHookOptions): PostTo
 			}
 
 			const readRange = getReadRange(readInput)
-			ctx.updateState<FileStateMap>(FILE_STATE_KEY, (current) =>
-				applyFileStateActions(current, [
+			ctx.updateState<FileReadStateMap>(FILE_READ_STATE_KEY, (current) =>
+				applyFileReadStateActions(current, [
 					{
 						kind: 'setReadObservation',
 						path: resolvedPath,
@@ -477,6 +502,11 @@ export function createFileStateTrackingHook(opts?: FileStateHookOptions): PostTo
 						totalLines: snapshot.totalLines,
 						readRange,
 					},
+				]),
+			)
+			ctx.updateState<FileVerificationStateMap>(FILE_VERIFICATION_STATE_KEY, (current) =>
+				applyFileVerificationStateActions(current, [
+					{ kind: 'setVerified', path: resolvedPath, hash: snapshot.hash },
 				]),
 			)
 			return ctx.done()
@@ -494,8 +524,8 @@ export function createFileStateTrackingHook(opts?: FileStateHookOptions): PostTo
 				return ctx.done()
 			}
 
-			ctx.updateState<FileStateMap>(FILE_STATE_KEY, (current) =>
-				applyFileStateActions(current, [{ kind: 'setVerified', path: resolvedPath, hash }]),
+			ctx.updateState<FileVerificationStateMap>(FILE_VERIFICATION_STATE_KEY, (current) =>
+				applyFileVerificationStateActions(current, [{ kind: 'setVerified', path: resolvedPath, hash }]),
 			)
 			return ctx.done()
 		}
@@ -514,10 +544,13 @@ export function createFileStateTrackingHook(opts?: FileStateHookOptions): PostTo
 			return ctx.done()
 		}
 
-		const actions: FileStateAction[] = []
+		const readActions: FileReadStateAction[] = []
+		const verificationActions: FileVerificationStateAction[] = []
 		for (const operation of operations) {
 			if (operation.type === 'delete') {
-				actions.push({ kind: 'delete', path: resolveTrackedPath(operation.filePath, opts?.cwd) })
+				const path = resolveTrackedPath(operation.filePath, opts?.cwd)
+				readActions.push({ kind: 'delete', path })
+				verificationActions.push({ kind: 'delete', path })
 				continue
 			}
 
@@ -527,12 +560,14 @@ export function createFileStateTrackingHook(opts?: FileStateHookOptions): PostTo
 				}
 				const to = resolveTrackedPath(operation.targetPath, opts?.cwd)
 				const targetHash = await computeFileHash(to)
-				actions.push({
+				const action = {
 					kind: 'move',
 					from: resolveTrackedPath(operation.filePath, opts?.cwd),
 					to,
 					targetHash,
-				})
+				} as const
+				readActions.push(action)
+				verificationActions.push(action)
 				continue
 			}
 
@@ -541,11 +576,19 @@ export function createFileStateTrackingHook(opts?: FileStateHookOptions): PostTo
 			if (!hash) {
 				continue
 			}
-			actions.push({ kind: 'setVerified', path: resolvedPath, hash })
+			verificationActions.push({ kind: 'setVerified', path: resolvedPath, hash })
 		}
 
-		if (actions.length > 0) {
-			ctx.updateState<FileStateMap>(FILE_STATE_KEY, (current) => applyFileStateActions(current, actions))
+		if (readActions.length > 0) {
+			ctx.updateState<FileReadStateMap>(FILE_READ_STATE_KEY, (current) =>
+				applyFileReadStateActions(current, readActions),
+			)
+		}
+
+		if (verificationActions.length > 0) {
+			ctx.updateState<FileVerificationStateMap>(FILE_VERIFICATION_STATE_KEY, (current) =>
+				applyFileVerificationStateActions(current, verificationActions),
+			)
 		}
 
 		return ctx.done()

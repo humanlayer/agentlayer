@@ -2,7 +2,14 @@ import { describe, expect, test } from 'bun:test'
 import { access, mkdtemp, readFile, rm, unlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { Agent, defineTool, startState } from '@humanlayer/agentlayer-core'
+import {
+	Agent,
+	defineTool,
+	runPostToolUseHooks,
+	runPreToolUseHooks,
+	startState,
+	type ToolInfo,
+} from '@humanlayer/agentlayer-core'
 import { z } from 'zod'
 import {
 	createFileStateTrackingHook,
@@ -10,6 +17,10 @@ import {
 	createReadBeforeWriteHooks,
 	createWastedReadHook,
 	createWastedReadHooks,
+	FILE_READ_STATE_KEY,
+	FILE_VERIFICATION_STATE_KEY,
+	type FileReadStateMap,
+	type FileVerificationStateMap,
 } from '../src/hooks'
 import {
 	assistantText,
@@ -41,7 +52,544 @@ function readBeforeWriteReminder(filePath: string): string {
 	return `<system-reminder>You must read file ${filePath} before writing to it.</system-reminder>`
 }
 
+type DirectHookState = {
+	[FILE_READ_STATE_KEY]?: FileReadStateMap
+	[FILE_VERIFICATION_STATE_KEY]?: FileVerificationStateMap
+}
+
+type DirectHookHarness = {
+	state: DirectHookState
+	expectReadAllowed: (input: Record<string, unknown>) => Promise<void>
+	expectMutationAllowed: (toolName: string, input: Record<string, unknown>) => Promise<void>
+	expectMutationBlocked: (toolName: string, input: Record<string, unknown>, filePath: string) => Promise<void>
+	recordReadObservation: (input: Record<string, unknown>, rawOutput: string) => Promise<void>
+	recordMutationVerification: (toolName: string, input: Record<string, unknown>, rawOutput?: unknown) => Promise<void>
+}
+
+function createDirectHookHarness(cwd?: string): DirectHookHarness {
+	const state: DirectHookState = {}
+	const wastedReadHook = createWastedReadHook({ cwd })
+	const preHook = createReadBeforeWriteHook({ cwd })
+	const postHook = createFileStateTrackingHook({ cwd })
+	let nextToolCallId = 0
+
+	function toolInfo(toolName: string): ToolInfo {
+		return {
+			name: toolName,
+			inputSchema: z.record(z.string(), z.unknown()),
+		}
+	}
+
+	function applyStateUpdates(updates: Array<{ key: string; apply: (current: unknown) => unknown }>) {
+		for (const update of updates) {
+			state[update.key as keyof DirectHookState] = update.apply(
+				state[update.key as keyof DirectHookState],
+			) as never
+		}
+	}
+
+	async function expectMutationAllowed(toolName: string, input: Record<string, unknown>) {
+		const result = await runPreToolUseHooks([preHook], {
+			toolName,
+			toolCallId: `direct-${++nextToolCallId}`,
+			input,
+			tool: toolInfo(toolName),
+			getContextWindow: () => [],
+			state,
+		})
+		applyStateUpdates(result.stateUpdates)
+		expect(result.result.type).toBe('next')
+	}
+
+	async function expectReadAllowed(input: Record<string, unknown>) {
+		const result = await runPreToolUseHooks([wastedReadHook], {
+			toolName: 'read',
+			toolCallId: `direct-${++nextToolCallId}`,
+			input,
+			tool: toolInfo('read'),
+			getContextWindow: () => [],
+			state,
+		})
+		applyStateUpdates(result.stateUpdates)
+		expect(result.result.type).toBe('next')
+	}
+
+	async function expectMutationBlocked(toolName: string, input: Record<string, unknown>, filePath: string) {
+		const result = await runPreToolUseHooks([preHook], {
+			toolName,
+			toolCallId: `direct-${++nextToolCallId}`,
+			input,
+			tool: toolInfo(toolName),
+			getContextWindow: () => [],
+			state,
+		})
+		applyStateUpdates(result.stateUpdates)
+		expect(result.result.type).toBe('toolResult')
+		if (result.result.type === 'toolResult') {
+			expect(result.result.output).toBe(readBeforeWriteReminder(filePath))
+			expect(result.result.isError).toBe(true)
+		}
+	}
+
+	async function runPostHook(toolName: string, input: Record<string, unknown>, rawOutput: unknown) {
+		const result = await runPostToolUseHooks([postHook], {
+			toolName,
+			toolCallId: `direct-${++nextToolCallId}`,
+			input,
+			output: typeof rawOutput === 'string' ? rawOutput : JSON.stringify(rawOutput),
+			rawOutput,
+			tool: toolInfo(toolName),
+			getContextWindow: () => [],
+			state,
+		})
+		applyStateUpdates(result.stateUpdates)
+	}
+
+	return {
+		state,
+		expectReadAllowed,
+		expectMutationAllowed,
+		expectMutationBlocked,
+		recordReadObservation: (input, rawOutput) => runPostHook('read', input, rawOutput),
+		recordMutationVerification: (toolName, input, rawOutput = 'ok') => runPostHook(toolName, input, rawOutput),
+	}
+}
+
 describe('file-state hooks', () => {
+	test('direct hook harness records read state and gates mutations', async () => {
+		const dir = await mkdtemp(join(tmpdir(), 'file-state-hook-test-'))
+		try {
+			const filePath = join(dir, 'sample.txt')
+			const initialContent = 'alpha\nbeta\n'
+			await writeFile(filePath, initialContent)
+			const harness = createDirectHookHarness()
+
+			await harness.expectMutationBlocked('write', { file_path: filePath, content: 'blocked\n' }, filePath)
+			await harness.recordReadObservation({ file_path: filePath }, initialContent)
+			await harness.expectMutationAllowed('write', { file_path: filePath, content: 'next\n' })
+
+			expect(harness.state[FILE_READ_STATE_KEY]?.[filePath]?.lastReadHash).toBeString()
+			expect(harness.state[FILE_VERIFICATION_STATE_KEY]?.[filePath]?.lastVerifiedHash).toBeString()
+		} finally {
+			await rm(dir, { recursive: true })
+		}
+	})
+
+	test('direct hooks allow read then write then write while read hash stays stale', async () => {
+		const dir = await mkdtemp(join(tmpdir(), 'file-state-hook-test-'))
+		try {
+			const filePath = join(dir, 'write-twice.txt')
+			await writeFile(filePath, 'initial\n')
+			const harness = createDirectHookHarness()
+
+			await harness.recordReadObservation({ file_path: filePath }, await fileText(filePath))
+			const originalReadHash = harness.state[FILE_READ_STATE_KEY]?.[filePath]?.lastReadHash
+			await harness.expectMutationAllowed('write', { file_path: filePath, content: 'first\n' })
+			await writeFile(filePath, 'first\n')
+			await harness.recordMutationVerification('write', { file_path: filePath, content: 'first\n' })
+			await harness.expectMutationAllowed('write', { file_path: filePath, content: 'second\n' })
+
+			expect(harness.state[FILE_READ_STATE_KEY]?.[filePath]?.lastReadHash).toBe(originalReadHash)
+			expect(harness.state[FILE_VERIFICATION_STATE_KEY]?.[filePath]?.lastVerifiedHash).not.toBe(originalReadHash)
+		} finally {
+			await rm(dir, { recursive: true })
+		}
+	})
+
+	test('direct hooks allow read then write then edit', async () => {
+		const dir = await mkdtemp(join(tmpdir(), 'file-state-hook-test-'))
+		try {
+			const filePath = join(dir, 'write-edit.txt')
+			await writeFile(filePath, 'initial\n')
+			const harness = createDirectHookHarness()
+
+			await harness.recordReadObservation({ file_path: filePath }, await fileText(filePath))
+			await harness.expectMutationAllowed('write', { file_path: filePath, content: 'next\n' })
+			await writeFile(filePath, 'next\n')
+			await harness.recordMutationVerification('write', { file_path: filePath, content: 'next\n' })
+			await harness.expectMutationAllowed('edit', {
+				file_path: filePath,
+				old_string: 'next',
+				new_string: 'final',
+			})
+		} finally {
+			await rm(dir, { recursive: true })
+		}
+	})
+
+	test('direct hooks allow read then edit then write', async () => {
+		const dir = await mkdtemp(join(tmpdir(), 'file-state-hook-test-'))
+		try {
+			const filePath = join(dir, 'edit-write.txt')
+			await writeFile(filePath, 'initial\n')
+			const harness = createDirectHookHarness()
+
+			await harness.recordReadObservation({ file_path: filePath }, await fileText(filePath))
+			await harness.expectMutationAllowed('edit', {
+				file_path: filePath,
+				old_string: 'initial',
+				new_string: 'edited',
+			})
+			await writeFile(filePath, 'edited\n')
+			await harness.recordMutationVerification('edit', {
+				file_path: filePath,
+				old_string: 'initial',
+				new_string: 'edited',
+			})
+			await harness.expectMutationAllowed('write', { file_path: filePath, content: 'final\n' })
+		} finally {
+			await rm(dir, { recursive: true })
+		}
+	})
+
+	test('direct hooks allow read then apply_patch then write', async () => {
+		const dir = await mkdtemp(join(tmpdir(), 'file-state-hook-test-'))
+		try {
+			const filePath = join(dir, 'patch-write.txt')
+			await writeFile(filePath, 'initial\n')
+			const patchText = [
+				'*** Begin Patch',
+				`*** Update File: ${filePath}`,
+				'@@',
+				'-initial',
+				'+patched',
+				'*** End Patch',
+			].join('\n')
+			const harness = createDirectHookHarness()
+
+			await harness.recordReadObservation({ file_path: filePath }, await fileText(filePath))
+			await harness.expectMutationAllowed('apply_patch', { patch_text: patchText })
+			await writeFile(filePath, 'patched\n')
+			await harness.recordMutationVerification('apply_patch', { patch_text: patchText })
+			await harness.expectMutationAllowed('write', { file_path: filePath, content: 'final\n' })
+		} finally {
+			await rm(dir, { recursive: true })
+		}
+	})
+
+	test('direct hooks execute explicit reads after model-authored write and patch', async () => {
+		const dir = await mkdtemp(join(tmpdir(), 'file-state-hook-test-'))
+		try {
+			const writePath = join(dir, 'write-read.txt')
+			const patchPath = join(dir, 'patch-read.txt')
+			await writeFile(writePath, 'write-initial\n')
+			await writeFile(patchPath, 'patch-initial\n')
+			const patchText = [
+				'*** Begin Patch',
+				`*** Update File: ${patchPath}`,
+				'@@',
+				'-patch-initial',
+				'+patched',
+				'*** End Patch',
+			].join('\n')
+			const harness = createDirectHookHarness()
+
+			await harness.recordReadObservation({ file_path: writePath }, await fileText(writePath))
+			await harness.expectMutationAllowed('write', { file_path: writePath, content: 'written\n' })
+			await writeFile(writePath, 'written\n')
+			await harness.recordMutationVerification('write', { file_path: writePath, content: 'written\n' })
+			await harness.expectReadAllowed({ file_path: writePath })
+
+			await harness.recordReadObservation({ file_path: patchPath }, await fileText(patchPath))
+			await harness.expectMutationAllowed('apply_patch', { patch_text: patchText })
+			await writeFile(patchPath, 'patched\n')
+			await harness.recordMutationVerification('apply_patch', { patch_text: patchText })
+			await harness.expectReadAllowed({ file_path: patchPath })
+		} finally {
+			await rm(dir, { recursive: true })
+		}
+	})
+
+	test('direct hooks block after external change until reread records new hash', async () => {
+		const dir = await mkdtemp(join(tmpdir(), 'file-state-hook-test-'))
+		try {
+			const filePath = join(dir, 'external-change.txt')
+			await writeFile(filePath, 'initial\n')
+			const harness = createDirectHookHarness()
+
+			await harness.recordReadObservation({ file_path: filePath }, await fileText(filePath))
+			await harness.expectMutationAllowed('write', { file_path: filePath, content: 'model\n' })
+			await writeFile(filePath, 'model\n')
+			await harness.recordMutationVerification('write', { file_path: filePath, content: 'model\n' })
+			await writeFile(filePath, 'external\n')
+			await harness.expectMutationBlocked(
+				'edit',
+				{ file_path: filePath, old_string: 'external', new_string: 'final' },
+				filePath,
+			)
+			await harness.recordReadObservation({ file_path: filePath }, await fileText(filePath))
+			await harness.expectMutationAllowed('edit', {
+				file_path: filePath,
+				old_string: 'external',
+				new_string: 'final',
+			})
+		} finally {
+			await rm(dir, { recursive: true })
+		}
+	})
+
+	test('direct hooks advance verification across repeated mutation cycles', async () => {
+		const dir = await mkdtemp(join(tmpdir(), 'file-state-hook-test-'))
+		try {
+			const filePath = join(dir, 'repeated-cycles.txt')
+			await writeFile(filePath, 'one\n')
+			const harness = createDirectHookHarness()
+			await harness.recordReadObservation({ file_path: filePath }, await fileText(filePath))
+			const originalReadHash = harness.state[FILE_READ_STATE_KEY]?.[filePath]?.lastReadHash
+
+			await harness.expectMutationAllowed('write', { file_path: filePath, content: 'two\n' })
+			await writeFile(filePath, 'two\n')
+			await harness.recordMutationVerification('write', { file_path: filePath, content: 'two\n' })
+			const afterWriteHash = harness.state[FILE_VERIFICATION_STATE_KEY]?.[filePath]?.lastVerifiedHash
+			await harness.expectMutationAllowed('edit', { file_path: filePath, old_string: 'two', new_string: 'three' })
+			await writeFile(filePath, 'three\n')
+			await harness.recordMutationVerification('edit', {
+				file_path: filePath,
+				old_string: 'two',
+				new_string: 'three',
+			})
+			const afterEditHash = harness.state[FILE_VERIFICATION_STATE_KEY]?.[filePath]?.lastVerifiedHash
+			const patchText = [
+				'*** Begin Patch',
+				`*** Update File: ${filePath}`,
+				'@@',
+				'-three',
+				'+four',
+				'*** End Patch',
+			].join('\n')
+			await harness.expectMutationAllowed('apply_patch', { patch_text: patchText })
+			await writeFile(filePath, 'four\n')
+			await harness.recordMutationVerification('apply_patch', { patch_text: patchText })
+
+			expect(afterWriteHash).toBeTruthy()
+			expect(afterEditHash).toBeTruthy()
+			expect(afterEditHash).not.toBe(afterWriteHash)
+			expect(harness.state[FILE_VERIFICATION_STATE_KEY]?.[filePath]?.lastVerifiedHash).not.toBe(afterEditHash)
+			expect(harness.state[FILE_READ_STATE_KEY]?.[filePath]?.lastReadHash).toBe(originalReadHash)
+		} finally {
+			await rm(dir, { recursive: true })
+		}
+	})
+
+	test('direct hooks verify every target after multi-file patch updates', async () => {
+		const dir = await mkdtemp(join(tmpdir(), 'file-state-hook-test-'))
+		try {
+			const firstPath = join(dir, 'multi-first.txt')
+			const secondPath = join(dir, 'multi-second.txt')
+			await writeFile(firstPath, 'first-old\n')
+			await writeFile(secondPath, 'second-old\n')
+			const patchText = [
+				'*** Begin Patch',
+				`*** Update File: ${firstPath}`,
+				'@@',
+				'-first-old',
+				'+first-new',
+				`*** Update File: ${secondPath}`,
+				'@@',
+				'-second-old',
+				'+second-new',
+				'*** End Patch',
+			].join('\n')
+			const harness = createDirectHookHarness()
+
+			await harness.recordReadObservation({ file_path: firstPath }, await fileText(firstPath))
+			await harness.recordReadObservation({ file_path: secondPath }, await fileText(secondPath))
+			await harness.expectMutationAllowed('apply_patch', { patch_text: patchText })
+			await writeFile(firstPath, 'first-new\n')
+			await writeFile(secondPath, 'second-new\n')
+			await harness.recordMutationVerification('apply_patch', { patch_text: patchText })
+
+			expect(harness.state[FILE_VERIFICATION_STATE_KEY]?.[firstPath]?.lastVerifiedHash).toBeTruthy()
+			expect(harness.state[FILE_VERIFICATION_STATE_KEY]?.[secondPath]?.lastVerifiedHash).toBeTruthy()
+			await harness.expectMutationAllowed('write', { file_path: firstPath, content: 'first-final\n' })
+			await harness.expectMutationAllowed('write', { file_path: secondPath, content: 'second-final\n' })
+		} finally {
+			await rm(dir, { recursive: true })
+		}
+	})
+
+	test('direct hooks clear deleted targets while preserving updated targets in one patch', async () => {
+		const dir = await mkdtemp(join(tmpdir(), 'file-state-hook-test-'))
+		try {
+			const updatePath = join(dir, 'kept.txt')
+			const deletePath = join(dir, 'deleted.txt')
+			await writeFile(updatePath, 'keep-old\n')
+			await writeFile(deletePath, 'delete-me\n')
+			const patchText = [
+				'*** Begin Patch',
+				`*** Update File: ${updatePath}`,
+				'@@',
+				'-keep-old',
+				'+keep-new',
+				`*** Delete File: ${deletePath}`,
+				'*** End Patch',
+			].join('\n')
+			const harness = createDirectHookHarness()
+
+			await harness.recordReadObservation({ file_path: updatePath }, await fileText(updatePath))
+			await harness.recordReadObservation({ file_path: deletePath }, await fileText(deletePath))
+			await harness.expectMutationAllowed('apply_patch', { patch_text: patchText })
+			await writeFile(updatePath, 'keep-new\n')
+			await unlink(deletePath)
+			await harness.recordMutationVerification('apply_patch', { patch_text: patchText })
+
+			expect(harness.state[FILE_VERIFICATION_STATE_KEY]?.[updatePath]?.lastVerifiedHash).toBeTruthy()
+			expect(harness.state[FILE_VERIFICATION_STATE_KEY]?.[deletePath]).toBeUndefined()
+			expect(harness.state[FILE_READ_STATE_KEY]?.[deletePath]).toBeUndefined()
+			await writeFile(deletePath, 'external-recreate\n')
+			await harness.expectMutationBlocked(
+				'write',
+				{ file_path: deletePath, content: 'should-block\n' },
+				deletePath,
+			)
+			await harness.expectMutationAllowed('write', { file_path: updatePath, content: 'keep-final\n' })
+		} finally {
+			await rm(dir, { recursive: true })
+		}
+	})
+
+	test('direct hooks verify added files and clear deleted files in replacement patch', async () => {
+		const dir = await mkdtemp(join(tmpdir(), 'file-state-hook-test-'))
+		try {
+			const oldPath = join(dir, 'old-name.txt')
+			const newPath = join(dir, 'new-name.txt')
+			await writeFile(oldPath, 'old-content\n')
+			const patchText = [
+				'*** Begin Patch',
+				`*** Delete File: ${oldPath}`,
+				`*** Add File: ${newPath}`,
+				'+new-content',
+				'*** End Patch',
+			].join('\n')
+			const harness = createDirectHookHarness()
+
+			await harness.recordReadObservation({ file_path: oldPath }, await fileText(oldPath))
+			await harness.expectMutationAllowed('apply_patch', { patch_text: patchText })
+			await unlink(oldPath)
+			await writeFile(newPath, 'new-content\n')
+			await harness.recordMutationVerification('apply_patch', { patch_text: patchText })
+
+			expect(harness.state[FILE_VERIFICATION_STATE_KEY]?.[oldPath]).toBeUndefined()
+			expect(harness.state[FILE_VERIFICATION_STATE_KEY]?.[newPath]?.lastVerifiedHash).toBeTruthy()
+			await harness.expectMutationAllowed('write', { file_path: newPath, content: 'newer-content\n' })
+			await writeFile(oldPath, 'external-recreate\n')
+			await harness.expectMutationBlocked('write', { file_path: oldPath, content: 'should-block\n' }, oldPath)
+		} finally {
+			await rm(dir, { recursive: true })
+		}
+	})
+
+	test('direct hooks verify every created target after multi-file add patch', async () => {
+		const dir = await mkdtemp(join(tmpdir(), 'file-state-hook-test-'))
+		try {
+			const firstPath = join(dir, 'created-first.txt')
+			const secondPath = join(dir, 'created-second.txt')
+			const patchText = [
+				'*** Begin Patch',
+				`*** Add File: ${firstPath}`,
+				'+first-created',
+				`*** Add File: ${secondPath}`,
+				'+second-created',
+				'*** End Patch',
+			].join('\n')
+			const harness = createDirectHookHarness()
+
+			await harness.expectMutationAllowed('apply_patch', { patch_text: patchText })
+			await writeFile(firstPath, 'first-created\n')
+			await writeFile(secondPath, 'second-created\n')
+			await harness.recordMutationVerification('apply_patch', { patch_text: patchText })
+
+			expect(harness.state[FILE_VERIFICATION_STATE_KEY]?.[firstPath]?.lastVerifiedHash).toBeTruthy()
+			expect(harness.state[FILE_VERIFICATION_STATE_KEY]?.[secondPath]?.lastVerifiedHash).toBeTruthy()
+			expect(harness.state[FILE_READ_STATE_KEY]?.[firstPath]).toBeUndefined()
+			expect(harness.state[FILE_READ_STATE_KEY]?.[secondPath]).toBeUndefined()
+			await harness.expectMutationAllowed('write', { file_path: firstPath, content: 'first-final\n' })
+			await harness.expectMutationAllowed('write', { file_path: secondPath, content: 'second-final\n' })
+		} finally {
+			await rm(dir, { recursive: true })
+		}
+	})
+
+	test('direct hooks handle realistic mixed multi-file patch state independently', async () => {
+		const dir = await mkdtemp(join(tmpdir(), 'file-state-hook-test-'))
+		try {
+			const firstUpdatePath = join(dir, 'update-first.txt')
+			const secondUpdatePath = join(dir, 'update-second.txt')
+			const firstAddPath = join(dir, 'add-first.txt')
+			const secondAddPath = join(dir, 'add-second.txt')
+			const deletePath = join(dir, 'delete-me.txt')
+			const moveSourcePath = join(dir, 'move-source.txt')
+			const moveDestinationPath = join(dir, 'move-destination.txt')
+			await writeFile(firstUpdatePath, 'first-old\n')
+			await writeFile(secondUpdatePath, 'second-old\n')
+			await writeFile(deletePath, 'delete-me\n')
+			await writeFile(moveSourcePath, 'move-me\n')
+			const patchText = [
+				'*** Begin Patch',
+				`*** Update File: ${firstUpdatePath}`,
+				'@@',
+				'-first-old',
+				'+first-new',
+				`*** Add File: ${firstAddPath}`,
+				'+first-added',
+				`*** Delete File: ${deletePath}`,
+				`*** Update File: ${secondUpdatePath}`,
+				'@@',
+				'-second-old',
+				'+second-new',
+				`*** Add File: ${secondAddPath}`,
+				'+second-added',
+				`*** Update File: ${moveSourcePath}`,
+				`*** Move to: ${moveDestinationPath}`,
+				'*** End Patch',
+			].join('\n')
+			const harness = createDirectHookHarness()
+
+			await harness.recordReadObservation({ file_path: firstUpdatePath }, await fileText(firstUpdatePath))
+			await harness.recordReadObservation({ file_path: secondUpdatePath }, await fileText(secondUpdatePath))
+			await harness.recordReadObservation({ file_path: deletePath }, await fileText(deletePath))
+			await harness.recordReadObservation({ file_path: moveSourcePath }, await fileText(moveSourcePath))
+			const movedReadHash = harness.state[FILE_READ_STATE_KEY]?.[moveSourcePath]?.lastReadHash
+			await harness.expectMutationAllowed('apply_patch', { patch_text: patchText })
+			await writeFile(firstUpdatePath, 'first-new\n')
+			await writeFile(secondUpdatePath, 'second-new\n')
+			await writeFile(firstAddPath, 'first-added\n')
+			await writeFile(secondAddPath, 'second-added\n')
+			await unlink(deletePath)
+			await writeFile(moveDestinationPath, await fileText(moveSourcePath))
+			await unlink(moveSourcePath)
+			await harness.recordMutationVerification('apply_patch', { patch_text: patchText })
+
+			for (const verifiedPath of [
+				firstUpdatePath,
+				secondUpdatePath,
+				firstAddPath,
+				secondAddPath,
+				moveDestinationPath,
+			]) {
+				expect(harness.state[FILE_VERIFICATION_STATE_KEY]?.[verifiedPath]?.lastVerifiedHash).toBeTruthy()
+				await harness.expectMutationAllowed('write', { file_path: verifiedPath, content: 'follow-up\n' })
+			}
+			expect(harness.state[FILE_VERIFICATION_STATE_KEY]?.[deletePath]).toBeUndefined()
+			expect(harness.state[FILE_VERIFICATION_STATE_KEY]?.[moveSourcePath]).toBeUndefined()
+			expect(harness.state[FILE_READ_STATE_KEY]?.[deletePath]).toBeUndefined()
+			expect(harness.state[FILE_READ_STATE_KEY]?.[moveSourcePath]).toBeUndefined()
+			expect(harness.state[FILE_READ_STATE_KEY]?.[firstAddPath]).toBeUndefined()
+			expect(harness.state[FILE_READ_STATE_KEY]?.[secondAddPath]).toBeUndefined()
+			expect(harness.state[FILE_READ_STATE_KEY]?.[moveDestinationPath]?.lastReadHash).toBe(movedReadHash)
+			await writeFile(deletePath, 'external-recreate\n')
+			await writeFile(moveSourcePath, 'external-recreate\n')
+			await harness.expectMutationBlocked('write', { file_path: deletePath, content: 'blocked\n' }, deletePath)
+			await harness.expectMutationBlocked(
+				'write',
+				{ file_path: moveSourcePath, content: 'blocked\n' },
+				moveSourcePath,
+			)
+		} finally {
+			await rm(dir, { recursive: true })
+		}
+	})
+
 	test('unchanged second read short-circuits execution', async () => {
 		const dir = await mkdtemp(join(tmpdir(), 'file-state-hook-test-'))
 		try {
@@ -1161,6 +1709,85 @@ describe('file-state hooks', () => {
 		}
 	})
 
+	test('read then write then write uses verification state instead of stale read state', async () => {
+		const dir = await mkdtemp(join(tmpdir(), 'file-state-hook-test-'))
+		try {
+			const filePath = join(dir, 'write-then-write.txt')
+			await writeFile(filePath, 'initial\n')
+
+			let readExecuted = 0
+			let writeExecuted = 0
+			let blockCount = 0
+
+			const readTool = defineTool({
+				name: 'read',
+				description: 'Read file',
+				input: z.object({ file_path: z.string() }),
+				output: z.string(),
+				execute: async (input) => {
+					readExecuted += 1
+					return fileText(input.file_path)
+				},
+			})
+
+			const writeTool = defineTool({
+				name: 'write',
+				description: 'Write file',
+				input: z.object({ file_path: z.string(), content: z.string() }),
+				output: z.string(),
+				execute: async (input) => {
+					writeExecuted += 1
+					await writeFile(input.file_path, input.content)
+					return 'wrote'
+				},
+			})
+
+			const baseReadBeforeWriteHook = createReadBeforeWriteHook()
+			const instrumentedReadBeforeWriteHook = async (ctx: Parameters<typeof baseReadBeforeWriteHook>[0]) => {
+				const result = await baseReadBeforeWriteHook(ctx)
+				if (result.type === 'toolResult') {
+					blockCount += 1
+				}
+				return result
+			}
+
+			const result = await new Agent({
+				model: mockModel([
+					assistantWithToolCall('read', { file_path: filePath }),
+					assistantWithToolCall('write', { file_path: filePath, content: 'after-first-write\n' }),
+					assistantWithToolCall('write', { file_path: filePath, content: 'after-second-write\n' }),
+					assistantText('Done.'),
+				]),
+				tools: { read: readTool, write: writeTool },
+				hooks: {
+					preToolUse: [createWastedReadHook(), instrumentedReadBeforeWriteHook],
+					postToolUse: [createFileStateTrackingHook()],
+				},
+			}).run({ state: startState([userMessage('Read then write twice')]) }).result
+
+			expect(readExecuted).toBe(1)
+			expect(writeExecuted).toBe(2)
+			expect(blockCount).toBe(0)
+			expect(await fileText(filePath)).toBe('after-second-write\n')
+			expect(getToolResults(result.state.messages).map((part) => part.output.value)).not.toContain(
+				readBeforeWriteReminder(filePath),
+			)
+
+			const toolState = result.state.toolState
+			expect(toolState).toBeDefined()
+			if (!toolState) {
+				throw new Error('expected tool state to be defined')
+			}
+			const readState = toolState[FILE_READ_STATE_KEY] as FileReadStateMap
+			const verificationState = toolState[FILE_VERIFICATION_STATE_KEY] as FileVerificationStateMap
+			expect(readState[filePath]?.lastReadHash).toBeTruthy()
+			expect(verificationState[filePath]?.lastVerifiedHash).toBeTruthy()
+			expect(readState[filePath]?.lastReadHash).not.toBe(verificationState[filePath]?.lastVerifiedHash)
+		} finally {
+			await rm(dir, { recursive: true })
+		}
+	})
+
 	test('read then edit then write does not trigger read-before-write block again', async () => {
 		const dir = await mkdtemp(join(tmpdir(), 'file-state-hook-test-'))
 		try {
@@ -1247,6 +1874,298 @@ describe('file-state hooks', () => {
 		}
 	})
 
+	test('read then apply_patch then apply_patch does not trigger read-before-write block again', async () => {
+		const dir = await mkdtemp(join(tmpdir(), 'file-state-hook-test-'))
+		try {
+			const filePath = join(dir, 'patch-then-patch.txt')
+			await writeFile(filePath, 'initial\n')
+
+			let readExecuted = 0
+			let applyPatchExecuted = 0
+			let blockCount = 0
+
+			const readTool = defineTool({
+				name: 'read',
+				description: 'Read file',
+				input: z.object({ file_path: z.string() }),
+				output: z.string(),
+				execute: async (input) => {
+					readExecuted += 1
+					return fileText(input.file_path)
+				},
+			})
+
+			const applyPatchTool = defineTool({
+				name: 'apply_patch',
+				description: 'Apply patch',
+				input: z.object({ patch_text: z.string() }),
+				output: z.string(),
+				execute: async (input) => {
+					applyPatchExecuted += 1
+					if (input.patch_text.includes('+patched-once')) {
+						await writeFile(filePath, 'patched-once\n')
+					} else if (input.patch_text.includes('+patched-twice')) {
+						await writeFile(filePath, 'patched-twice\n')
+					}
+					return 'patched'
+				},
+			})
+
+			const baseReadBeforeWriteHook = createReadBeforeWriteHook()
+			const instrumentedReadBeforeWriteHook = async (ctx: Parameters<typeof baseReadBeforeWriteHook>[0]) => {
+				const result = await baseReadBeforeWriteHook(ctx)
+				if (result.type === 'toolResult') {
+					blockCount += 1
+				}
+				return result
+			}
+
+			const firstPatch = [
+				'*** Begin Patch',
+				`*** Update File: ${filePath}`,
+				'@@',
+				'-initial',
+				'+patched-once',
+				'*** End Patch',
+			].join('\n')
+			const secondPatch = [
+				'*** Begin Patch',
+				`*** Update File: ${filePath}`,
+				'@@',
+				'-patched-once',
+				'+patched-twice',
+				'*** End Patch',
+			].join('\n')
+
+			const result = await new Agent({
+				model: mockModel([
+					assistantWithToolCall('read', { file_path: filePath }),
+					assistantWithToolCall('apply_patch', { patch_text: firstPatch }),
+					assistantWithToolCall('apply_patch', { patch_text: secondPatch }),
+					assistantText('Done.'),
+				]),
+				tools: { read: readTool, apply_patch: applyPatchTool },
+				hooks: {
+					preToolUse: [createWastedReadHook(), instrumentedReadBeforeWriteHook],
+					postToolUse: [createFileStateTrackingHook()],
+				},
+			}).run({ state: startState([userMessage('Read then patch twice')]) }).result
+
+			expect(readExecuted).toBe(1)
+			expect(applyPatchExecuted).toBe(2)
+			expect(blockCount).toBe(0)
+			expect(await fileText(filePath)).toBe('patched-twice\n')
+			expect(getToolResults(result.state.messages).map((part) => part.output.value)).not.toContain(
+				readBeforeWriteReminder(filePath),
+			)
+		} finally {
+			await rm(dir, { recursive: true })
+		}
+	})
+
+	test('resumed agent run keeps verification for follow-up mutation chains', async () => {
+		const dir = await mkdtemp(join(tmpdir(), 'file-state-hook-test-'))
+		try {
+			const filePath = join(dir, 'resumed-chain.txt')
+			await writeFile(filePath, 'initial\n')
+
+			let readExecuted = 0
+			let writeExecuted = 0
+			let editExecuted = 0
+			let blockCount = 0
+
+			const readTool = defineTool({
+				name: 'read',
+				description: 'Read file',
+				input: z.object({ file_path: z.string() }),
+				output: z.string(),
+				execute: async (input) => {
+					readExecuted += 1
+					return fileText(input.file_path)
+				},
+			})
+
+			const writeTool = defineTool({
+				name: 'write',
+				description: 'Write file',
+				input: z.object({ file_path: z.string(), content: z.string() }),
+				output: z.string(),
+				execute: async (input) => {
+					writeExecuted += 1
+					await writeFile(input.file_path, input.content)
+					return 'wrote'
+				},
+			})
+
+			const editTool = defineTool({
+				name: 'edit',
+				description: 'Edit file',
+				input: z.object({ file_path: z.string(), old_string: z.string(), new_string: z.string() }),
+				output: z.string(),
+				execute: async (input) => {
+					editExecuted += 1
+					const text = await fileText(input.file_path)
+					await writeFile(input.file_path, text.replace(input.old_string, input.new_string))
+					return 'edited'
+				},
+			})
+
+			const baseReadBeforeWriteHook = createReadBeforeWriteHook()
+			const instrumentedReadBeforeWriteHook = async (ctx: Parameters<typeof baseReadBeforeWriteHook>[0]) => {
+				const result = await baseReadBeforeWriteHook(ctx)
+				if (result.type === 'toolResult') {
+					blockCount += 1
+				}
+				return result
+			}
+			const hooks = {
+				preToolUse: [createWastedReadHook(), instrumentedReadBeforeWriteHook],
+				postToolUse: [createFileStateTrackingHook()],
+			}
+
+			const first = await new Agent({
+				model: mockModel([assistantWithToolCall('read', { file_path: filePath }), assistantText('Done.')]),
+				tools: { read: readTool, write: writeTool, edit: editTool },
+				hooks,
+			}).run({ state: startState([userMessage('Read file')]) }).result
+
+			const second = await new Agent({
+				model: mockModel([
+					assistantWithToolCall('write', { file_path: filePath, content: 'after-write\n' }),
+					assistantWithToolCall('edit', {
+						file_path: filePath,
+						old_string: 'after-write',
+						new_string: 'after-edit',
+					}),
+					assistantWithToolCall('write', { file_path: filePath, content: 'after-second-write\n' }),
+					assistantText('Done.'),
+				]),
+				tools: { read: readTool, write: writeTool, edit: editTool },
+				hooks,
+			}).run({
+				state: startState([...first.state.messages, userMessage('Mutate repeatedly')], first.state.toolState),
+			}).result
+
+			expect(readExecuted).toBe(1)
+			expect(writeExecuted).toBe(2)
+			expect(editExecuted).toBe(1)
+			expect(blockCount).toBe(0)
+			expect(await fileText(filePath)).toBe('after-second-write\n')
+			expect(getToolResults(second.state.messages).map((part) => part.output.value)).not.toContain(
+				readBeforeWriteReminder(filePath),
+			)
+		} finally {
+			await rm(dir, { recursive: true })
+		}
+	})
+
+	test('agent loop repeated mutation cycle advances verification after every tool call', async () => {
+		const dir = await mkdtemp(join(tmpdir(), 'file-state-hook-test-'))
+		try {
+			const filePath = join(dir, 'mutation-cycle.txt')
+			await writeFile(filePath, 'zero\n')
+
+			let readExecuted = 0
+			let writeExecuted = 0
+			let editExecuted = 0
+			let applyPatchExecuted = 0
+			let blockCount = 0
+
+			const readTool = defineTool({
+				name: 'read',
+				description: 'Read file',
+				input: z.object({ file_path: z.string() }),
+				output: z.string(),
+				execute: async (input) => {
+					readExecuted += 1
+					return fileText(input.file_path)
+				},
+			})
+
+			const writeTool = defineTool({
+				name: 'write',
+				description: 'Write file',
+				input: z.object({ file_path: z.string(), content: z.string() }),
+				output: z.string(),
+				execute: async (input) => {
+					writeExecuted += 1
+					await writeFile(input.file_path, input.content)
+					return 'wrote'
+				},
+			})
+
+			const editTool = defineTool({
+				name: 'edit',
+				description: 'Edit file',
+				input: z.object({ file_path: z.string(), old_string: z.string(), new_string: z.string() }),
+				output: z.string(),
+				execute: async (input) => {
+					editExecuted += 1
+					const text = await fileText(input.file_path)
+					await writeFile(input.file_path, text.replace(input.old_string, input.new_string))
+					return 'edited'
+				},
+			})
+
+			const patchText = [
+				'*** Begin Patch',
+				`*** Update File: ${filePath}`,
+				'@@',
+				'-two',
+				'+three',
+				'*** End Patch',
+			].join('\n')
+			const applyPatchTool = defineTool({
+				name: 'apply_patch',
+				description: 'Apply patch',
+				input: z.object({ patch_text: z.string() }),
+				output: z.string(),
+				execute: async () => {
+					applyPatchExecuted += 1
+					await writeFile(filePath, 'three\n')
+					return 'patched'
+				},
+			})
+
+			const baseReadBeforeWriteHook = createReadBeforeWriteHook()
+			const instrumentedReadBeforeWriteHook = async (ctx: Parameters<typeof baseReadBeforeWriteHook>[0]) => {
+				const result = await baseReadBeforeWriteHook(ctx)
+				if (result.type === 'toolResult') {
+					blockCount += 1
+				}
+				return result
+			}
+
+			const result = await new Agent({
+				model: mockModel([
+					assistantWithToolCall('read', { file_path: filePath }),
+					assistantWithToolCall('write', { file_path: filePath, content: 'one\n' }),
+					assistantWithToolCall('edit', { file_path: filePath, old_string: 'one', new_string: 'two' }),
+					assistantWithToolCall('apply_patch', { patch_text: patchText }),
+					assistantWithToolCall('write', { file_path: filePath, content: 'four\n' }),
+					assistantText('Done.'),
+				]),
+				tools: { read: readTool, write: writeTool, edit: editTool, apply_patch: applyPatchTool },
+				hooks: {
+					preToolUse: [createWastedReadHook(), instrumentedReadBeforeWriteHook],
+					postToolUse: [createFileStateTrackingHook()],
+				},
+			}).run({ state: startState([userMessage('Run mutation cycle')]) }).result
+
+			expect(readExecuted).toBe(1)
+			expect(writeExecuted).toBe(2)
+			expect(editExecuted).toBe(1)
+			expect(applyPatchExecuted).toBe(1)
+			expect(blockCount).toBe(0)
+			expect(await fileText(filePath)).toBe('four\n')
+			expect(getToolResults(result.state.messages).map((part) => part.output.value)).not.toContain(
+				readBeforeWriteReminder(filePath),
+			)
+		} finally {
+			await rm(dir, { recursive: true })
+		}
+	})
+
 	test('apply_patch blocks unread existing file and allows add-file without prior read', async () => {
 		const dir = await mkdtemp(join(tmpdir(), 'file-state-hook-test-'))
 		try {
@@ -1324,7 +2243,7 @@ describe('file-state hooks', () => {
 		}
 	})
 
-	test('parallel reads preserve verification state for multi-file apply_patch updates', async () => {
+	test('parallel reads preserve verification state for multi-file apply_patch updates and follow-up writes', async () => {
 		const dir = await mkdtemp(join(tmpdir(), 'file-state-hook-test-'))
 		try {
 			const firstPath = join(dir, 'first.txt')
@@ -1334,6 +2253,7 @@ describe('file-state hooks', () => {
 
 			let readExecuted = 0
 			let applyPatchExecuted = 0
+			let writeExecuted = 0
 
 			const readTool = defineTool({
 				name: 'read',
@@ -1356,6 +2276,17 @@ describe('file-state hooks', () => {
 					await writeFile(firstPath, 'first-new\n')
 					await writeFile(secondPath, 'second-new\n')
 					return 'patched'
+				},
+			})
+			const writeTool = defineTool({
+				name: 'write',
+				description: 'Write file',
+				input: z.object({ file_path: z.string(), content: z.string() }),
+				output: z.string(),
+				execute: async (input) => {
+					writeExecuted += 1
+					await writeFile(input.file_path, input.content)
+					return 'wrote'
 				},
 			})
 
@@ -1396,7 +2327,7 @@ describe('file-state hooks', () => {
 					assistantWithToolCall('apply_patch', { patch_text: patchText }),
 					assistantText('Done'),
 				]),
-				tools: { read: readTool, apply_patch: applyPatchTool },
+				tools: { read: readTool, apply_patch: applyPatchTool, write: writeTool },
 				hooks,
 			}).run({
 				state: startState([...first.state.messages, userMessage('Patch both files')], first.state.toolState),
@@ -1407,6 +2338,28 @@ describe('file-state hooks', () => {
 			expect(await fileText(secondPath)).toBe('second-new\n')
 			const patchResult = getToolResults(second.state.messages, { toolName: 'apply_patch' })[0]!
 			expect(patchResult.output).toEqual({ type: 'text', value: 'patched' })
+
+			const third = await new Agent({
+				model: mockModel([
+					assistantWithToolCalls(
+						{ toolName: 'write', input: { file_path: firstPath, content: 'first-final\n' } },
+						{ toolName: 'write', input: { file_path: secondPath, content: 'second-final\n' } },
+					),
+					assistantText('Done'),
+				]),
+				tools: { read: readTool, apply_patch: applyPatchTool, write: writeTool },
+				hooks,
+			}).run({
+				state: startState(
+					[...second.state.messages, userMessage('Write both patched files without rereading')],
+					second.state.toolState,
+				),
+			}).result
+
+			expect(writeExecuted).toBe(2)
+			expect(await fileText(firstPath)).toBe('first-final\n')
+			expect(await fileText(secondPath)).toBe('second-final\n')
+			expect(getToolResults(third.state.messages, { toolName: 'write' })).toHaveLength(2)
 		} finally {
 			await rm(dir, { recursive: true })
 		}
