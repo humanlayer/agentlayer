@@ -19,10 +19,10 @@ import { createFileAuthStore } from '@humanlayer/agentlayer-provider-auth'
 import { streamText } from 'ai'
 import { buildCodexRequestBody, createCodexLanguageModel } from '../src/codex'
 
-const isCI = process.env.CI === 'true' || process.env.CI === '1'
+const authStore = createFileAuthStore()
+const hasAuth = await authStore.get('codex').then((auth) => !!auth).catch(() => false)
 
-describe.skipIf(isCI)('reasoning continuation learning test', () => {
-	const authStore = createFileAuthStore()
+describe.skipIf(!hasAuth)('reasoning continuation learning test', () => {
 
 	test('captures reasoning metadata from initial response', async () => {
 		const model = createCodexLanguageModel({
