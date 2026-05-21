@@ -20,10 +20,12 @@ import { streamText } from 'ai'
 import { buildCodexRequestBody, createCodexLanguageModel } from '../src/codex'
 
 const authStore = createFileAuthStore()
-const hasAuth = await authStore.get('codex').then((auth) => !!auth).catch(() => false)
+const hasAuth = await authStore
+	.get('codex')
+	.then((auth) => !!auth)
+	.catch(() => false)
 
 describe.skipIf(!hasAuth)('reasoning continuation learning test', () => {
-
 	test('captures reasoning metadata from initial response', async () => {
 		const model = createCodexLanguageModel({
 			modelId: 'gpt-5.5',
