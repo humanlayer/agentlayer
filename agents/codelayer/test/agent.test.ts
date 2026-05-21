@@ -27,6 +27,7 @@ beforeEach(() => {
 })
 
 afterEach(async () => {
+	mock.restore()
 	if (originalAnthropicApiKey === undefined) delete process.env.ANTHROPIC_API_KEY
 	else process.env.ANTHROPIC_API_KEY = originalAnthropicApiKey
 	if (originalFireworksApiKey === undefined) delete process.env.FIREWORKS_API_KEY
