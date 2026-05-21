@@ -15,7 +15,6 @@ import {
 import type { AuthInfo, AuthStore, OAuthAuthInfo } from '@humanlayer/agentlayer-provider-auth'
 import { createFileAuthStore } from '@humanlayer/agentlayer-provider-auth'
 import { type CodexFetchLike, refreshAccessToken } from './codex-oauth'
-import { debug } from './debug'
 
 export const CODEX_API_ENDPOINT = 'https://chatgpt.com/backend-api/codex/responses'
 export const CODEX_PROVIDER = 'openai.codex'
@@ -257,7 +256,6 @@ export function createCodexLanguageModel(options: CodexModelOptions): LanguageMo
 			return streamPartsToGenerateResult(streamed.parts, prepared.body, response)
 		},
 		async doStream(callOptions) {
-			debug.api('doStream starting')
 			const prepared = await prepareCodexRequest({
 				callOptions,
 				modelId: options.modelId,
@@ -270,14 +268,12 @@ export function createCodexLanguageModel(options: CodexModelOptions): LanguageMo
 				now,
 			})
 
-			debug.api('doStream fetch starting', { model: prepared.body.model })
 			const response = await fetchFn(CODEX_API_ENDPOINT, {
 				method: 'POST',
 				headers: prepared.headers,
 				body: JSON.stringify(prepared.body),
 				signal: callOptions.abortSignal,
 			})
-			debug.api('doStream fetch complete', { status: response.status, ok: response.ok })
 
 			if (!response.ok) {
 				throw new Error(`Codex request failed: ${response.status} ${await response.text()}`)
@@ -521,7 +517,6 @@ export function createCodexSseStream(response: Response): ReadableStream<Languag
 	}
 
 	const decoder = new TextDecoder()
-	debug.streamImportant('createCodexSseStream started')
 
 	return new ReadableStream<LanguageModelV3StreamPart>({
 		async start(controller) {
@@ -534,8 +529,6 @@ export function createCodexSseStream(response: Response): ReadableStream<Languag
 			let buffer = ''
 			let finishSeen = false
 			let hasFunctionCall = false
-			let readCount = 0
-			let lastReadTime = Date.now()
 			const activeReasoning = new Map<
 				number,
 				{ canonicalId: string; encryptedContent?: string | null; summaryParts: Set<number> }
@@ -546,11 +539,7 @@ export function createCodexSseStream(response: Response): ReadableStream<Languag
 
 			try {
 				while (true) {
-					debug.stream('reader.read() waiting', { readCount, msSinceLastRead: Date.now() - lastReadTime })
 					const { done, value } = await reader.read()
-					lastReadTime = Date.now()
-					readCount++
-					debug.stream('reader.read() returned', { done, bytesReceived: value?.length ?? 0, readCount })
 					if (done) break
 					buffer += decoder.decode(value, { stream: true })
 
@@ -607,21 +596,16 @@ export function createCodexSseStream(response: Response): ReadableStream<Languag
 				}
 
 				if (!finishSeen) {
-					debug.streamImportant('stream ended without finish event, synthesizing finish', { readCount })
 					controller.enqueue({
 						type: 'finish',
 						finishReason: { unified: 'stop', raw: undefined },
 						usage: mapCodexUsage(),
 					})
-				} else {
-					debug.streamImportant('stream complete with finish event', { readCount })
 				}
 				controller.close()
 			} catch (error) {
-				debug.streamImportant('stream error', { error: String(error), readCount })
 				controller.error(error)
 			} finally {
-				debug.streamImportant('stream reader released', { readCount })
 				reader.releaseLock()
 			}
 		},
