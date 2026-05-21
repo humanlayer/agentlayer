@@ -1,8 +1,24 @@
-import { execSync } from 'node:child_process'
-import { existsSync } from 'node:fs'
-import { readdir, readFile, stat } from 'node:fs/promises'
+import { spawn } from 'node:child_process'
+import { constants } from 'node:fs'
+import { access, readdir, readFile, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { basename, join } from 'node:path'
+
+function execCommand(command: string, args: string[], cwd: string): Promise<string> {
+	return new Promise((resolve, reject) => {
+		const proc = spawn(command, args, { cwd, stdio: ['ignore', 'pipe', 'ignore'] })
+		let stdout = ''
+		proc.stdout.on('data', (data: Buffer) => {
+			stdout += data.toString()
+		})
+		proc.on('close', (code) => {
+			if (code === 0) resolve(stdout)
+			else reject(new Error(`Command failed with code ${code}`))
+		})
+		proc.on('error', reject)
+	})
+}
+
 import { createSkillTool } from '@humanlayer/agentlayer-core'
 import type { Skill } from '@humanlayer/agentlayer-core/interfaces'
 
@@ -35,30 +51,46 @@ export interface CreateSkillToolFromRepoDirsOptions {
 	allowMissing?: boolean
 }
 
-function getRepoRoot(cwd: string): string | undefined {
+async function getRepoRoot(cwd: string): Promise<string | undefined> {
 	try {
-		return execSync('git rev-parse --show-toplevel', {
-			cwd,
-			encoding: 'utf-8',
-			stdio: ['ignore', 'pipe', 'ignore'],
-		}).trim()
+		const stdout = await execCommand('git', ['rev-parse', '--show-toplevel'], cwd)
+		return stdout.trim()
 	} catch {
 		return undefined
 	}
 }
 
-function resolveSkillsDirs(opts: { cwd: string; candidates: string[] }): { dirs: string[]; searched: string[] } {
+async function dirExists(dir: string): Promise<boolean> {
+	try {
+		await access(dir, constants.F_OK)
+		return true
+	} catch {
+		return false
+	}
+}
+
+async function filterExistingDirs(dirs: string[]): Promise<string[]> {
+	const results = await Promise.all(dirs.map(async (dir) => ({ dir, exists: await dirExists(dir) })))
+	return results.filter((r) => r.exists).map((r) => r.dir)
+}
+
+async function resolveSkillsDirs(opts: {
+	cwd: string
+	candidates: string[]
+}): Promise<{ dirs: string[]; searched: string[] }> {
 	const cwd = opts.cwd
 	const candidates = opts.candidates
 
-	const cwdDirs = candidates.map((dir) => join(cwd, dir)).filter((dir) => existsSync(dir))
+	const cwdCandidates = candidates.map((dir) => join(cwd, dir))
+	const cwdDirs = await filterExistingDirs(cwdCandidates)
 	if (cwdDirs.length > 0) {
 		return { dirs: cwdDirs, searched: cwdDirs }
 	}
 
-	const repoRoot = getRepoRoot(cwd)
+	const repoRoot = await getRepoRoot(cwd)
 	if (repoRoot && repoRoot !== cwd) {
-		const rootDirs = candidates.map((dir) => join(repoRoot, dir)).filter((dir) => existsSync(dir))
+		const rootCandidates = candidates.map((dir) => join(repoRoot, dir))
+		const rootDirs = await filterExistingDirs(rootCandidates)
 		if (rootDirs.length > 0) {
 			return { dirs: rootDirs, searched: [cwd, ...rootDirs] }
 		}
@@ -81,7 +113,7 @@ function resolveSkillsDirs(opts: { cwd: string; candidates: string[] }): { dirs:
 export async function createSkillToolFromRepoDirs(opts: CreateSkillToolFromRepoDirsOptions = {}) {
 	const cwd = opts.cwd ?? process.cwd()
 	const candidates = opts.candidates ?? ['.claude/skills', '.agents/skills']
-	const { dirs, searched } = resolveSkillsDirs({ cwd, candidates })
+	const { dirs, searched } = await resolveSkillsDirs({ cwd, candidates })
 
 	if (dirs.length === 0) {
 		if (opts.allowMissing) {

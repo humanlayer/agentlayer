@@ -97,7 +97,12 @@ describe('Yjs filesystem tool catalog initialization races', () => {
 		} finally {
 			browserProvider?.destroy()
 			agentProvider?.destroy()
-			dsServer.stop().catch(() => {})
+			// Fire-and-forget server stops to avoid hanging on slow shutdowns
+			// The servers use ephemeral ports so no conflict with other tests
+			Promise.race([
+				Promise.all([yjsServer.stop(), dsServer.stop()]),
+				new Promise((resolve) => setTimeout(resolve, 1000)),
+			]).catch(() => {})
 		}
 	}, 15_000)
 })

@@ -266,6 +266,7 @@ describe('createFileAuthStore', () => {
 		const dir = await makeTempDir()
 		const filePath = path.join(dir, 'agentlayer', 'auth.json')
 		const agentSdkAuthFilePath = path.join(dir, 'agent-sdk', 'auth.json')
+		const openCodeAuthFilePath = path.join(dir, 'opencode', 'auth.json')
 		await fs.mkdir(path.dirname(agentSdkAuthFilePath), { recursive: true })
 		await fs.writeFile(
 			agentSdkAuthFilePath,
@@ -275,7 +276,7 @@ describe('createFileAuthStore', () => {
 			}),
 		)
 
-		const store = await ensureFileAuthStore({ filePath, agentSdkAuthFilePath })
+		const store = await ensureFileAuthStore({ filePath, agentSdkAuthFilePath, openCodeAuthFilePath })
 
 		expect(await store.get('copilot')).toEqual({
 			kind: 'oauth',
@@ -306,7 +307,7 @@ describe('createFileAuthStore', () => {
 			}),
 		)
 
-		const existingStore = await ensureFileAuthStore({ filePath, agentSdkAuthFilePath })
+		const existingStore = await ensureFileAuthStore({ filePath, agentSdkAuthFilePath, openCodeAuthFilePath })
 		expect(await existingStore.get('copilot')).toEqual({ kind: 'oauth', accessToken: 'existing-agentlayer-access' })
 	})
 })
