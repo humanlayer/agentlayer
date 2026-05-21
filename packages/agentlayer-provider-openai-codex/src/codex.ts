@@ -1180,6 +1180,7 @@ function buildReasoningInput(part: {
 	if (itemId) {
 		return {
 			type: 'reasoning',
+			id: itemId,
 			...(reasoningEncryptedContent !== undefined ? { encrypted_content: reasoningEncryptedContent } : {}),
 			summary,
 		}

@@ -430,6 +430,7 @@ describe('codex provider wrapper', () => {
 			{ role: 'user', content: [{ type: 'input_text', text: CODEX_REASONING_ONLY_REPRO_PROMPT }] },
 			{
 				type: 'reasoning',
+				id: 'rs_only',
 				encrypted_content: 'enc-only',
 				summary: [{ type: 'summary_text', text: 'Thought.' }],
 			},
