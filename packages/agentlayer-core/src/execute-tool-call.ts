@@ -47,15 +47,24 @@ export interface ToolCallResult {
 /**
  * Serialize a raw tool output value to a string for the model.
  * Uses the tool's `serialize` function if provided; otherwise:
+ *   - if the raw value is already a valid ToolResultPart['output'], pass it through
  *   - strings are passed through as-is
  *   - everything else is JSON.stringify'd
+ *
+ * IMPORTANT: tool.serialize takes priority over isToolResultOutput to avoid
+ * type confusion between tool-specific output types (e.g., ReadMultimodalOutput
+ * with { type: 'text', content: string }) and ToolResultPart['output'] which
+ * expects { type: 'text', value: string }.
  */
 function serializeOutput<TOutput>(tool: Tool<any, TOutput>, raw: TOutput, input: unknown): AgentLayerToolOutput {
-	if (isToolResultOutput(raw)) {
-		return raw
-	}
+	// Check tool.serialize FIRST - tools with custom serializers should always use them
 	if (tool.serialize) {
 		return tool.serialize(raw, input as any)
+	}
+	// Only pass through raw values that are already valid ToolResultPart outputs
+	// when no serialize function is provided
+	if (isToolResultOutput(raw)) {
+		return raw
 	}
 	return typeof raw === 'string' ? raw : JSON.stringify(raw)
 }
