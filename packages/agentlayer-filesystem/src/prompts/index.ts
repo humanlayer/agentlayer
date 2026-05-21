@@ -1,7 +1,23 @@
-import { execSync } from 'node:child_process'
+import { spawn } from 'node:child_process'
 import { constants } from 'node:fs'
 import { access, readFile } from 'node:fs/promises'
 import { isAbsolute, resolve } from 'node:path'
+
+function execCommand(command: string, args: string[], cwd: string): Promise<string> {
+	return new Promise((resolve, reject) => {
+		const proc = spawn(command, args, { cwd, stdio: ['ignore', 'pipe', 'ignore'] })
+		let stdout = ''
+		proc.stdout.on('data', (data: Buffer) => {
+			stdout += data.toString()
+		})
+		proc.on('close', (code) => {
+			if (code === 0) resolve(stdout)
+			else reject(new Error(`Command failed with code ${code}`))
+		})
+		proc.on('error', reject)
+	})
+}
+
 import {
 	type CodingPromptKey,
 	type EnvironmentPromptOptions as CoreEnvironmentPromptOptions,
@@ -24,13 +40,10 @@ export {
 
 const DEFAULT_REPO_INSTRUCTION_CANDIDATES = ['CLAUDE.md', 'AGENTS.md', 'CONTEXT.md']
 
-function getRepoRoot(cwd: string): string | undefined {
+async function getRepoRoot(cwd: string): Promise<string | undefined> {
 	try {
-		return execSync('git rev-parse --show-toplevel', {
-			cwd,
-			encoding: 'utf-8',
-			stdio: ['ignore', 'pipe', 'ignore'],
-		}).trim()
+		const stdout = await execCommand('git', ['rev-parse', '--show-toplevel'], cwd)
+		return stdout.trim()
 	} catch {
 		return undefined
 	}
@@ -62,7 +75,7 @@ async function findRepoInstructions(
 	}
 
 	if (!skipRepoRootFallback) {
-		const repoRoot = getRepoRoot(startCwd)
+		const repoRoot = await getRepoRoot(startCwd)
 		if (repoRoot && repoRoot !== startCwd) {
 			const rootPath = await firstExistingCandidate(repoRoot, candidates)
 			if (rootPath) {
@@ -77,18 +90,18 @@ async function findRepoInstructions(
 	return undefined
 }
 
-function isGitRepo(cwd: string): boolean {
-	return getRepoRoot(cwd) !== undefined
+async function isGitRepo(cwd: string): Promise<boolean> {
+	return (await getRepoRoot(cwd)) !== undefined
 }
 
 export interface EnvironmentPromptOptions extends Omit<CoreEnvironmentPromptOptions, 'isGitRepo'> {
 	isGitRepo?: boolean
 }
 
-export function environmentPrompt(opts: EnvironmentPromptOptions): string {
+export async function environmentPrompt(opts: EnvironmentPromptOptions): Promise<string> {
 	return createEnvironmentPrompt({
 		cwd: opts.cwd,
-		isGitRepo: opts.isGitRepo ?? isGitRepo(opts.cwd),
+		isGitRepo: opts.isGitRepo ?? (await isGitRepo(opts.cwd)),
 		platform: opts.platform,
 		date: opts.date,
 	})
@@ -118,7 +131,7 @@ export async function repoInstructionsPrompt(opts: RepoInstructionsPromptOptions
 
 	if (!found) {
 		if (opts.allowMissing) return undefined
-		const repoRoot = getRepoRoot(opts.cwd)
+		const repoRoot = await getRepoRoot(opts.cwd)
 		const searched = repoRoot ? [`${opts.cwd} (cwd)`, `${repoRoot} (repo root)`] : [opts.cwd]
 		throw new Error(`No repo instructions found. Searched for ${candidates.join(', ')} in: ${searched.join(', ')}`)
 	}
@@ -148,7 +161,7 @@ export async function createAgentSystemPrompt(opts: CreateAgentSystemPromptOptio
 	const environment =
 		opts.includeEnvironment === false
 			? undefined
-			: environmentPrompt({ cwd: opts.cwd, platform: opts.platform, date: opts.date })
+			: await environmentPrompt({ cwd: opts.cwd, platform: opts.platform, date: opts.date })
 
 	return createCoreAgentSystemPrompt({
 		model: opts.model,

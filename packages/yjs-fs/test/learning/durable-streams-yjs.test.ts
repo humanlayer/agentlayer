@@ -1,4 +1,4 @@
-import { beforeAll, beforeEach, describe, expect, test } from 'bun:test'
+import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'bun:test'
 import { DurableStreamTestServer } from '@durable-streams/server'
 import { YjsProvider } from '@durable-streams/y-durable-streams'
 import { YjsServer } from '@durable-streams/y-durable-streams/server'
@@ -31,6 +31,14 @@ describe('Y Durable Streams Learning Tests', () => {
 
 				yjss = new YjsServer({ port: 0, dsServerUrl: dss.url })
 				await yjss.start()
+			})
+
+			afterAll(async () => {
+				// Fire-and-forget with timeout to avoid hanging on slow shutdowns
+				await Promise.race([
+					Promise.all([yjss?.stop(), dss?.stop()]),
+					new Promise((resolve) => setTimeout(resolve, 1000)),
+				]).catch(() => {})
 			})
 
 			// test y.js server starting
