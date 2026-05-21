@@ -8,6 +8,8 @@
  *
  * Run with: bun test reasoning-continuation.learning.test.ts
  * Requires valid Codex auth in ~/.humanlayer/agent-sdk/auth.json
+ *
+ * Skipped in CI (no auth credentials available)
  */
 import { describe, expect, setDefaultTimeout, test } from 'bun:test'
 
@@ -17,7 +19,9 @@ import { createFileAuthStore } from '@humanlayer/agentlayer-provider-auth'
 import { streamText } from 'ai'
 import { buildCodexRequestBody, createCodexLanguageModel } from '../src/codex'
 
-describe('reasoning continuation learning test', () => {
+const isCI = process.env.CI === 'true' || process.env.CI === '1'
+
+describe.skipIf(isCI)('reasoning continuation learning test', () => {
 	const authStore = createFileAuthStore()
 
 	test('captures reasoning metadata from initial response', async () => {
