@@ -9,12 +9,13 @@
  * Run with: bun test reasoning-continuation.learning.test.ts
  * Requires valid Codex auth in ~/.humanlayer/agent-sdk/auth.json
  */
-import { describe, expect, test, setDefaultTimeout } from 'bun:test'
+import { describe, expect, setDefaultTimeout, test } from 'bun:test'
 
 setDefaultTimeout(60_000) // 60 second timeout for real API calls
-import { streamText } from 'ai'
+
 import { createFileAuthStore } from '@humanlayer/agentlayer-provider-auth'
-import { createCodexLanguageModel, buildCodexRequestBody } from '../src/codex'
+import { streamText } from 'ai'
+import { buildCodexRequestBody, createCodexLanguageModel } from '../src/codex'
 
 describe('reasoning continuation learning test', () => {
 	const authStore = createFileAuthStore()
@@ -48,9 +49,7 @@ describe('reasoning continuation learning test', () => {
 		}
 
 		// Find reasoning parts with metadata
-		const reasoningParts = parts.filter(
-			(p) => p.type === 'reasoning-start' || p.type === 'reasoning-end',
-		)
+		const reasoningParts = parts.filter((p) => p.type === 'reasoning-start' || p.type === 'reasoning-end')
 		console.log(`Found ${reasoningParts.length} reasoning parts`)
 
 		// Check that we got reasoning with proper metadata
@@ -97,7 +96,7 @@ describe('reasoning continuation learning test', () => {
 		const itemId = reasoningEnd?.providerMetadata?.openai?.itemId
 		const encryptedContent = reasoningEnd?.providerMetadata?.openai?.reasoningEncryptedContent
 		console.log('Captured itemId:', itemId)
-		console.log('Captured encrypted_content:', encryptedContent?.slice(0, 50) + '...')
+		console.log('Captured encrypted_content:', `${encryptedContent?.slice(0, 50)}...`)
 
 		// Build a continuation request WITHOUT the id field (simulating the bug)
 		const bodyWithoutId = buildCodexRequestBody(
@@ -116,7 +115,7 @@ describe('reasoning continuation learning test', () => {
 										reasoningEncryptedContent: encryptedContent,
 									},
 								},
-							},
+							} as any,
 							{ type: 'text', text: textEnd?.providerMetadata?.openai?.itemId ? '' : 'Hello!' },
 						],
 					},
@@ -168,7 +167,7 @@ describe('reasoning continuation learning test', () => {
 		}
 
 		const reasoningEnd = initialParts.find((p) => p.type === 'reasoning-end')
-		const textEnd = initialParts.find((p) => p.type === 'text-end')
+		const _textEnd = initialParts.find((p) => p.type === 'text-end')
 		expect(reasoningEnd).toBeDefined()
 
 		const itemId = reasoningEnd?.providerMetadata?.openai?.itemId
@@ -191,7 +190,7 @@ describe('reasoning continuation learning test', () => {
 										reasoningEncryptedContent: encryptedContent,
 									},
 								},
-							},
+							} as any,
 							{ type: 'text', text: 'Hello!' },
 						],
 					},
@@ -235,7 +234,7 @@ describe('reasoning continuation learning test', () => {
 									reasoningEncryptedContent: encryptedContent,
 								},
 							},
-						},
+						} as any,
 						{ type: 'text', text: 'Hello!' },
 					],
 				},
@@ -258,7 +257,10 @@ describe('reasoning continuation learning test', () => {
 			}
 		}
 
-		console.log('Continuation part types:', contParts.map((p) => p.type))
+		console.log(
+			'Continuation part types:',
+			contParts.map((p) => p.type),
+		)
 
 		const textDeltas = contParts.filter((p) => p.type === 'text-delta')
 		console.log('Text delta parts:', JSON.stringify(textDeltas, null, 2))
