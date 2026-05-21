@@ -278,6 +278,7 @@ describe('buildCodexRequestBody', () => {
 		expect(body.input).toEqual([
 			{
 				type: 'reasoning',
+				id: 'rs_123',
 				encrypted_content: 'enc_123',
 				summary: [{ type: 'summary_text', text: 'Think first' }],
 			},
@@ -311,6 +312,7 @@ describe('buildCodexRequestBody', () => {
 		expect(body.input).toEqual([
 			{
 				type: 'reasoning',
+				id: 'rs_persisted',
 				encrypted_content: 'enc_persisted',
 				summary: [{ type: 'summary_text', text: 'Persisted thought' }],
 			},
