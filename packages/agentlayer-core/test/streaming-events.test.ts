@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import type { LanguageModelV3, LanguageModelV3Reasoning, LanguageModelV3StreamPart } from '@ai-sdk/provider'
-import { MockLanguageModelV3, simulateReadableStream } from 'ai/test'
+import { MockLanguageModelV3 } from 'ai/test'
 import { z } from 'zod'
 import { Agent, type AgentEvent, defineTool, startState } from '../src'
 import { assistantText, assistantWithToolCalls, mockResponse, mockStreamingModel, userMessage } from './mocks'

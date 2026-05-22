@@ -846,7 +846,7 @@ export class Agent<TTools extends Record<string, Tool<any, any>> = Record<string
 			abortSignal: signal,
 		})
 
-		let streamError: unknown = undefined
+		let streamError: unknown
 
 		if (stream) {
 			for await (const part of result.fullStream) {
@@ -860,18 +860,23 @@ export class Agent<TTools extends Record<string, Tool<any, any>> = Record<string
 				}
 			}
 		} else {
-			await result.consumeStream({ onError: (err) => { streamError = err } })
+			await result.consumeStream({
+				onError: (err) => {
+					streamError = err
+				},
+			})
 		}
 
 		try {
 			const [response, toolCalls, usage] = await Promise.all([result.response, result.toolCalls, result.usage])
 			return { response, toolCalls, usage }
 		} catch (err) {
-			const streamErrorMessage = streamError instanceof Error
-				? streamError.message
-				: streamError != null
-					? String(streamError)
-					: undefined
+			const streamErrorMessage =
+				streamError instanceof Error
+					? streamError.message
+					: streamError != null
+						? String(streamError)
+						: undefined
 			const originalErrorMessage = err instanceof Error ? err.message : String(err)
 			const combinedMessage = streamErrorMessage
 				? `Model stream error: ${streamErrorMessage} (original: ${originalErrorMessage})`
