@@ -846,23 +846,50 @@ export class Agent<TTools extends Record<string, Tool<any, any>> = Record<string
 			abortSignal: signal,
 		})
 
+		let streamError: unknown
+
 		if (stream) {
 			for await (const part of result.fullStream) {
+				if (part.type === 'error') {
+					streamError = part.error
+					continue
+				}
 				const event = this.translateStreamPart(part, stepIndex)
 				if (event) {
 					agentRun.pushEvent(event)
 				}
 			}
 		} else {
-			await result.consumeStream()
+			await result.consumeStream({
+				onError: (err) => {
+					streamError = err
+				},
+			})
 		}
 
-		const [response, toolCalls, usage] = await Promise.all([result.response, result.toolCalls, result.usage])
+		if (streamError) {
+			const msg = streamError instanceof Error ? streamError.message : String(streamError)
+			throw new AgentError('unexpected_error', `Model stream error: ${msg}`)
+		}
 
-		return {
-			response,
-			toolCalls,
-			usage,
+		try {
+			const [response, toolCalls, usage] = await Promise.all([result.response, result.toolCalls, result.usage])
+			return { response, toolCalls, usage }
+		} catch (err) {
+			if (err instanceof Error && err.name === 'AbortError') {
+				throw err
+			}
+			const streamErrorMessage =
+				streamError instanceof Error
+					? streamError.message
+					: streamError != null
+						? String(streamError)
+						: undefined
+			const originalErrorMessage = err instanceof Error ? err.message : String(err)
+			const combinedMessage = streamErrorMessage
+				? `Model stream error: ${streamErrorMessage} (original: ${originalErrorMessage})`
+				: originalErrorMessage
+			throw new AgentError('unexpected_error', combinedMessage)
 		}
 	}
 

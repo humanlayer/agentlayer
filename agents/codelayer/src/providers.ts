@@ -3,7 +3,7 @@ import { createOpenAI } from '@ai-sdk/openai'
 import type { LanguageModel } from 'ai'
 import { ensureFileAuthStore, type AuthInfo } from '@humanlayer/agentlayer-provider-auth'
 import { createCopilotProvider } from '@humanlayer/agentlayer-provider-github-copilot'
-import { createCodexProvider } from '@humanlayer/agentlayer-provider-openai-codex'
+import { createCodexProvider, CODEX_DEFAULT_VERSION } from '@humanlayer/agentlayer-provider-openai-codex'
 
 export type ProviderType = 'anthropic' | 'openai' | 'codex' | 'copilot' | 'firepass'
 
@@ -63,7 +63,7 @@ export async function resolveModel(provider: ProviderType, modelId: string): Pro
 		}
 		case 'codex': {
 			const authStore = await ensureFileAuthStore()
-			return createCodexProvider({ authStore, version: 'codelayer', fastMode: true }).languageModel(modelId) as LanguageModel
+			return createCodexProvider({ authStore, version: CODEX_DEFAULT_VERSION, fastMode: true }).languageModel(modelId) as LanguageModel
 		}
 		case 'copilot': {
 			const authStore = await ensureFileAuthStore()

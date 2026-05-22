@@ -330,7 +330,7 @@ describe('codex provider wrapper', () => {
 		expect(requestBodies[1]?.previous_response_id).toBeUndefined()
 		expect(requestBodies[1]?.input).toEqual([
 			{ role: 'user', content: [{ type: 'input_text', text: 'Hello' }] },
-			{ role: 'assistant', content: [{ type: 'output_text', text: 'First answer' }], id: 'msg_first' },
+			{ role: 'assistant', content: [{ type: 'output_text', text: 'First answer' }] },
 			{ role: 'user', content: [{ type: 'input_text', text: 'Follow up' }] },
 		])
 		expect(persistedAssistant?.content?.[0]?.providerOptions).toEqual({
@@ -430,7 +430,6 @@ describe('codex provider wrapper', () => {
 			{ role: 'user', content: [{ type: 'input_text', text: CODEX_REASONING_ONLY_REPRO_PROMPT }] },
 			{
 				type: 'reasoning',
-				id: 'rs_only',
 				encrypted_content: 'enc-only',
 				summary: [{ type: 'summary_text', text: 'Thought.' }],
 			},

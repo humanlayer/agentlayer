@@ -228,6 +228,34 @@ describe('createCodelayerAgent', () => {
 		})
 	})
 
+	test('passes promptCacheKey through codex overrides to openai provider options', () => {
+		const model = createMockModel('gpt-5.5')
+
+		const result = buildProviderOptions(model, {
+			codex: { promptCacheKey: 'session-abc-123' },
+		})
+
+		expect(result.openai).toMatchObject({
+			promptCacheKey: 'session-abc-123',
+		})
+	})
+
+	test('includes reasoning.encrypted_content in include by default', () => {
+		const model = createMockModel('gpt-5.5')
+
+		const result = buildProviderOptions(model)
+
+		expect(result.openai.include).toEqual(['reasoning.encrypted_content'])
+	})
+
+	test('always sets store to false for openai options', () => {
+		const model = createMockModel('gpt-5.5')
+
+		const result = buildProviderOptions(model)
+
+		expect(result.openai.store).toBe(false)
+	})
+
 	test('allows disabling anthropic thinking defaults', () => {
 		const model = createMockModel('claude-sonnet-4-5')
 
