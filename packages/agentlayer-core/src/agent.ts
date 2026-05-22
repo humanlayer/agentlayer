@@ -871,6 +871,9 @@ export class Agent<TTools extends Record<string, Tool<any, any>> = Record<string
 			const [response, toolCalls, usage] = await Promise.all([result.response, result.toolCalls, result.usage])
 			return { response, toolCalls, usage }
 		} catch (err) {
+			if (err instanceof Error && err.name === 'AbortError') {
+				throw err
+			}
 			const streamErrorMessage =
 				streamError instanceof Error
 					? streamError.message
