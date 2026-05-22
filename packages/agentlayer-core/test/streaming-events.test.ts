@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test'
-import type { LanguageModelV3Reasoning } from '@ai-sdk/provider'
+import type { LanguageModelV3, LanguageModelV3Reasoning, LanguageModelV3StreamPart } from '@ai-sdk/provider'
+import { MockLanguageModelV3, simulateReadableStream } from 'ai/test'
 import { z } from 'zod'
 import { Agent, type AgentEvent, defineTool, startState } from '../src'
 import { assistantText, assistantWithToolCalls, mockResponse, mockStreamingModel, userMessage } from './mocks'
@@ -192,5 +193,56 @@ describe('streaming events', () => {
 		expect(toolInputStart).toMatchObject({ toolName: 'bash', stepIndex: 0 })
 		expect(toolInputDelta?.delta).toContain('echo hi')
 		expect(toolInputEnd?.id).toBe(toolInputStart?.id)
+	})
+
+	test('stream=true surfaces provider error in run result when doStream throws', async () => {
+		const failingModel: LanguageModelV3 = new MockLanguageModelV3({
+			provider: 'mock',
+			modelId: 'mock-failing',
+			supportedUrls: {},
+			doStream: async () => {
+				throw new Error('API rate limit exceeded: 429')
+			},
+		})
+
+		const agent = new Agent({ model: failingModel, tools: {} })
+		const run = agent.run({ state: startState([userMessage('hello')]), stream: true })
+		const events: AgentEvent[] = []
+		for await (const event of run) {
+			events.push(event)
+		}
+
+		const result = await run.result
+		expect(result.finishReason).toBe('error')
+		expect(result.error).toBeDefined()
+		expect(result.error!.message).toContain('API rate limit exceeded: 429')
+	})
+
+	test('stream=true surfaces stream error from provider stream that closes without finish', async () => {
+		const errorModel: LanguageModelV3 = new MockLanguageModelV3({
+			provider: 'mock',
+			modelId: 'mock-error-stream',
+			supportedUrls: {},
+			doStream: async () => ({
+				stream: new ReadableStream<LanguageModelV3StreamPart>({
+					start(controller) {
+						controller.enqueue({ type: 'stream-start', warnings: [] })
+						controller.error(new Error('Connection reset by peer'))
+					},
+				}),
+			}),
+		})
+
+		const agent = new Agent({ model: errorModel, tools: {} })
+		const run = agent.run({ state: startState([userMessage('hello')]), stream: true })
+		const events: AgentEvent[] = []
+		for await (const event of run) {
+			events.push(event)
+		}
+
+		const result = await run.result
+		expect(result.finishReason).toBe('error')
+		expect(result.error).toBeDefined()
+		expect(result.error!.message).toContain('Connection reset by peer')
 	})
 })
