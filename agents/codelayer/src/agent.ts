@@ -76,6 +76,7 @@ export interface CodelayerProviderOptionOverrides {
 		reasoningSummary?: ReasoningSummary
 		fastMode?: boolean
 		serviceTier?: string | null
+		promptCacheKey?: string
 	}
 	copilot?: {
 		reasoningEffort?: ReasoningEffort

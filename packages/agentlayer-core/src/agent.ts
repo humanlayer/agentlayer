@@ -867,6 +867,11 @@ export class Agent<TTools extends Record<string, Tool<any, any>> = Record<string
 			})
 		}
 
+		if (streamError) {
+			const msg = streamError instanceof Error ? streamError.message : String(streamError)
+			throw new AgentError('unexpected_error', `Model stream error: ${msg}`)
+		}
+
 		try {
 			const [response, toolCalls, usage] = await Promise.all([result.response, result.toolCalls, result.usage])
 			return { response, toolCalls, usage }

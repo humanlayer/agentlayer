@@ -21,6 +21,7 @@ export const CODEX_PROVIDER = 'openai.codex'
 export const CODEX_PROVIDER_ID = 'codex'
 export const CODEX_FAST_SERVICE_TIER = 'priority'
 export const CODEX_FLEX_SERVICE_TIER = 'flex'
+export const CODEX_DEFAULT_VERSION = '1.15.7'
 
 export interface CodexRequestOptions {
 	/**
@@ -327,7 +328,7 @@ export function buildCodexHeaders(args: {
 	headers.set('content-type', 'application/json')
 	headers.set('authorization', `Bearer ${getAuthToken(args.auth)}`)
 	headers.set('originator', 'opencode')
-	headers.set('User-Agent', buildCodexUserAgent(args.version ?? '0.0.0'))
+	headers.set('User-Agent', buildCodexUserAgent(args.version ?? CODEX_DEFAULT_VERSION))
 
 	if (args.sessionId) {
 		headers.set('session_id', args.sessionId)
@@ -353,9 +354,14 @@ export function buildCodexRequestBody(
 	const providerInstructions = getProviderInstructions(options)
 	const instructions = joinInstructions(transformed.instructions, providerInstructions)
 
+	// Strip all `id` fields from input items. The Codex CLI (Rust) uses
+	// #[serde(skip_serializing)] on id for all item types. IDs are server-side
+	// identifiers that must not be sent back when store=false.
+	const input = transformed.input.map(({ id: _stripped, ...rest }) => rest)
+
 	return {
 		model: modelId,
-		input: transformed.input,
+		input,
 		...(instructions ? { instructions } : {}),
 		...buildCodexTools(options),
 		...buildCodexRequestExtras(options, requestOptions),
@@ -1119,7 +1125,8 @@ function buildCodexRequestExtras(
 ): Omit<CodexRequestBody, 'model' | 'input' | 'instructions' | 'store' | 'stream'> {
 	const openai = getCodexProviderOptionRecord(options, 'openai')
 	const codex = getCodexProviderOptionRecord(options, 'codex')
-	const include = getNullableStringArray(openai, 'include') ?? getNullableStringArray(codex, 'include')
+	const include = getNullableStringArray(openai, 'include') ??
+		getNullableStringArray(codex, 'include') ?? ['reasoning.encrypted_content']
 	const reasoning = buildCodexReasoningOptions(options)
 	const conversation = getNullableString(openai, 'conversation') ?? getNullableString(codex, 'conversation')
 	const maxToolCalls = getNullableNumber(openai, 'maxToolCalls') ?? getNullableNumber(codex, 'maxToolCalls')

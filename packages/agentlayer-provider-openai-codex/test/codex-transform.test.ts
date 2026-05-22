@@ -157,7 +157,7 @@ describe('buildCodexRequestBody', () => {
 		])
 	})
 
-	test('replays assistant text with its Codex item id instead of using item references', () => {
+	test('strips item ids from assistant text when building request body', () => {
 		const body = buildCodexRequestBody(
 			{
 				prompt: [
@@ -176,9 +176,7 @@ describe('buildCodexRequestBody', () => {
 			'gpt-5.4',
 		)
 
-		expect(body.input).toEqual([
-			{ role: 'assistant', content: [{ type: 'output_text', text: 'Stored content' }], id: 'msg_123' },
-		])
+		expect(body.input).toEqual([{ role: 'assistant', content: [{ type: 'output_text', text: 'Stored content' }] }])
 	})
 
 	test('serializes tool call outputs for tool messages', () => {
@@ -278,7 +276,6 @@ describe('buildCodexRequestBody', () => {
 		expect(body.input).toEqual([
 			{
 				type: 'reasoning',
-				id: 'rs_123',
 				encrypted_content: 'enc_123',
 				summary: [{ type: 'summary_text', text: 'Think first' }],
 			},
@@ -312,7 +309,6 @@ describe('buildCodexRequestBody', () => {
 		expect(body.input).toEqual([
 			{
 				type: 'reasoning',
-				id: 'rs_persisted',
 				encrypted_content: 'enc_persisted',
 				summary: [{ type: 'summary_text', text: 'Persisted thought' }],
 			},
@@ -347,7 +343,7 @@ describe('buildCodexRequestBody', () => {
 		)
 
 		expect(body.input).toEqual([
-			{ role: 'assistant', content: [{ type: 'output_text', text: 'Earlier answer' }], id: 'msg_from_history' },
+			{ role: 'assistant', content: [{ type: 'output_text', text: 'Earlier answer' }] },
 			{ role: 'user', content: [{ type: 'input_text', text: 'Follow up' }] },
 		])
 	})
@@ -409,8 +405,71 @@ describe('buildCodexRequestBody', () => {
 				call_id: 'call_123',
 				name: 'search',
 				arguments: JSON.stringify({ query: 'test' }),
-				id: 'fc_123',
 			},
 		])
+	})
+
+	test('passes promptCacheKey as prompt_cache_key in the request body', () => {
+		const body = buildCodexRequestBody(
+			{
+				prompt: [{ role: 'user', content: [{ type: 'text', text: 'Hello' }] }],
+				providerOptions: {
+					openai: { promptCacheKey: 'session-abc-123' },
+				},
+			},
+			'gpt-5.5',
+		)
+
+		expect(body.prompt_cache_key).toBe('session-abc-123')
+	})
+
+	test('defaults include to reasoning.encrypted_content when not provided', () => {
+		const body = buildCodexRequestBody(
+			{
+				prompt: [{ role: 'user', content: [{ type: 'text', text: 'Hello' }] }],
+			},
+			'gpt-5.5',
+		)
+
+		expect(body.include).toEqual(['reasoning.encrypted_content'])
+	})
+
+	test('strips id fields from all input item types', () => {
+		const body = buildCodexRequestBody(
+			{
+				prompt: [
+					{
+						role: 'assistant',
+						content: [
+							{
+								type: 'reasoning',
+								text: 'thinking...',
+								providerOptions: {
+									openai: { itemId: 'rs_123', reasoningEncryptedContent: 'enc' },
+								},
+							},
+							{
+								type: 'text',
+								text: 'answer',
+								providerOptions: { openai: { itemId: 'msg_456' } },
+							},
+							{
+								type: 'tool-call',
+								toolCallId: 'call_789',
+								toolName: 'search',
+								input: { q: 'test' },
+								providerOptions: { openai: { itemId: 'fc_789' } },
+							},
+						],
+					},
+				],
+			},
+			'gpt-5.5',
+		)
+
+		for (const item of body.input) {
+			expect(item).not.toHaveProperty('id')
+		}
+		expect(body.input).toHaveLength(3)
 	})
 })
