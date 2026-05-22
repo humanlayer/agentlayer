@@ -92,6 +92,12 @@ Provider options:
 			const modelId = opts.model ?? DEFAULT_MODELS[provider]
 			const model = await resolveModel(provider, modelId)
 			const providerOptionOverrides = parseProviderOptionOverrides(opts.providerOption)
+			if (provider === 'codex' && !providerOptionOverrides.codex?.promptCacheKey) {
+				providerOptionOverrides.codex = {
+					...providerOptionOverrides.codex,
+					promptCacheKey: crypto.randomUUID(),
+				}
+			}
 			const exaApiKey = resolveExaApiKey()
 			const skillTool = await createSkillToolFromRepoDirs({ cwd: process.cwd(), allowMissing: true })
 			const agent = await createCodelayerAgent({
