@@ -517,6 +517,31 @@ export async function parseCodexSseResponse(response: Response): Promise<{ parts
 	return { parts }
 }
 
+/** Default timeout for SSE stream reads (2 minutes) */
+const STREAM_READ_TIMEOUT_MS = 120_000
+
+/**
+ * Read from a stream reader with a timeout.
+ * If no data is received within timeoutMs, throws an error to prevent indefinite hangs.
+ */
+async function readWithTimeout(
+	reader: { read(): Promise<{ done: boolean; value?: Uint8Array }> },
+	timeoutMs: number,
+): Promise<{ done: boolean; value?: Uint8Array }> {
+	let timeoutId: ReturnType<typeof setTimeout> | undefined
+	const timeoutPromise = new Promise<never>((_, reject) => {
+		timeoutId = setTimeout(() => {
+			reject(new Error(`SSE stream read timed out after ${timeoutMs}ms - no data received`))
+		}, timeoutMs)
+	})
+
+	try {
+		return await Promise.race([reader.read(), timeoutPromise])
+	} finally {
+		if (timeoutId) clearTimeout(timeoutId)
+	}
+}
+
 export function createCodexSseStream(response: Response): ReadableStream<LanguageModelV3StreamPart> {
 	if (!response.body) {
 		throw new Error('Missing Codex response body')
@@ -545,7 +570,7 @@ export function createCodexSseStream(response: Response): ReadableStream<Languag
 
 			try {
 				while (true) {
-					const { done, value } = await reader.read()
+					const { done, value } = await readWithTimeout(reader, STREAM_READ_TIMEOUT_MS)
 					if (done) break
 					buffer += decoder.decode(value, { stream: true })
 
