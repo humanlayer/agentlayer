@@ -195,7 +195,7 @@ describe('createCodelayerAgent', () => {
 		})
 	})
 
-	test('uses low reasoning for gpt-5.5 codex by default', () => {
+	test('uses medium reasoning for gpt-5.5 codex by default', () => {
 		const model = createMockModel('gpt-5.5')
 
 		expect(buildProviderOptions(model).openai).toMatchObject({
@@ -203,7 +203,7 @@ describe('createCodelayerAgent', () => {
 			fastMode: false,
 			include: ['reasoning.encrypted_content'],
 			reasoningSummary: 'detailed',
-			reasoningEffort: 'low',
+			reasoningEffort: 'medium',
 		})
 	})
 
@@ -219,12 +219,28 @@ describe('createCodelayerAgent', () => {
 		})
 	})
 
-	test('uses high reasoning effort for kimi models', () => {
+	test('uses medium reasoning effort for kimi models by default', () => {
 		const model = createMockModel(DEFAULT_MODELS.firepass)
 
 		expect(buildProviderOptions(model).openai).toMatchObject({
 			fastMode: false,
-			reasoningEffort: 'high',
+			reasoningEffort: 'medium',
+		})
+	})
+
+	test('uses medium adaptive thinking effort for modern anthropic models by default', () => {
+		const opus47 = createMockModel('claude-opus-4-7')
+		const sonnet46 = createMockModel('claude-sonnet-4-6')
+
+		expect(buildProviderOptions(opus47).anthropic).toEqual({
+			thinking: { type: 'adaptive', display: 'summarized' },
+			effort: 'medium',
+			cacheControl: { type: 'ephemeral' },
+		})
+		expect(buildProviderOptions(sonnet46).anthropic).toEqual({
+			thinking: { type: 'adaptive' },
+			effort: 'medium',
+			cacheControl: { type: 'ephemeral' },
 		})
 	})
 
@@ -424,7 +440,7 @@ describe('createCodelayerAgent', () => {
 		})
 		expect(buildProviderOptions(createMockModel('gpt-5.5', 'openai.codex')).openai).toMatchObject({
 			reasoningSummary: 'detailed',
-			reasoningEffort: 'low',
+			reasoningEffort: 'medium',
 			fastMode: false,
 		})
 	})

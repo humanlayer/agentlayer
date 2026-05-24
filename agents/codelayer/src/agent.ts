@@ -107,16 +107,17 @@ export interface CodelayerProviderOptions extends Record<string, Record<string, 
 
 function resolveAnthropicThinking(model: LanguageModel, effort?: string): Record<string, unknown> {
 	const modelId = ((model as { modelId?: string }).modelId ?? '').toLowerCase()
+	const resolvedEffort = effort ?? 'medium'
 	if (modelId.includes('opus') && (modelId.includes('4-7') || modelId.includes('4.7'))) {
 		return {
 			thinking: { type: 'adaptive', display: 'summarized' },
-			...(effort ? { effort } : {}),
+			effort: resolvedEffort,
 		}
 	}
 	if (modelId.includes('4-6') || modelId.includes('4.6')) {
 		return {
 			thinking: { type: 'adaptive' },
-			...(effort ? { effort } : {}),
+			effort: resolvedEffort,
 		}
 	}
 	if (modelId.includes('4-5') || modelId.includes('4.5')) {
@@ -129,10 +130,10 @@ function resolveAnthropicThinking(model: LanguageModel, effort?: string): Record
 function resolveCodexThinking(model: LanguageModel): Record<string, unknown> {
 	const modelId = ((model as { modelId?: string }).modelId ?? '').toLowerCase()
 	if (modelId.includes('kimi')) {
-		return { reasoningEffort: 'high' }
+		return { reasoningEffort: 'medium' }
 	}
 	if (modelId.includes('gpt-5.5')) {
-		return { reasoningSummary: 'detailed', reasoningEffort: 'low' }
+		return { reasoningSummary: 'detailed', reasoningEffort: 'medium' }
 	}
 	if (modelId.includes('gpt-5') && !modelId.includes('gpt-5-pro')) {
 		return { reasoningSummary: 'detailed', reasoningEffort: 'medium' }
