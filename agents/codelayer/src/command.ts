@@ -10,6 +10,7 @@ export interface CodelayerCliOptions {
 	provider: string
 	model?: string
 	prompt?: string
+	thinking?: string
 	rlm?: boolean
 	rpi?: boolean
 	tars?: boolean
@@ -39,20 +40,84 @@ export function parseProviderOptionOverrides(values: string[] = []): CodelayerPr
 
 		if (provider === 'anthropic') {
 			overrides.anthropic = { ...(overrides.anthropic ?? {}), [key!]: value }
-		} else if (provider === 'codex' || provider === 'openai' || key === 'fastMode' || key === 'serviceTier') {
+		} else if (
+			provider === 'codex' ||
+			provider === 'openai' ||
+			provider === 'firepass' ||
+			key === 'fastMode' ||
+			key === 'serviceTier'
+		) {
 			overrides.codex = { ...(overrides.codex ?? {}), [key!]: value }
 		} else if (provider === 'copilot') {
 			overrides.copilot = { ...(overrides.copilot ?? {}), [key!]: value }
 		} else if (key === 'reasoningEffort' || key === 'reasoningSummary') {
 			overrides.codex = { ...(overrides.codex ?? {}), [key]: value }
 			overrides.copilot = { ...(overrides.copilot ?? {}), [key]: value }
-		} else if (key === 'thinking' || key === 'budgetTokens') {
+		} else if (key === 'thinking' || key === 'budgetTokens' || key === 'effort') {
 			overrides.anthropic = { ...(overrides.anthropic ?? {}), [key]: value }
 		} else {
 			throw new Error(`Unknown provider option "${rawKey}".`)
 		}
 	}
 	return overrides
+}
+
+function assertThinkingValue(args: { provider: ProviderType; modelId: string; thinking: string }) {
+	const modelId = args.modelId.toLowerCase()
+	const supported = (values: string[]) => {
+		if (!values.includes(args.thinking)) {
+			throw new Error(
+				`Unsupported --thinking value "${args.thinking}" for ${args.provider}/${args.modelId}. Supported values: ${values.join(', ')}.`,
+			)
+		}
+	}
+
+	if (args.provider === 'codex' && modelId.includes('gpt-5.5')) {
+		supported(['low', 'medium', 'high', 'xhigh'])
+		return
+	}
+
+	if (args.provider !== 'anthropic') return
+
+	if (modelId.includes('opus') && (modelId.includes('4-7') || modelId.includes('4.7'))) {
+		supported(['low', 'medium', 'high', 'xhigh', 'max'])
+	} else if (modelId.includes('opus') && (modelId.includes('4-6') || modelId.includes('4.6'))) {
+		supported(['low', 'medium', 'high', 'max'])
+	} else if (modelId.includes('sonnet') && (modelId.includes('4-6') || modelId.includes('4.6'))) {
+		supported(['low', 'medium', 'high'])
+	}
+}
+
+export function applyCliThinkingOverride(args: {
+	provider: ProviderType
+	modelId: string
+	thinking: string | undefined
+	overrides: CodelayerProviderOptionOverrides
+}): CodelayerProviderOptionOverrides {
+	if (args.provider !== 'anthropic' && args.provider !== 'codex' && args.provider !== 'firepass') {
+		return args.overrides
+	}
+
+	const thinking = args.thinking ?? 'medium'
+	assertThinkingValue({ provider: args.provider, modelId: args.modelId, thinking })
+
+	if (args.provider === 'anthropic') {
+		return {
+			...args.overrides,
+			anthropic: {
+				...(args.overrides.anthropic ?? {}),
+				...(args.overrides.anthropic?.effort ? {} : { effort: thinking }),
+			},
+		}
+	}
+
+	return {
+		...args.overrides,
+		codex: {
+			...(args.overrides.codex ?? {}),
+			...(args.overrides.codex?.reasoningEffort ? {} : { reasoningEffort: thinking }),
+		},
+	}
 }
 
 export function createCodelayerCommand(): Command {
@@ -66,15 +131,20 @@ Auth:
   Existing credentials from ~/.humanlayer/agent-sdk/auth.json are imported into the new auth file when it does not exist yet.
 
 Provider options:
+  --thinking medium
+  --thinking high
   --provider-option reasoningEffort=high
   --provider-option reasoningSummary=detailed
   --provider-option fastMode=true
   --provider-option serviceTier=priority
+  --provider-option codex.reasoningEffort=xhigh
   --provider-option anthropic.thinking=enabled
+  --provider-option anthropic.effort=max
   --provider-option anthropic.budgetTokens=10000`,
 		)
 		.option('-p, --provider <provider>', 'Provider: anthropic, openai, codex, copilot, firepass', 'anthropic')
 		.option('-m, --model <model>', 'Model ID (defaults per provider)')
+		.option('--thinking <value>', 'Reasoning/thinking effort for supported providers (default: medium)')
 		.option('--rlm', 'Run in RLM mode with subagent orchestration')
 		.option('--rpi', 'Enable RPI-style specialist subagents')
 		.option('--tars', 'Add the TARS persona prompt to the agent')
@@ -91,7 +161,12 @@ Provider options:
 			const provider = opts.provider as ProviderType
 			const modelId = opts.model ?? DEFAULT_MODELS[provider]
 			const model = await resolveModel(provider, modelId)
-			const providerOptionOverrides = parseProviderOptionOverrides(opts.providerOption)
+			const providerOptionOverrides = applyCliThinkingOverride({
+				provider,
+				modelId,
+				thinking: opts.thinking,
+				overrides: parseProviderOptionOverrides(opts.providerOption),
+			})
 			if (provider === 'codex' && !providerOptionOverrides.codex?.promptCacheKey) {
 				providerOptionOverrides.codex = {
 					...providerOptionOverrides.codex,

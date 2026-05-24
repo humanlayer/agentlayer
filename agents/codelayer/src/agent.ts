@@ -63,13 +63,14 @@ export interface CodelayerToolSuiteOptions {
 	webFetch?: boolean
 }
 
-export type ReasoningEffort = 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
+export type ReasoningEffort = string
 export type ReasoningSummary = 'auto' | 'concise' | 'detailed'
 
 export interface CodelayerProviderOptionOverrides {
 	anthropic?: {
 		thinking?: 'off' | 'adaptive' | 'enabled'
 		budgetTokens?: number
+		effort?: string
 	}
 	codex?: {
 		reasoningEffort?: ReasoningEffort
@@ -86,7 +87,8 @@ export interface CodelayerProviderOptionOverrides {
 
 export interface CodelayerProviderOptions extends Record<string, Record<string, JSONValue>> {
 	anthropic: {
-		thinking?: { type: 'adaptive' } | { type: 'enabled'; budgetTokens: number }
+		thinking?: { type: 'adaptive'; display?: 'summarized' } | { type: 'enabled'; budgetTokens: number }
+		effort?: string
 		cacheControl: { type: 'ephemeral' }
 	}
 	openai: {
@@ -103,14 +105,24 @@ export interface CodelayerProviderOptions extends Record<string, Record<string, 
 	}
 }
 
-function resolveAnthropicThinking(model: LanguageModel): Record<string, unknown> {
+function resolveAnthropicThinking(model: LanguageModel, effort?: string): Record<string, unknown> {
 	const modelId = ((model as { modelId?: string }).modelId ?? '').toLowerCase()
+	if (modelId.includes('opus') && (modelId.includes('4-7') || modelId.includes('4.7'))) {
+		return {
+			thinking: { type: 'adaptive', display: 'summarized' },
+			...(effort ? { effort } : {}),
+		}
+	}
 	if (modelId.includes('4-6') || modelId.includes('4.6')) {
-		return { thinking: { type: 'adaptive' } }
+		return {
+			thinking: { type: 'adaptive' },
+			...(effort ? { effort } : {}),
+		}
 	}
 	if (modelId.includes('4-5') || modelId.includes('4.5')) {
 		return { thinking: { type: 'enabled', budgetTokens: 10000 } }
 	}
+	if (effort) return { effort }
 	return {}
 }
 
@@ -158,10 +170,16 @@ export function buildProviderOptions(
 		overrides.anthropic?.thinking === 'off'
 			? {}
 			: overrides.anthropic?.thinking === 'adaptive'
-				? { thinking: { type: 'adaptive' as const } }
+				? {
+						thinking: { type: 'adaptive' as const },
+						...(overrides.anthropic.effort ? { effort: overrides.anthropic.effort } : {}),
+					}
 				: overrides.anthropic?.thinking === 'enabled'
-					? { thinking: { type: 'enabled' as const, budgetTokens: overrides.anthropic.budgetTokens ?? 10000 } }
-					: resolveAnthropicThinking(model)
+					? {
+							thinking: { type: 'enabled' as const, budgetTokens: overrides.anthropic.budgetTokens ?? 10000 },
+							...(overrides.anthropic.effort ? { effort: overrides.anthropic.effort } : {}),
+						}
+					: resolveAnthropicThinking(model, overrides.anthropic?.effort)
 	const codexOptions = {
 		...resolveCodexThinking(model),
 		fastMode: overrides.codex?.fastMode ?? false,
