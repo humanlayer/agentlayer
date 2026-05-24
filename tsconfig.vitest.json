@@ -1,0 +1,31 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "customConditions": [],
+    "paths": {
+      "@humanlayer/agentlayer-core": ["./packages/agentlayer-core/src"],
+      "@humanlayer/agentlayer-core/*": ["./packages/agentlayer-core/src/*"],
+      "@humanlayer/agentlayer-filesystem": ["./packages/agentlayer-filesystem/src"],
+      "@humanlayer/agentlayer-filesystem/*": ["./packages/agentlayer-filesystem/src/*"],
+      "@humanlayer/agentlayer-justbash": ["./packages/agentlayer-justbash/src"],
+      "@humanlayer/agentlayer-justbash/*": ["./packages/agentlayer-justbash/src/*"],
+      "@humanlayer/agentlayer-provider-auth": ["./packages/agentlayer-provider-auth/src"],
+      "@humanlayer/agentlayer-provider-auth/*": ["./packages/agentlayer-provider-auth/src/*"],
+      "@humanlayer/agentlayer-provider-github-copilot": ["./packages/agentlayer-provider-github-copilot/src"],
+      "@humanlayer/agentlayer-provider-github-copilot/*": ["./packages/agentlayer-provider-github-copilot/src/*"],
+      "@humanlayer/agentlayer-provider-openai-codex": ["./packages/agentlayer-provider-openai-codex/src"],
+      "@humanlayer/agentlayer-provider-openai-codex/*": ["./packages/agentlayer-provider-openai-codex/src/*"],
+      "@humanlayer/agentlayer-yjs-fs": ["./packages/agentlayer-yjs-fs/src"],
+      "@humanlayer/agentlayer-yjs-fs/*": ["./packages/agentlayer-yjs-fs/src/*"],
+      "@humanlayer/agentlayer-yjs-fs-justbash": ["./packages/agentlayer-yjs-fs-justbash/src"],
+      "@humanlayer/agentlayer-yjs-fs-justbash/*": ["./packages/agentlayer-yjs-fs-justbash/src/*"],
+      "@humanlayer/agentlayer-yjs-fs-secure-exec": ["./packages/agentlayer-yjs-fs-secure-exec/src"],
+      "@humanlayer/agentlayer-yjs-fs-secure-exec/*": ["./packages/agentlayer-yjs-fs-secure-exec/src/*"],
+      "@humanlayer/yjs-fs": ["./packages/yjs-fs/src"],
+      "@humanlayer/yjs-fs/*": ["./packages/yjs-fs/src/*"],
+      "@humanlayer/yjs-fs-react": ["./packages/yjs-fs-react/src"],
+      "@humanlayer/yjs-fs-react/*": ["./packages/yjs-fs-react/src/*"]
+    }
+  }
+}

@@ -3,41 +3,45 @@
     "module": "index.ts",
     "type": "module",
     "scripts": {
-		"biome": "biome check . --write --unsafe",
-		"biome:check": "biome check .",
-		"build": "bun --filter '*' build",
-		"build:packages": "bun --filter './packages/*' --filter './agents/*' build",
-		"check": "bun --parallel 'typecheck' 'biome' 'test:ci'",
-		"dev": "bun --filter '*' dev",
-		"docs:build": "bun --filter '@humanlayer/agentlayer-docs' build",
-		"githooks": "mkdir -p scripts/hooks && cp scripts/hooks/pre-push $(git rev-parse --git-common-dir)/hooks/pre-push && chmod +x $(git rev-parse --git-common-dir)/hooks/pre-push",
-		"hook:prepush": "env -i HOME=\"$HOME\" PATH=\"$PATH\" TMPDIR=\"$TMPDIR\" bun check",
-		"test": "bun test --concurrency 16 **/*",
-		"test:ci": "bun test --conditions=source ./packages/*/test/*.test.ts ./agents/*/test/*.test.ts",
+        "biome": "biome check . --write --unsafe",
+        "biome:check": "biome check .",
+        "build": "bun --filter '*' build",
+        "build:packages": "bun --filter './packages/*' --filter './agents/*' build",
+        "check": "bun --parallel 'typecheck' 'biome' 'test:ci'",
+        "dev": "bun --filter '*' dev",
+        "docs:build": "bun --filter '@humanlayer/agentlayer-docs' build",
+        "githooks": "mkdir -p scripts/hooks && cp scripts/hooks/pre-push $(git rev-parse --git-common-dir)/hooks/pre-push && chmod +x $(git rev-parse --git-common-dir)/hooks/pre-push",
+        "hook:prepush": "env -i HOME=\"$HOME\" PATH=\"$PATH\" TMPDIR=\"$TMPDIR\" bun check",
+        "test": "bun test --concurrency 16 **/*",
+        "test:ci": "bun test --conditions=source ./packages/*/test/*.test.ts ./agents/*/test/*.test.ts",
+        "test:vitest": "vitest",
         "typecheck": "bun --filter '*' --parallel typecheck",
         "release:prepare": "bun run scripts/release/prepare.ts",
         "release:publish": "bun run scripts/release/publish.ts"
     },
     "devDependencies": {
+        "@biomejs/biome": "2.2.5",
         "@humanlayer/agentlayer-core": "workspace:*",
         "@humanlayer/agentlayer-filesystem": "workspace:*",
         "@humanlayer/agentlayer-provider-auth": "workspace:*",
         "@humanlayer/codelayer": "workspace:*",
         "@humanlayer/yjs-fs": "workspace:*",
-        "@biomejs/biome": "2.2.5",
         "@socketsecurity/bun-security-scanner": "1.1.2",
         "@types/bun": "latest",
         "@typescript/native-preview": "7.0.0-dev.20260414.1",
-        "typescript": "5.9.3"
+        "typescript": "5.9.3",
+        "vite-tsconfig-paths": "6.1.1",
+        "vitest": "4.1.7",
+        "zod": "4.3.6"
     },
     "peerDependencies": {
         "typescript": "^5"
     },
-	"workspaces": [
-		"packages/*",
-		"agents/*",
-		"examples/*"
-	],
+    "workspaces": [
+        "packages/*",
+        "agents/*",
+        "examples/*"
+    ],
     "catalog": {
         "@ai-sdk/anthropic": "3.0.69",
         "@ai-sdk/openai": "3.0.53",

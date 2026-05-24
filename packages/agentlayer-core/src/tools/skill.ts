@@ -1,4 +1,4 @@
-import { type Skill, SkillTool } from '../interfaces'
+import { type Skill, SkillTool } from '../interfaces/skill'
 import { SKILL_DESCRIPTION } from '../prompts'
 
 export function createSkillTool(opts: { skills: Skill[] }) {

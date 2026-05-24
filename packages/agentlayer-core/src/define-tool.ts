@@ -1,5 +1,5 @@
 import type { ModelMessage, ToolResultPart } from 'ai'
-import { z } from 'zod'
+import z from 'zod'
 import type { HookStopResult, StopOptions } from './hooks'
 import type { AgentState } from './state'
 

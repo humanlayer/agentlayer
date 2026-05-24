@@ -1,4 +1,4 @@
-import { z } from 'zod'
+import z from 'zod'
 import { defineToolInterface } from '../define-tool'
 
 export const createFileInput = z.object({

@@ -1,5 +1,5 @@
 import type { ModelMessage } from 'ai'
-import { z } from 'zod'
+import z from 'zod'
 import type { RunResult } from '../agent'
 import { defineTool } from '../define-tool'
 import { STRUCTURED_OUTPUT_DESCRIPTION } from '../prompts'
