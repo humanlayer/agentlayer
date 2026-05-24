@@ -167,12 +167,6 @@ Provider options:
 				thinking: opts.thinking,
 				overrides: parseProviderOptionOverrides(opts.providerOption),
 			})
-			if (provider === 'codex' && !providerOptionOverrides.codex?.promptCacheKey) {
-				providerOptionOverrides.codex = {
-					...providerOptionOverrides.codex,
-					promptCacheKey: crypto.randomUUID(),
-				}
-			}
 			const exaApiKey = resolveExaApiKey()
 			const skillTool = await createSkillToolFromRepoDirs({ cwd: process.cwd(), allowMissing: true })
 			const agent = await createCodelayerAgent({

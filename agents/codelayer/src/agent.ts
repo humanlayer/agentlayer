@@ -1,5 +1,5 @@
 import type { LanguageModel, JSONValue } from 'ai'
-import { Agent, doomLoop, tarsPersona, type AgentConfig, type Tool } from '@humanlayer/agentlayer-core'
+import { Agent, doomLoop, tarsPersona, type AgentConfig, type ProviderOptionsFactory, type Tool } from '@humanlayer/agentlayer-core'
 import {
 	createAgentFilesystemHooks,
 	createAgentSystemPrompt,
@@ -204,6 +204,28 @@ export function buildProviderOptions(
 	}
 }
 
+function withRunScopedPromptCacheKey(
+	overrides: CodelayerProviderOptionOverrides | undefined,
+): CodelayerProviderOptionOverrides {
+	const baseKey = overrides?.codex?.promptCacheKey
+	const promptCacheKey = baseKey ? `${baseKey}-${crypto.randomUUID()}` : crypto.randomUUID()
+
+	return {
+		...(overrides ?? {}),
+		codex: {
+			...(overrides?.codex ?? {}),
+			promptCacheKey,
+		},
+	}
+}
+
+export function createCodelayerProviderOptionsFactory(
+	model: LanguageModel,
+	overrides: CodelayerProviderOptionOverrides = {},
+): ProviderOptionsFactory {
+	return () => buildProviderOptions(model, withRunScopedPromptCacheKey(overrides))
+}
+
 function mergeHooks(base: ReturnType<typeof createAgentFilesystemHooks>, hooks?: AgentConfig['hooks']): AgentConfig['hooks'] {
 	const fileStatePostHooks = base.postToolUse.filter((hook) => !saneDefaultOutputTruncationHooks.includes(hook))
 
@@ -234,7 +256,7 @@ export async function createCodelayerAgent(opts: CodelayerAgentOptions): Promise
 		environment,
 	} = opts
 	const modelFamily = detectModelFamily(model)
-	const providerOptions = buildProviderOptions(model, providerOptionOverrides)
+	const providerOptions = createCodelayerProviderOptionsFactory(model, providerOptionOverrides)
 	const personaPromptAdditions = [
 		...(tars ? [tarsPersona(35)] : []),
 		...systemPromptAdditions,

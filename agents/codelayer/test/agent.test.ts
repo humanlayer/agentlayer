@@ -7,7 +7,7 @@ import type { AgentConfig, PostToolUseHook, SubAgentConfig, Tool } from '@humanl
 import { saneDefaultOutputTruncationHooks } from '@humanlayer/agentlayer-filesystem/hooks'
 import { createMemoryAuthStore } from '@humanlayer/agentlayer-provider-auth'
 import * as providerAuth from '@humanlayer/agentlayer-provider-auth'
-import { buildProviderOptions, createCodelayerAgent } from '../src/agent'
+import { buildProviderOptions, createCodelayerAgent, createCodelayerProviderOptionsFactory } from '../src/agent'
 import { createCodelayerAgent as rootCreateCodelayerAgent, createCodelayerCommand, DEFAULT_MODELS as rootDefaultModels, resolveExaApiKey, resolveModel } from '../src/index'
 import { createCodingSubagentTool } from '../src/coding-subagent-tool'
 import { applyCliThinkingOverride, parseProviderOptionOverrides } from '../src/command'
@@ -254,6 +254,32 @@ describe('createCodelayerAgent', () => {
 		expect(result.openai).toMatchObject({
 			promptCacheKey: 'session-abc-123',
 		})
+	})
+
+	test('generates a fresh run-scoped prompt cache key for CodeLayer provider options', () => {
+		const model = createMockModel('gpt-5.5')
+		const factory = createCodelayerProviderOptionsFactory(model)
+
+		const first = factory({ runId: 'parent' })?.openai as { promptCacheKey?: string }
+		const second = factory({ runId: 'subagent' })?.openai as { promptCacheKey?: string }
+
+		expect(first.promptCacheKey).toBeString()
+		expect(second.promptCacheKey).toBeString()
+		expect(first.promptCacheKey).not.toBe(second.promptCacheKey)
+	})
+
+	test('derives explicit prompt cache key overrides per CodeLayer provider options run', () => {
+		const model = createMockModel('gpt-5.5')
+		const factory = createCodelayerProviderOptionsFactory(model, {
+			codex: { promptCacheKey: 'session-abc-123' },
+		})
+
+		const first = factory({ runId: 'parent' })?.openai as { promptCacheKey?: string }
+		const second = factory({ runId: 'subagent' })?.openai as { promptCacheKey?: string }
+
+		expect(first.promptCacheKey?.startsWith('session-abc-123-')).toBe(true)
+		expect(second.promptCacheKey?.startsWith('session-abc-123-')).toBe(true)
+		expect(first.promptCacheKey).not.toBe(second.promptCacheKey)
 	})
 
 	test('includes reasoning.encrypted_content in include by default', () => {

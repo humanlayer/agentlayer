@@ -26,7 +26,8 @@ import type { Step, StepToolResult, StopResult, StopTiming, StopWhen } from './s
 import { shouldStop } from './stop-conditions'
 import { extractUsage, getModelKey, type TokenUsage, TokenUsageAccumulator } from './token-usage'
 
-type ProviderOptions = Parameters<typeof streamText>[0]['providerOptions']
+export type ProviderOptions = Parameters<typeof streamText>[0]['providerOptions']
+export type ProviderOptionsFactory = (ctx: { runId: string }) => ProviderOptions
 type StreamPart = TextStreamPart<any>
 
 function isReasoningOnlyAssistantMessage(message: ModelMessage): boolean {
@@ -61,7 +62,7 @@ export interface AgentConfig<TTools extends Record<string, Tool<any, any>> = Rec
 	system?: string | string[]
 	tools: TTools
 	toolChoice?: ToolChoice<TTools>
-	providerOptions?: ProviderOptions
+	providerOptions?: ProviderOptions | ProviderOptionsFactory
 	maxSteps?: number
 	stopWhen?: StopWhen
 
@@ -246,7 +247,7 @@ export class Agent<TTools extends Record<string, Tool<any, any>> = Record<string
 	private stopWhen: StopWhen | undefined
 	private aiSdkTools: ReturnType<typeof convertTools>
 	private toolChoice: ToolChoice<Record<string, unknown>> | undefined
-	private providerOptions: ProviderOptions | undefined
+	private providerOptions: ProviderOptions | ProviderOptionsFactory | undefined
 	private hooks: AgentConfig['hooks']
 	private onError: AgentConfig['onError']
 	private onStop: AgentConfig['onStop']
@@ -279,6 +280,10 @@ export class Agent<TTools extends Record<string, Tool<any, any>> = Record<string
 		return agentRun
 	}
 
+	private resolveProviderOptions(runId: string): ProviderOptions {
+		return typeof this.providerOptions === 'function' ? this.providerOptions({ runId }) : this.providerOptions
+	}
+
 	private async executeLoop(options: RunOptions, agentRun: AgentRun): Promise<void> {
 		// Hoist mutable state above try/catch so the error path can capture progress
 		const allMessages: ModelMessage[] = [...options.state.messages]
@@ -291,6 +296,7 @@ export class Agent<TTools extends Record<string, Tool<any, any>> = Record<string
 		// Mutable sub-agent state map — updated when sub-agents pause/resume
 		const subAgents: Record<string, AgentState> = { ...(options.state.subAgents ?? {}) }
 		const sink = new MessageSink(allMessages, newMessages, agentRun)
+		const providerOptions = this.resolveProviderOptions(crypto.randomUUID())
 
 		// Token usage tracking — ephemeral to this run
 		// Initialize models.dev cache — await so contextWindowLimit can resolve
@@ -394,7 +400,14 @@ export class Agent<TTools extends Record<string, Tool<any, any>> = Record<string
 					}
 				}
 
-				const result = await this.executeModelStep(requestMessages, signal, options.stream, stepIndex, agentRun)
+				const result = await this.executeModelStep(
+					requestMessages,
+					signal,
+					options.stream,
+					stepIndex,
+					agentRun,
+					providerOptions,
+				)
 
 				// Only push non-tool messages from the AI SDK response.
 				// The agent manages tool result creation itself; the AI SDK may
@@ -840,12 +853,13 @@ export class Agent<TTools extends Record<string, Tool<any, any>> = Record<string
 		stream: boolean | undefined,
 		stepIndex: number,
 		agentRun: AgentRun,
+		providerOptions: ProviderOptions,
 	): Promise<ExecutedModelStep> {
 		const result = streamText({
 			model: this.model,
 			tools: this.aiSdkTools,
 			toolChoice: this.toolChoice,
-			providerOptions: this.providerOptions,
+			providerOptions,
 			messages: requestMessages,
 			system: this.system,
 			abortSignal: signal,

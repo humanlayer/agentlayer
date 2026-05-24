@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import type { LanguageModelV3, LanguageModelV3Reasoning, LanguageModelV3StreamPart } from '@ai-sdk/provider'
-import { MockLanguageModelV3 } from 'ai/test'
+import { MockLanguageModelV3, simulateReadableStream } from 'ai/test'
 import { z } from 'zod'
 import { Agent, type AgentEvent, defineTool, startState } from '../src'
 import { assistantText, assistantWithToolCalls, mockResponse, mockStreamingModel, userMessage } from './mocks'
@@ -20,6 +20,51 @@ const bashTool = defineTool({
 })
 
 describe('streaming events', () => {
+	test('providerOptions factory is resolved once per agent run', async () => {
+		const seenKeys: string[] = []
+		let factoryCalls = 0
+		const usage = {
+			inputTokens: { total: 0, noCache: 0, cacheRead: 0, cacheWrite: 0 },
+			outputTokens: { total: 0, text: 0, reasoning: 0 },
+		}
+		const model = new MockLanguageModelV3({
+			provider: 'mock',
+			modelId: 'mock-model',
+			supportedUrls: {},
+			doStream: async (options) => {
+				seenKeys.push(
+					(options.providerOptions?.openai as { promptCacheKey?: string } | undefined)?.promptCacheKey ?? '',
+				)
+				const chunks: LanguageModelV3StreamPart[] = [
+					{ type: 'stream-start', warnings: [] },
+					{ type: 'text-start', id: 'text-1' },
+					{ type: 'text-delta', id: 'text-1', delta: 'done' },
+					{ type: 'text-end', id: 'text-1' },
+					{ type: 'finish', finishReason: { unified: 'stop', raw: 'stop' }, usage },
+				]
+
+				return {
+					stream: simulateReadableStream({ chunks, initialDelayInMs: null, chunkDelayInMs: null }),
+				}
+			},
+		})
+		const agent = new Agent({
+			model,
+			tools: { echo: echoTool },
+			providerOptions: () => {
+				factoryCalls++
+				return { openai: { promptCacheKey: crypto.randomUUID() } }
+			},
+		})
+
+		await agent.run({ state: startState([userMessage('go')]) }).result
+		await agent.run({ state: startState([userMessage('go again')]) }).result
+
+		expect(factoryCalls).toBe(2)
+		expect(seenKeys).toHaveLength(2)
+		expect(seenKeys[1]).not.toBe(seenKeys[0])
+	})
+
 	test('stream=true emits root text events in order and preserves final transcript parity', async () => {
 		const responses = [assistantWithToolCalls({ toolName: 'echo', input: { text: 'hi' } }), assistantText('Done.')]
 		const streamingAgent = new Agent({
