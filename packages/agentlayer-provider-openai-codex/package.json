@@ -37,6 +37,7 @@
 		}
 	},
 	"dependencies": {
+		"@ai-sdk/openai": "catalog:",
 		"@ai-sdk/provider": "catalog:",
 		"@humanlayer/agentlayer-provider-auth": "workspace:*",
 		"ai": "catalog:"

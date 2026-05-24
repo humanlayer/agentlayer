@@ -1,4 +1,5 @@
 export type { CodexProviderOptions, CodexRequestBody, CodexRequestOptions } from './codex'
+export { createCodexResponsesProvider, type CodexResponsesProviderOptions } from './codex-responses'
 export {
 	buildCodexHeaders,
 	buildCodexRequestBody,

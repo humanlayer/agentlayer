@@ -100,6 +100,8 @@ export interface RunResult {
 	error?: AgentError
 	/** Per-model token usage aggregate for this run (ephemeral — not persisted in state). */
 	tokenUsage: TokenUsage
+	/** Context window limit for the model (if known). */
+	contextWindowLimit?: number
 }
 
 export interface RunOptions {
@@ -800,6 +802,7 @@ export class Agent<TTools extends Record<string, Tool<any, any>> = Record<string
 					newMessages,
 					finishReason: 'maxSteps',
 					tokenUsage: accumulator.snapshot(),
+					contextWindowLimit: this.contextWindowLimit,
 				})
 			}
 		} catch (err) {
@@ -811,6 +814,7 @@ export class Agent<TTools extends Record<string, Tool<any, any>> = Record<string
 					newMessages,
 					finishReason: 'interrupted',
 					tokenUsage: accumulator.snapshot(),
+					contextWindowLimit: this.contextWindowLimit,
 				})
 				return
 			}
@@ -824,6 +828,7 @@ export class Agent<TTools extends Record<string, Tool<any, any>> = Record<string
 				finishReason: 'error',
 				error: agentError,
 				tokenUsage: accumulator.snapshot(),
+				contextWindowLimit: this.contextWindowLimit,
 			}
 			this.finishRun(agentRun, errorResult)
 		}
@@ -1432,6 +1437,7 @@ export class Agent<TTools extends Record<string, Tool<any, any>> = Record<string
 					finishReason: 'stopCondition',
 					stopCondition: { name: 'ctx.stop', message: stopOpts.reason },
 					tokenUsage: accumulator.snapshot(),
+					contextWindowLimit: this.contextWindowLimit,
 				}
 				this.finishRun(agentRun, result)
 				return result
@@ -1459,6 +1465,7 @@ export class Agent<TTools extends Record<string, Tool<any, any>> = Record<string
 					finishReason: 'stopCondition',
 					stopCondition: { name: 'ctx.stop', message: stopOpts.reason },
 					tokenUsage: accumulator.snapshot(),
+					contextWindowLimit: this.contextWindowLimit,
 				}
 				this.finishRun(agentRun, result)
 				return result
@@ -1505,6 +1512,7 @@ export class Agent<TTools extends Record<string, Tool<any, any>> = Record<string
 				newMessages,
 				finishReason: 'approvalRequired',
 				tokenUsage: accumulator.snapshot(),
+				contextWindowLimit: this.contextWindowLimit,
 			}
 			this.finishRun(agentRun, result)
 			return result
@@ -1533,6 +1541,7 @@ export class Agent<TTools extends Record<string, Tool<any, any>> = Record<string
 			finishReason: 'stopCondition',
 			stopCondition: stopResult,
 			tokenUsage: accumulator.snapshot(),
+			contextWindowLimit: this.contextWindowLimit,
 		}
 	}
 }

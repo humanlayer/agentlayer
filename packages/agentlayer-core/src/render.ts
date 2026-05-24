@@ -205,6 +205,8 @@ export function renderFinish(result: {
 	stopCondition?: { name: string; message?: string }
 	error?: { type: string; message: string }
 	tokenUsage?: TokenUsage
+	state?: { contextWindowTokens?: number }
+	contextWindowLimit?: number
 }): void {
 	const reason = result.finishReason
 	let label: string
@@ -225,8 +227,10 @@ export function renderFinish(result: {
 	}
 	process.stdout.write(`${line}\n\n`)
 
+	const contextWindowTokens = result.state?.contextWindowTokens
+	const contextWindowLimit = result.contextWindowLimit
 	if (result.tokenUsage) {
-		renderTokenUsage(result.tokenUsage)
+		renderTokenUsage(result.tokenUsage, contextWindowTokens, contextWindowLimit)
 	}
 }
 
@@ -235,29 +239,49 @@ function shortModelId(modelId: string): string {
 	return last ?? modelId
 }
 
-function renderTokenUsage(usage: TokenUsage): void {
+function renderTokenUsage(usage: TokenUsage, contextWindowTokens?: number, contextWindowLimit?: number): void {
 	const models = Object.entries(usage.byModel)
 	if (models.length === 0) return
 	const fmt = (n: number) => n.toLocaleString('en-US')
 	const fmtCost = (n: number | undefined) => (n !== undefined ? `~$${n.toFixed(2)}` : '—')
 	const displayIds = models.map(([id]) => shortModelId(id))
 	const colW = Math.max(5, ...displayIds.map((id) => id.length)) + 2
-	const header = `  ${'Model'.padEnd(colW)} ${'Input'.padStart(8)} ${'Cache↓'.padStart(8)} ${'Cache↑'.padStart(8)} ${'Output'.padStart(8)} ${'Cost'.padStart(8)}`
+
+	// Build context window column if available
+	const hasContext = contextWindowTokens !== undefined
+	const contextHeader = hasContext ? ` ${'Context'.padStart(16)}` : ''
+	const header = `  ${'Model'.padEnd(colW)} ${'Input'.padStart(8)} ${'Cache↓'.padStart(8)} ${'Cache↑'.padStart(8)} ${'Output'.padStart(8)} ${'Cost'.padStart(8)}${contextHeader}`
 	process.stdout.write(`${color.dim(header)}\n`)
 
 	for (const [modelId, m] of models) {
 		const displayId = shortModelId(modelId)
 		const modelUsage = m as ModelTokenUsage
-		const row = `  ${displayId.padEnd(colW)} ${fmt(modelUsage.inputTokens).padStart(8)} ${fmt(modelUsage.cacheReadTokens).padStart(8)} ${fmt(modelUsage.cacheWriteTokens).padStart(8)} ${fmt(modelUsage.outputTokens).padStart(8)} ${fmtCost(modelUsage.estimatedCostUsd).padStart(8)}`
+		const contextCol = hasContext
+			? ` ${formatContextWindow(contextWindowTokens, contextWindowLimit).padStart(16)}`
+			: ''
+		const row = `  ${displayId.padEnd(colW)} ${fmt(modelUsage.inputTokens).padStart(8)} ${fmt(modelUsage.cacheReadTokens).padStart(8)} ${fmt(modelUsage.cacheWriteTokens).padStart(8)} ${fmt(modelUsage.outputTokens).padStart(8)} ${fmtCost(modelUsage.estimatedCostUsd).padStart(8)}${contextCol}`
 		process.stdout.write(`${row}\n`)
 	}
 
 	if (models.length > 1) {
-		const sep = `  ${'─'.repeat(colW + 44)}`
+		const sep = `  ${'─'.repeat(colW + 44 + (hasContext ? 17 : 0))}`
 		process.stdout.write(`${color.dim(sep)}\n`)
 		const t = usage.totals
-		const totalRow = `  ${'Total'.padEnd(colW)} ${fmt(t.inputTokens).padStart(8)} ${fmt(t.cacheReadTokens).padStart(8)} ${fmt(t.cacheWriteTokens).padStart(8)} ${fmt(t.outputTokens).padStart(8)} ${fmtCost(t.estimatedCostUsd).padStart(8)}`
+		const contextCol = hasContext
+			? ` ${formatContextWindow(contextWindowTokens, contextWindowLimit).padStart(16)}`
+			: ''
+		const totalRow = `  ${'Total'.padEnd(colW)} ${fmt(t.inputTokens).padStart(8)} ${fmt(t.cacheReadTokens).padStart(8)} ${fmt(t.cacheWriteTokens).padStart(8)} ${fmt(t.outputTokens).padStart(8)} ${fmtCost(t.estimatedCostUsd).padStart(8)}${contextCol}`
 		process.stdout.write(`${totalRow}\n`)
 	}
 	process.stdout.write('\n')
+}
+
+function formatContextWindow(tokens?: number, limit?: number): string {
+	if (tokens === undefined) return '—'
+	const fmt = (n: number) => n.toLocaleString('en-US')
+	if (limit !== undefined) {
+		const pct = Math.round((tokens / limit) * 100)
+		return `${fmt(tokens)}/${fmt(limit)} (${pct}%)`
+	}
+	return fmt(tokens)
 }
