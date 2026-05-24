@@ -7,10 +7,10 @@ import type { AgentConfig, PostToolUseHook, SubAgentConfig, Tool } from '@humanl
 import { saneDefaultOutputTruncationHooks } from '@humanlayer/agentlayer-filesystem/hooks'
 import { createMemoryAuthStore } from '@humanlayer/agentlayer-provider-auth'
 import * as providerAuth from '@humanlayer/agentlayer-provider-auth'
-import { buildProviderOptions, createCodelayerAgent } from '../src/agent'
+import { buildProviderOptions, createCodelayerAgent, createCodelayerProviderOptionsFactory } from '../src/agent'
 import { createCodelayerAgent as rootCreateCodelayerAgent, createCodelayerCommand, DEFAULT_MODELS as rootDefaultModels, resolveExaApiKey, resolveModel } from '../src/index'
 import { createCodingSubagentTool } from '../src/coding-subagent-tool'
-import { parseProviderOptionOverrides } from '../src/command'
+import { applyCliThinkingOverride, parseProviderOptionOverrides } from '../src/command'
 import { DEFAULT_MODELS } from '../src/providers'
 
 let authStore = createMemoryAuthStore()
@@ -195,7 +195,7 @@ describe('createCodelayerAgent', () => {
 		})
 	})
 
-	test('uses low reasoning for gpt-5.5 codex by default', () => {
+	test('uses medium reasoning for gpt-5.5 codex by default', () => {
 		const model = createMockModel('gpt-5.5')
 
 		expect(buildProviderOptions(model).openai).toMatchObject({
@@ -203,7 +203,7 @@ describe('createCodelayerAgent', () => {
 			fastMode: false,
 			include: ['reasoning.encrypted_content'],
 			reasoningSummary: 'detailed',
-			reasoningEffort: 'low',
+			reasoningEffort: 'medium',
 		})
 	})
 
@@ -219,12 +219,28 @@ describe('createCodelayerAgent', () => {
 		})
 	})
 
-	test('uses high reasoning effort for kimi models', () => {
+	test('uses medium reasoning effort for kimi models by default', () => {
 		const model = createMockModel(DEFAULT_MODELS.firepass)
 
 		expect(buildProviderOptions(model).openai).toMatchObject({
 			fastMode: false,
-			reasoningEffort: 'high',
+			reasoningEffort: 'medium',
+		})
+	})
+
+	test('uses medium adaptive thinking effort for modern anthropic models by default', () => {
+		const opus47 = createMockModel('claude-opus-4-7')
+		const sonnet46 = createMockModel('claude-sonnet-4-6')
+
+		expect(buildProviderOptions(opus47).anthropic).toEqual({
+			thinking: { type: 'adaptive', display: 'summarized' },
+			effort: 'medium',
+			cacheControl: { type: 'ephemeral' },
+		})
+		expect(buildProviderOptions(sonnet46).anthropic).toEqual({
+			thinking: { type: 'adaptive' },
+			effort: 'medium',
+			cacheControl: { type: 'ephemeral' },
 		})
 	})
 
@@ -240,12 +256,141 @@ describe('createCodelayerAgent', () => {
 		})
 	})
 
+	test('generates a fresh run-scoped prompt cache key for CodeLayer provider options', () => {
+		const model = createMockModel('gpt-5.5')
+		const factory = createCodelayerProviderOptionsFactory(model)
+
+		const first = factory({ runId: 'parent' })?.openai as { promptCacheKey?: string }
+		const second = factory({ runId: 'subagent' })?.openai as { promptCacheKey?: string }
+
+		expect(first.promptCacheKey).toBeString()
+		expect(second.promptCacheKey).toBeString()
+		expect(first.promptCacheKey).not.toBe(second.promptCacheKey)
+	})
+
+	test('derives explicit prompt cache key overrides per CodeLayer provider options run', () => {
+		const model = createMockModel('gpt-5.5')
+		const factory = createCodelayerProviderOptionsFactory(model, {
+			codex: { promptCacheKey: 'session-abc-123' },
+		})
+
+		const first = factory({ runId: 'parent' })?.openai as { promptCacheKey?: string }
+		const second = factory({ runId: 'subagent' })?.openai as { promptCacheKey?: string }
+
+		expect(first.promptCacheKey?.startsWith('session-abc-123-')).toBe(true)
+		expect(second.promptCacheKey?.startsWith('session-abc-123-')).toBe(true)
+		expect(first.promptCacheKey).not.toBe(second.promptCacheKey)
+	})
+
 	test('includes reasoning.encrypted_content in include by default', () => {
 		const model = createMockModel('gpt-5.5')
 
 		const result = buildProviderOptions(model)
 
 		expect(result.openai.include).toEqual(['reasoning.encrypted_content'])
+	})
+
+	test('applies medium CLI thinking by default for codex', () => {
+		const model = createMockModel('gpt-5.5')
+		const overrides = applyCliThinkingOverride({
+			provider: 'codex',
+			modelId: 'gpt-5.5',
+			thinking: undefined,
+			overrides: {},
+		})
+
+		expect(buildProviderOptions(model, overrides).openai).toMatchObject({
+			reasoningSummary: 'detailed',
+			reasoningEffort: 'medium',
+		})
+	})
+
+	test('applies explicit CLI thinking for gpt-5.5 codex', () => {
+		const model = createMockModel('gpt-5.5')
+		const overrides = applyCliThinkingOverride({
+			provider: 'codex',
+			modelId: 'gpt-5.5',
+			thinking: 'xhigh',
+			overrides: {},
+		})
+
+		expect(buildProviderOptions(model, overrides).openai.reasoningEffort).toBe('xhigh')
+	})
+
+	test('applies explicit CLI thinking for firepass kimi models', () => {
+		const model = createMockModel(DEFAULT_MODELS.firepass)
+		const overrides = applyCliThinkingOverride({
+			provider: 'firepass',
+			modelId: DEFAULT_MODELS.firepass,
+			thinking: 'custom-fireworks-effort',
+			overrides: {},
+		})
+
+		expect(buildProviderOptions(model, overrides).openai.reasoningEffort).toBe('custom-fireworks-effort')
+	})
+
+	test('uses adaptive thinking with effort for opus 4.6', () => {
+		const model = createMockModel('claude-opus-4-6')
+		const overrides = applyCliThinkingOverride({
+			provider: 'anthropic',
+			modelId: 'claude-opus-4-6',
+			thinking: 'high',
+			overrides: {},
+		})
+
+		expect(buildProviderOptions(model, overrides).anthropic).toEqual({
+			thinking: { type: 'adaptive' },
+			effort: 'high',
+			cacheControl: { type: 'ephemeral' },
+		})
+	})
+
+	test('uses summarized adaptive thinking with effort for opus 4.7', () => {
+		const model = createMockModel('claude-opus-4-7')
+		const overrides = applyCliThinkingOverride({
+			provider: 'anthropic',
+			modelId: 'claude-opus-4-7',
+			thinking: 'xhigh',
+			overrides: {},
+		})
+
+		expect(buildProviderOptions(model, overrides).anthropic).toEqual({
+			thinking: { type: 'adaptive', display: 'summarized' },
+			effort: 'xhigh',
+			cacheControl: { type: 'ephemeral' },
+		})
+	})
+
+	test('rejects invalid known model thinking combinations', () => {
+		expect(() =>
+			applyCliThinkingOverride({
+				provider: 'codex',
+				modelId: 'gpt-5.5',
+				thinking: 'max',
+				overrides: {},
+			}),
+		).toThrow('Unsupported --thinking value "max"')
+
+		expect(() =>
+			applyCliThinkingOverride({
+				provider: 'anthropic',
+				modelId: 'claude-sonnet-4-6',
+				thinking: 'xhigh',
+				overrides: {},
+			}),
+		).toThrow('Unsupported --thinking value "xhigh"')
+	})
+
+	test('preserves explicit provider-option reasoning values over CLI defaults', () => {
+		const model = createMockModel('gpt-5.5')
+		const overrides = applyCliThinkingOverride({
+			provider: 'codex',
+			modelId: 'gpt-5.5',
+			thinking: undefined,
+			overrides: { codex: { reasoningEffort: 'low' } },
+		})
+
+		expect(buildProviderOptions(model, overrides).openai.reasoningEffort).toBe('low')
 	})
 
 	test('always sets store to false for openai options', () => {
@@ -321,7 +466,7 @@ describe('createCodelayerAgent', () => {
 		})
 		expect(buildProviderOptions(createMockModel('gpt-5.5', 'openai.codex')).openai).toMatchObject({
 			reasoningSummary: 'detailed',
-			reasoningEffort: 'low',
+			reasoningEffort: 'medium',
 			fastMode: false,
 		})
 	})

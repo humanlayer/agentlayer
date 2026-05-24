@@ -2,6 +2,8 @@ export {
 	Agent,
 	type AgentConfig,
 	type FinishReason,
+	type ProviderOptions,
+	type ProviderOptionsFactory,
 	type RunOptions,
 	type RunResult,
 } from './agent'

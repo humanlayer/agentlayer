@@ -1,5 +1,5 @@
 import type { LanguageModel, JSONValue } from 'ai'
-import { Agent, doomLoop, tarsPersona, type AgentConfig, type Tool } from '@humanlayer/agentlayer-core'
+import { Agent, doomLoop, tarsPersona, type AgentConfig, type ProviderOptionsFactory, type Tool } from '@humanlayer/agentlayer-core'
 import {
 	createAgentFilesystemHooks,
 	createAgentSystemPrompt,
@@ -63,13 +63,14 @@ export interface CodelayerToolSuiteOptions {
 	webFetch?: boolean
 }
 
-export type ReasoningEffort = 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
+export type ReasoningEffort = string
 export type ReasoningSummary = 'auto' | 'concise' | 'detailed'
 
 export interface CodelayerProviderOptionOverrides {
 	anthropic?: {
 		thinking?: 'off' | 'adaptive' | 'enabled'
 		budgetTokens?: number
+		effort?: string
 	}
 	codex?: {
 		reasoningEffort?: ReasoningEffort
@@ -86,7 +87,8 @@ export interface CodelayerProviderOptionOverrides {
 
 export interface CodelayerProviderOptions extends Record<string, Record<string, JSONValue>> {
 	anthropic: {
-		thinking?: { type: 'adaptive' } | { type: 'enabled'; budgetTokens: number }
+		thinking?: { type: 'adaptive'; display?: 'summarized' } | { type: 'enabled'; budgetTokens: number }
+		effort?: string
 		cacheControl: { type: 'ephemeral' }
 	}
 	openai: {
@@ -103,24 +105,35 @@ export interface CodelayerProviderOptions extends Record<string, Record<string, 
 	}
 }
 
-function resolveAnthropicThinking(model: LanguageModel): Record<string, unknown> {
+function resolveAnthropicThinking(model: LanguageModel, effort?: string): Record<string, unknown> {
 	const modelId = ((model as { modelId?: string }).modelId ?? '').toLowerCase()
+	const resolvedEffort = effort ?? 'medium'
+	if (modelId.includes('opus') && (modelId.includes('4-7') || modelId.includes('4.7'))) {
+		return {
+			thinking: { type: 'adaptive', display: 'summarized' },
+			effort: resolvedEffort,
+		}
+	}
 	if (modelId.includes('4-6') || modelId.includes('4.6')) {
-		return { thinking: { type: 'adaptive' } }
+		return {
+			thinking: { type: 'adaptive' },
+			effort: resolvedEffort,
+		}
 	}
 	if (modelId.includes('4-5') || modelId.includes('4.5')) {
 		return { thinking: { type: 'enabled', budgetTokens: 10000 } }
 	}
+	if (effort) return { effort }
 	return {}
 }
 
 function resolveCodexThinking(model: LanguageModel): Record<string, unknown> {
 	const modelId = ((model as { modelId?: string }).modelId ?? '').toLowerCase()
 	if (modelId.includes('kimi')) {
-		return { reasoningEffort: 'high' }
+		return { reasoningEffort: 'medium' }
 	}
 	if (modelId.includes('gpt-5.5')) {
-		return { reasoningSummary: 'detailed', reasoningEffort: 'low' }
+		return { reasoningSummary: 'detailed', reasoningEffort: 'medium' }
 	}
 	if (modelId.includes('gpt-5') && !modelId.includes('gpt-5-pro')) {
 		return { reasoningSummary: 'detailed', reasoningEffort: 'medium' }
@@ -158,10 +171,16 @@ export function buildProviderOptions(
 		overrides.anthropic?.thinking === 'off'
 			? {}
 			: overrides.anthropic?.thinking === 'adaptive'
-				? { thinking: { type: 'adaptive' as const } }
+				? {
+						thinking: { type: 'adaptive' as const },
+						...(overrides.anthropic.effort ? { effort: overrides.anthropic.effort } : {}),
+					}
 				: overrides.anthropic?.thinking === 'enabled'
-					? { thinking: { type: 'enabled' as const, budgetTokens: overrides.anthropic.budgetTokens ?? 10000 } }
-					: resolveAnthropicThinking(model)
+					? {
+							thinking: { type: 'enabled' as const, budgetTokens: overrides.anthropic.budgetTokens ?? 10000 },
+							...(overrides.anthropic.effort ? { effort: overrides.anthropic.effort } : {}),
+						}
+					: resolveAnthropicThinking(model, overrides.anthropic?.effort)
 	const codexOptions = {
 		...resolveCodexThinking(model),
 		fastMode: overrides.codex?.fastMode ?? false,
@@ -183,6 +202,28 @@ export function buildProviderOptions(
 			...copilotOptions,
 		},
 	}
+}
+
+function withRunScopedPromptCacheKey(
+	overrides: CodelayerProviderOptionOverrides | undefined,
+): CodelayerProviderOptionOverrides {
+	const baseKey = overrides?.codex?.promptCacheKey
+	const promptCacheKey = baseKey ? `${baseKey}-${crypto.randomUUID()}` : crypto.randomUUID()
+
+	return {
+		...(overrides ?? {}),
+		codex: {
+			...(overrides?.codex ?? {}),
+			promptCacheKey,
+		},
+	}
+}
+
+export function createCodelayerProviderOptionsFactory(
+	model: LanguageModel,
+	overrides: CodelayerProviderOptionOverrides = {},
+): ProviderOptionsFactory {
+	return () => buildProviderOptions(model, withRunScopedPromptCacheKey(overrides))
 }
 
 function mergeHooks(base: ReturnType<typeof createAgentFilesystemHooks>, hooks?: AgentConfig['hooks']): AgentConfig['hooks'] {
@@ -215,7 +256,7 @@ export async function createCodelayerAgent(opts: CodelayerAgentOptions): Promise
 		environment,
 	} = opts
 	const modelFamily = detectModelFamily(model)
-	const providerOptions = buildProviderOptions(model, providerOptionOverrides)
+	const providerOptions = createCodelayerProviderOptionsFactory(model, providerOptionOverrides)
 	const personaPromptAdditions = [
 		...(tars ? [tarsPersona(35)] : []),
 		...systemPromptAdditions,
