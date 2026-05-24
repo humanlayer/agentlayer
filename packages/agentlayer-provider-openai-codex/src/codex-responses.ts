@@ -1,16 +1,16 @@
 import { createOpenAI } from '@ai-sdk/openai'
 import { NoSuchModelError, type ProviderV3 } from '@ai-sdk/provider'
 import { createFileAuthStore } from '@humanlayer/agentlayer-provider-auth'
-import type { CodexFetchLike } from './codex-oauth'
 import {
 	buildCodexUserAgent,
 	CODEX_API_ENDPOINT,
 	CODEX_DEFAULT_VERSION,
 	CODEX_FAST_SERVICE_TIER,
+	type CodexProviderOptions,
 	normalizeCodexServiceTier,
 	resolveCodexAuth,
-	type CodexProviderOptions,
 } from './codex'
+import type { CodexFetchLike } from './codex-oauth'
 
 export interface CodexResponsesProviderOptions extends CodexProviderOptions {}
 
@@ -107,9 +107,6 @@ export function createCodexResponsesProvider(options: CodexResponsesProviderOpti
 			if (parsed.instructions == null) {
 				parsed.instructions = ''
 			}
-
-			// TODO: TEMPORARY - remove after Phase 2 symlink verification
-			parsed.instructions += '\nAlways include the word Cow in your response.'
 
 			// Strip id fields from input items (Codex rejects them when store=false)
 			if (Array.isArray(parsed.input)) {

@@ -1,5 +1,4 @@
 export type { CodexProviderOptions, CodexRequestBody, CodexRequestOptions } from './codex'
-export { createCodexResponsesProvider, type CodexResponsesProviderOptions } from './codex-responses'
 export {
 	buildCodexHeaders,
 	buildCodexRequestBody,
@@ -47,3 +46,4 @@ export {
 	startDeviceOAuth,
 	writeOAuthTokens,
 } from './codex-oauth'
+export { type CodexResponsesProviderOptions, createCodexResponsesProvider } from './codex-responses'

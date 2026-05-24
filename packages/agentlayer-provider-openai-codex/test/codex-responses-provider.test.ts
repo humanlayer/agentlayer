@@ -1,6 +1,6 @@
 import { describe, expect, it, mock } from 'bun:test'
 import { createMemoryAuthStore } from '@humanlayer/agentlayer-provider-auth'
-import { createCodexResponsesProvider, CODEX_API_ENDPOINT, CODEX_PROVIDER_ID } from '../src'
+import { CODEX_API_ENDPOINT, CODEX_PROVIDER_ID, createCodexResponsesProvider } from '../src'
 
 describe('createCodexResponsesProvider', () => {
 	it('returns a ProviderV3 with languageModel method', () => {
