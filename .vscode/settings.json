@@ -38,5 +38,6 @@
     "files.readonlyInclude": {
         "**/routeTree.gen.ts": true
     },
-    "js/ts.tsdk": "node_modules/typescript/lib"
+    "js/ts.tsdk": "node_modules/typescript/lib",
+    "js/ts.tsdk.path": "node_modules/typescript/lib"
 }

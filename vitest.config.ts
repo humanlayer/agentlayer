@@ -21,6 +21,6 @@ export default defineConfig({
   },
   test: {
     globals: true,
-    include: ['packages/*/test/**/*.vitest.ts', 'agents/*/test/**/*.vitest.ts'],
+    include: ['packages/*/test/**/*.vitest.ts', 'agents/*/test/**/*.vitest.ts', "test/**/*.vitest.ts"],
   },
 })

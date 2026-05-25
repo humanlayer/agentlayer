@@ -1,0 +1,65 @@
+{
+	"name": "@humanlayer/agentlayer-effect-core",
+	"source": "./src/index.ts",
+	"type": "module",
+	"version": "0.0.0",
+	"private": false,
+	"main": "./dist/index.js",
+	"module": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"publishConfig": {
+		"access": "public"
+	},
+	"files": [
+		"src",
+		"dist"
+	],
+	"scripts": {
+		"test": "bun --bun --parallel 'test:vitest' 'test:bun'",
+		"test:vitest": "bun --bun vitest --run test/",
+		"test:bun": "bun test",
+		"typecheck": "tsgo --noEmit",
+		"build": "bun run build:js && bunx tsc -p tsconfig.build.json",
+		"build:js": "bun run build.ts",
+		"build:types": "bunx tsc -p tsconfig.build.json"
+	},
+	"dependencies": {
+		"@effect/platform": "catalog:",
+		"@effect/schema": "catalog:",
+		"@humanlayer/agentlayer-core": "workspace:*",
+		"ai": "catalog:",
+		"effect": "catalog:",
+		"zod": "catalog:"
+	},
+	"devDependencies": {
+		"@effect/platform-node": "catalog:",
+		"@effect/vitest": "catalog:",
+		"@types/bun": "latest"
+	},
+	"peerDependencies": {
+		"typescript": "^5"
+	},
+	"exports": {
+		".": {
+			"source": "./src/index.ts",
+			"bun": "./src/index.ts",
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js",
+			"default": "./dist/index.js"
+		},
+		"./hooks": {
+			"source": "./src/hooks/index.ts",
+			"bun": "./src/hooks/index.ts",
+			"types": "./dist/hooks/index.d.ts",
+			"import": "./dist/hooks/index.js",
+			"default": "./dist/hooks/index.js"
+		},
+		"./tools": {
+			"source": "./src/tools/index.ts",
+			"bun": "./src/tools/index.ts",
+			"types": "./dist/tools/index.d.ts",
+			"import": "./dist/tools/index.js",
+			"default": "./dist/tools/index.js"
+		}
+	}
+}

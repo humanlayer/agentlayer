@@ -16,10 +16,13 @@
         "test:ci": "bun test --conditions=source ./packages/*/test/*.test.ts ./agents/*/test/*.test.ts",
         "test:vitest": "vitest",
         "typecheck": "bun --filter '*' --parallel typecheck",
+        "effect:devtools-setup": "effect-language-service patch",
         "release:prepare": "bun run scripts/release/prepare.ts",
         "release:publish": "bun run scripts/release/publish.ts"
     },
     "devDependencies": {
+        "@effect/experimental": "0.60.0",
+        "@effect/language-service": "0.86.2",
         "@biomejs/biome": "2.2.5",
         "@humanlayer/agentlayer-core": "workspace:*",
         "@humanlayer/agentlayer-filesystem": "workspace:*",
