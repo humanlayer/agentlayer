@@ -77,8 +77,6 @@ export {
 } from './hooks'
 export * from './hooks/index'
 export * from './interfaces'
-// output-truncation must come after interfaces to avoid circular deps (it imports ReadTool)
-export * from './hooks/output-truncation'
 export {
 	assistantMessage,
 	buildToolResultMessage,

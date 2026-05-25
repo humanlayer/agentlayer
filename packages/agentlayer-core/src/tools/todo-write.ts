@@ -1,4 +1,4 @@
-import z from 'zod'
+import * as z from 'zod'
 import { defineTool } from '../define-tool'
 import { TODO_WRITE_DESCRIPTION } from '../prompts'
 export const todoItemSchema = z.object({

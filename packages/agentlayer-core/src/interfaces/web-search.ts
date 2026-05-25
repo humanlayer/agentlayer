@@ -1,4 +1,4 @@
-import z from 'zod'
+import * as z from 'zod'
 import { defineToolInterface } from '../define-tool'
 
 export const webSearchInput = z.object({

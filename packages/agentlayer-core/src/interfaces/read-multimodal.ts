@@ -1,4 +1,4 @@
-import z from 'zod'
+import * as z from 'zod'
 import { defineToolInterface } from '../define-tool'
 import { type ReadInput, ReadTool, readInput } from './read'
 

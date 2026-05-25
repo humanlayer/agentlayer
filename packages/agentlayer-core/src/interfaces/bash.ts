@@ -1,4 +1,4 @@
-import z from 'zod'
+import * as z from 'zod'
 import { defineToolInterface } from '../define-tool'
 
 const DEFAULT_TIMEOUT_MS = 120_000

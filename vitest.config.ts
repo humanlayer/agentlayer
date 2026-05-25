@@ -15,6 +15,8 @@ export default defineConfig({
       '@humanlayer/agentlayer-yjs-fs-secure-exec': resolve(__dirname, 'packages/agentlayer-yjs-fs-secure-exec/src'),
       '@humanlayer/yjs-fs': resolve(__dirname, 'packages/yjs-fs/src'),
       '@humanlayer/yjs-fs-react': resolve(__dirname, 'packages/yjs-fs-react/src'),
+      '@humanlayer/agentlayer-effect-core': resolve(__dirname, 'packages/agentlayer-effect-core/src'),
+      '@humanlayer/agentlayer-effect-filesystem': resolve(__dirname, 'packages/agentlayer-effect-filesystem/src'),
     },
   },
   test: {
