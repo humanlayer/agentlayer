@@ -4,7 +4,7 @@ import { SpanName } from '../observability/span-names'
 import { ToolInputZodError } from './errors'
 
 /**
- * Effect to parse a tool's input and ensure it's correct
+ * Effect responsible for parsing / validating tool input with zod since we don't want to force callers to use effect schema
  * @param schema
  * @param input
  * @param meta
@@ -19,7 +19,6 @@ export function decodeToolInput<T>(
 		yield* Effect.annotateCurrentSpan({
 			'tool.name': meta.toolName,
 			'tool.callId': meta.toolCallId,
-			'tool.input': input,
 		})
 
 		const result = schema.safeParse(input)
@@ -32,15 +31,16 @@ export function decodeToolInput<T>(
 				error: result.error,
 			})
 
-			yield* Effect.log('tool input validation failed').pipe(
+			yield* Effect.logError('tool input validation failed').pipe(
 				Effect.annotateLogs({
 					'tool.name': meta.toolName,
 					'tool.callId': meta.toolCallId,
-					'tool.validationIssues': result.error.issues,
+					'tool.error._tag': error._tag,
+					'tool.validation.issues.count': result.error.issues.length,
 				}),
 			)
 
-			return yield* Effect.fail(error)
+			return yield* error
 		}
 
 		return result.data

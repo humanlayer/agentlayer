@@ -10,6 +10,15 @@ export class ToolExecutionError extends Data.TaggedError('ToolExecutionError')<{
 }> {}
 
 /**
+ * Indicates that a tool execution fiber was interrupted.
+ */
+export class ToolInterruptedError extends Data.TaggedError('ToolInterruptedError')<{
+	toolName: string
+	toolCallId: string
+	cause: unknown
+}> {}
+
+/**
  * Tool input fails schema parsing
  */
 export class ToolInputZodError extends Data.TaggedError('ToolInputZodError')<{
@@ -24,8 +33,16 @@ export class ToolInputZodError extends Data.TaggedError('ToolInputZodError')<{
  */
 export class ToolNotFoundError extends Data.TaggedError('ToolNotFoundError')<{
 	toolName: string
-	toolCallId: string
 	availableTools: ReadonlyArray<string>
+}> {}
+
+/**
+ * Use for when a tool's result cannot be serialized
+ */
+export class ToolOutputSerializationError extends Data.TaggedError('ToolOutputSerializationError')<{
+	toolName: string
+	toolCallId: string
+	reason: string
 }> {}
 
 /**

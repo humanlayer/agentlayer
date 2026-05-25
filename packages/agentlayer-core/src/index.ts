@@ -79,9 +79,11 @@ export {
 export * from './hooks/index'
 export * from './interfaces'
 export {
+	type AgentLayerToolOutput,
 	assistantMessage,
 	buildToolResultMessage,
 	extractLastAssistantText,
+	isToolResultOutput,
 	systemMessage,
 	toolCall,
 	toolResult,
