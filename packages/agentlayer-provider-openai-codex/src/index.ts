@@ -19,6 +19,7 @@ export {
 	streamPartsToGenerateResult,
 	transformCodexPrompt,
 } from './codex'
+export { type CodexEffectProviderOptions, createCodexEffectProvider } from './codex-effect'
 export * from './codex-jwt'
 export {
 	type BrowserOAuthStartResult,
