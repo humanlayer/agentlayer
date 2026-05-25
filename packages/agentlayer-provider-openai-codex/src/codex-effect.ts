@@ -110,16 +110,20 @@ function convertPromptToBody(modelId: string, options: LanguageModelV3CallOption
 							content.push({ type: 'output_text', text: part.text })
 							break
 						case 'reasoning': {
-							const providerMeta = part.providerOptions?.openai as Record<string, unknown> | undefined
-							const encryptedContent = providerMeta?.reasoningEncryptedContent as string | undefined
-							const reasoningItem: Record<string, unknown> = {
+							const openai = part.providerOptions?.openai as Record<string, unknown> | undefined
+							const itemId = openai?.itemId as string | undefined
+							if (!itemId) break
+							const encryptedContent = openai?.reasoningEncryptedContent as string | null | undefined
+							// store is always false for codex — drop items without encrypted_content
+							if (typeof encryptedContent !== 'string') break
+							input.push({
 								type: 'reasoning',
-								summary: [{ type: 'summary_text', text: part.text || '' }],
-							}
-							if (encryptedContent) {
-								reasoningItem.encrypted_content = encryptedContent
-							}
-							input.push(reasoningItem)
+								id: itemId,
+								summary: part.text ? [{ type: 'summary_text', text: part.text }] : [],
+								encrypted_content: typeof encryptedContent === 'string' ? encryptedContent
+									: encryptedContent === null ? null
+									: undefined,
+							})
 							break
 						}
 						case 'tool-call':
