@@ -109,15 +109,19 @@ function convertPromptToBody(modelId: string, options: LanguageModelV3CallOption
 						case 'text':
 							content.push({ type: 'output_text', text: part.text })
 							break
-						case 'reasoning':
-							if ('text' in part && part.text) {
-								input.push({
-									type: 'reasoning',
-									id: `rs_${Math.random().toString(36).slice(2, 10)}`,
-									summary: [{ type: 'summary_text', text: part.text }],
-								})
+						case 'reasoning': {
+							const providerMeta = part.providerOptions?.openai as Record<string, unknown> | undefined
+							const encryptedContent = providerMeta?.reasoningEncryptedContent as string | undefined
+							const reasoningItem: Record<string, unknown> = {
+								type: 'reasoning',
+								summary: [{ type: 'summary_text', text: part.text || '' }],
 							}
+							if (encryptedContent) {
+								reasoningItem.encrypted_content = encryptedContent
+							}
+							input.push(reasoningItem)
 							break
+						}
 						case 'tool-call':
 							toolCalls.push({
 								type: 'function_call',
