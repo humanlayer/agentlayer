@@ -120,9 +120,12 @@ function convertPromptToBody(modelId: string, options: LanguageModelV3CallOption
 								type: 'reasoning',
 								id: itemId,
 								summary: part.text ? [{ type: 'summary_text', text: part.text }] : [],
-								encrypted_content: typeof encryptedContent === 'string' ? encryptedContent
-									: encryptedContent === null ? null
-									: undefined,
+								encrypted_content:
+									typeof encryptedContent === 'string'
+										? encryptedContent
+										: encryptedContent === null
+											? null
+											: undefined,
 							})
 							break
 						}

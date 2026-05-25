@@ -39,6 +39,7 @@ const OpenAIResponsesInputImage = Schema.Struct({
 	image_url: Schema.String,
 })
 const OpenAIResponsesInputContent = Schema.Union([OpenAIResponsesInputText, OpenAIResponsesInputImage])
+// biome-ignore lint/correctness/noUnusedVariables: vendored from opencode
 type OpenAIResponsesInputContent = Schema.Schema.Type<typeof OpenAIResponsesInputContent>
 
 const OpenAIResponsesOutputText = Schema.Struct({
