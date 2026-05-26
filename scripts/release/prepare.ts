@@ -158,6 +158,7 @@ function stageManifest(manifest: PackageManifest, version: string, catalog: Reco
         ...stagedManifest.publishConfig,
         access: "public",
     };
+    delete stagedManifest.devDependencies;
     rewriteWorkspaceDeps(stagedManifest, version);
     rewriteCatalogDeps(stagedManifest, catalog);
     return stagedManifest;
