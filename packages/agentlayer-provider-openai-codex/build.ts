@@ -6,25 +6,33 @@ const packageDir = import.meta.dir
 const manifest = await readPackageManifest(packageDir)
 const entrypoints = getSourceExportEntries(manifest)
 
+if (entrypoints.length === 0) {
+	throw new Error(`No exports found in ${manifest.name}`)
+}
+
 const outdir = resolve(packageDir, 'dist')
 await rm(outdir, { recursive: true, force: true })
 
-const m = manifest as unknown as Record<string, Record<string, string> | undefined>
-const deps = Object.keys(m.dependencies ?? {})
-const peerDeps = Object.keys(m.peerDependencies ?? {})
-
 const result = await Bun.build({
-	entrypoints: entrypoints.map((ep) => resolve(packageDir, ep)),
+	entrypoints: entrypoints.map((e) => resolve(packageDir, e)),
 	outdir,
 	root: resolve(packageDir, 'src'),
 	format: 'esm',
 	target: 'node',
-	external: [...deps, ...peerDeps],
 	sourcemap: 'external',
 	splitting: false,
 	naming: '[dir]/[name].[ext]',
+	// Don't use packages: 'external' - instead explicitly list externals
+	// This bundles @humanlayer/opencode-llm-vendor inline
+	external: ['@ai-sdk/*', '@humanlayer/agentlayer-core', '@humanlayer/agentlayer-provider-auth', 'ai', 'effect'],
 })
 
 if (!result.success) {
 	throw new AggregateError(result.logs, `Build failed for ${manifest.name}`)
+}
+
+if (result.logs.length > 0) {
+	for (const log of result.logs) {
+		console.warn(log)
+	}
 }
