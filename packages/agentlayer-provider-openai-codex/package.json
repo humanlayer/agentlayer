@@ -40,6 +40,7 @@
 		"@ai-sdk/openai": "catalog:",
 		"@ai-sdk/provider": "catalog:",
 		"@humanlayer/agentlayer-provider-auth": "workspace:*",
+		"@humanlayer/opencode-llm-vendor": "workspace:*",
 		"ai": "catalog:",
 		"effect": "4.0.0-beta.66"
 	}

@@ -1,0 +1,12 @@
+{
+	"name": "@humanlayer/opencode-llm-vendor",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"exports": {
+		"./protocols/openai-responses": "./src/protocols/openai-responses.ts"
+	},
+	"dependencies": {
+		"effect": "4.0.0-beta.66"
+	}
+}
