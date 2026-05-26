@@ -65,6 +65,10 @@ export const internalPackages = [
         dir: "packages/docs",
     },
     {
+        name: "@humanlayer/opencode-llm-vendor",
+        dir: "packages/opencode-llm-vendor",
+    },
+    {
         name: "@humanlayer/docs-agent",
         dir: "agents/docs-agent",
     },
