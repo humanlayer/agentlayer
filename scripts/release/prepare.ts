@@ -115,9 +115,9 @@ function rewriteWorkspaceDeps(manifest: PackageManifest, version: string) {
 
             const publishableDependency = getPublishablePackageByDir(workspacePackage.dir);
             if (!publishableDependency) {
-                throw new Error(
-                    `Cannot publish ${manifest.name}: dependency ${name} is internal-only at ${workspacePackage.dir}`,
-                );
+                // Internal-only package - must be bundled at build time, so remove from deps
+                delete deps[name];
+                continue;
             }
 
             deps[name] = version;

@@ -21,7 +21,6 @@
 		"build:types": "bunx tsc -p tsconfig.build.json"
 	},
 	"devDependencies": {
-		"@humanlayer/agentlayer-core": "workspace:*",
 		"@humanlayer/opencode-llm-vendor": "workspace:*",
 		"@types/bun": "latest"
 	},
@@ -41,6 +40,7 @@
 		"@ai-sdk/openai": "catalog:",
 		"@ai-sdk/provider": "catalog:",
 		"@humanlayer/agentlayer-provider-auth": "workspace:*",
+		"@humanlayer/agentlayer-core": "workspace:*",
 		"ai": "catalog:",
 		"effect": "4.0.0-beta.66"
 	}
