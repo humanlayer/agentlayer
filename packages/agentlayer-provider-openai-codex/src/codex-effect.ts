@@ -20,7 +20,7 @@ import {
 	resolveCodexAuth,
 } from './codex'
 import type { CodexFetchLike } from './codex-oauth'
-import { protocol } from './vendor/opencode-llm/protocols/openai-responses'
+import { protocol } from './vendor-protocol'
 
 const DEFAULT_CHUNK_TIMEOUT_MS = 120_000
 
@@ -371,7 +371,8 @@ function wrapSSE(res: Response, timeoutMs: number, abortCtl: AbortController): R
 // LanguageModelV3 implementation
 // ---------------------------------------------------------------------------
 
-const decodeEvent = Schema.decodeUnknownSync(protocol.stream.event)
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const decodeEvent = Schema.decodeUnknownSync(protocol.stream.event as any)
 
 const TERMINAL_TYPES = new Set(['response.completed', 'response.incomplete', 'response.failed'])
 
