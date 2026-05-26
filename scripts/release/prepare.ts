@@ -150,6 +150,22 @@ function rewriteCatalogDeps(manifest: PackageManifest, catalog: Record<string, s
     }
 }
 
+function stripDevExportConditions(exports: Record<string, unknown> | undefined) {
+    if (!exports) {
+        return;
+    }
+
+    const devConditions = ["bun", "source"];
+
+    for (const [key, value] of Object.entries(exports)) {
+        if (typeof value === "object" && value !== null) {
+            for (const condition of devConditions) {
+                delete (value as Record<string, unknown>)[condition];
+            }
+        }
+    }
+}
+
 function stageManifest(manifest: PackageManifest, version: string, catalog: Record<string, string>): PackageManifest {
     const stagedManifest: PackageManifest = structuredClone(manifest);
     stagedManifest.version = version;
@@ -159,6 +175,8 @@ function stageManifest(manifest: PackageManifest, version: string, catalog: Reco
         access: "public",
     };
     delete stagedManifest.devDependencies;
+    delete stagedManifest.source;
+    stripDevExportConditions(stagedManifest.exports as Record<string, unknown> | undefined);
     rewriteWorkspaceDeps(stagedManifest, version);
     rewriteCatalogDeps(stagedManifest, catalog);
     return stagedManifest;
