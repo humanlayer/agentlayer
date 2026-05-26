@@ -12,7 +12,71 @@ import {
 } from './codex'
 import type { CodexFetchLike } from './codex-oauth'
 
-export interface CodexResponsesProviderOptions extends CodexProviderOptions {}
+/** Default timeout for SSE chunk reads (2 minutes) - matches codex.ts */
+const DEFAULT_CHUNK_TIMEOUT_MS = 120_000
+
+export interface CodexResponsesProviderOptions extends CodexProviderOptions {
+	/**
+	 * Timeout in milliseconds between streamed SSE chunks. If no chunk arrives
+	 * within this window, the request is aborted. Set to 0 or false to disable.
+	 * @default 120000 (2 minutes)
+	 */
+	chunkTimeout?: number | false
+}
+
+/**
+ * Wraps an SSE response body with a per-chunk timeout. If no chunk arrives
+ * within the timeout window, the AbortController is fired and the stream errors.
+ *
+ * Only wraps responses with content-type: text/event-stream.
+ */
+function wrapSSE(res: Response, timeoutMs: number, abortCtl: AbortController): Response {
+	if (typeof timeoutMs !== 'number' || timeoutMs <= 0) return res
+	if (!res.body) return res
+	if (!res.headers.get('content-type')?.includes('text/event-stream')) return res
+
+	const reader = res.body.getReader()
+	const body = new ReadableStream<Uint8Array>({
+		async pull(ctrl) {
+			const part = await new Promise<{ done: boolean; value?: Uint8Array }>((resolve, reject) => {
+				const id = setTimeout(() => {
+					const err = new Error(`SSE stream read timed out after ${timeoutMs}ms - no data received`)
+					abortCtl.abort(err)
+					void reader.cancel(err)
+					reject(err)
+				}, timeoutMs)
+
+				reader.read().then(
+					(result) => {
+						clearTimeout(id)
+						resolve(result)
+					},
+					(err) => {
+						clearTimeout(id)
+						reject(err)
+					},
+				)
+			})
+
+			if (part.done) {
+				ctrl.close()
+				return
+			}
+
+			ctrl.enqueue(part.value)
+		},
+		async cancel(reason) {
+			abortCtl.abort(reason)
+			await reader.cancel(reason)
+		},
+	})
+
+	return new Response(body, {
+		headers: new Headers(res.headers),
+		status: res.status,
+		statusText: res.statusText,
+	})
+}
 
 /**
  * Creates a thin Codex provider that delegates SSE parsing to upstream
@@ -25,6 +89,7 @@ export function createCodexResponsesProvider(options: CodexResponsesProviderOpti
 	const version = options.version ?? CODEX_DEFAULT_VERSION
 	const fetchFn: CodexFetchLike = options.fetch ?? globalThis.fetch
 	const now = options.now ?? Date.now
+	const chunkTimeout = options.chunkTimeout === false ? 0 : (options.chunkTimeout ?? DEFAULT_CHUNK_TIMEOUT_MS)
 
 	const codexFetch: CodexFetchLike = async (input, init): Promise<Response> => {
 		const auth = await resolveCodexAuth(authStore, providerId, fetchFn, now)
@@ -124,7 +189,22 @@ export function createCodexResponsesProvider(options: CodexResponsesProviderOpti
 		const url = new URL(input.toString())
 		const finalUrl = url.pathname.includes('/v1/responses') ? CODEX_API_ENDPOINT : url.toString()
 
-		return fetchFn(finalUrl, { ...init, headers, body })
+		// Set up chunk timeout abort controller if enabled
+		const chunkAbortCtl = chunkTimeout > 0 ? new AbortController() : undefined
+
+		// Combine signals: caller's signal + chunk timeout signal
+		const signals: AbortSignal[] = []
+		if (init?.signal) signals.push(init.signal)
+		if (chunkAbortCtl) signals.push(chunkAbortCtl.signal)
+
+		const combinedSignal =
+			signals.length === 0 ? undefined : signals.length === 1 ? signals[0] : AbortSignal.any(signals)
+
+		const res = await fetchFn(finalUrl, { ...init, headers, body, signal: combinedSignal })
+
+		// Wrap SSE responses with per-chunk timeout watchdog
+		if (!chunkAbortCtl) return res
+		return wrapSSE(res, chunkTimeout, chunkAbortCtl)
 	}
 
 	const openai = createOpenAI({
