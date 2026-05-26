@@ -16,7 +16,7 @@
 	],
 	"scripts": {
 		"typecheck": "tsgo --noEmit",
-		"build": "bun run build:js && mv src/vendor-protocol.ts src/vendor-protocol.ts.bak && bunx tsc -p tsconfig.build.json; STATUS=$?; mv src/vendor-protocol.ts.bak src/vendor-protocol.ts; exit $STATUS",
+		"build": "bun run build:js && bunx tsc -p tsconfig.build.json",
 		"build:js": "bun run build.ts",
 		"build:types": "bunx tsc -p tsconfig.build.json"
 	},
@@ -40,6 +40,7 @@
 		"@ai-sdk/openai": "catalog:",
 		"@ai-sdk/provider": "catalog:",
 		"@humanlayer/agentlayer-provider-auth": "workspace:*",
+		"@humanlayer/opencode-llm-vendor": "workspace:*",
 		"ai": "catalog:",
 		"effect": "4.0.0-beta.66"
 	}

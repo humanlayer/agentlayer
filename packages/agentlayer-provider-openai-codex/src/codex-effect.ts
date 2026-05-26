@@ -9,6 +9,7 @@ import {
 	type ProviderV3,
 } from '@ai-sdk/provider'
 import { createFileAuthStore } from '@humanlayer/agentlayer-provider-auth'
+import { protocol } from '@humanlayer/opencode-llm-vendor/protocols/openai-responses'
 import { Effect, Schema } from 'effect'
 import {
 	buildCodexUserAgent,
@@ -20,7 +21,6 @@ import {
 	resolveCodexAuth,
 } from './codex'
 import type { CodexFetchLike } from './codex-oauth'
-import { protocol } from './vendor-protocol'
 
 const DEFAULT_CHUNK_TIMEOUT_MS = 120_000
 

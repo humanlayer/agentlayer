@@ -13,8 +13,6 @@
 		"test",
 		"dist",
 		"node_modules",
-		"src/vendor",
-		"src/vendor-protocol.ts",
 		"**/*.test.*",
 		"**/*.bench.*",
 		"**/*.test-d.ts",
