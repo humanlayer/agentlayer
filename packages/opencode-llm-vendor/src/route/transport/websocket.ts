@@ -6,7 +6,16 @@ import * as HttpTransport from './http'
 import type { Transport } from './index'
 
 const DEBUG = process.env.DEBUG_CODEX_WS === '1'
-const dbg = (...args: unknown[]) => { if (DEBUG) console.error('[ws-transport]', ...args) }
+const dbg = (...args: unknown[]) => {
+	if (DEBUG) console.error('[ws-transport]', ...args)
+}
+
+// Global connection tracking — tells us exactly how many are open when a 101 fires
+let _openConns = 0
+let _totalOpened = 0
+let _totalClosed = 0
+let _totalFailed = 0
+const connState = () => `open=${_openConns} opened=${_totalOpened} closed=${_totalClosed} failed=${_totalFailed}`
 
 export interface WebSocketRequest {
 	readonly url: string
@@ -54,8 +63,13 @@ const binaryMessage = (data: unknown) => {
 }
 
 const waitOpen = (ws: globalThis.WebSocket, input: WebSocketRequest) => {
-	dbg('waitOpen: readyState=', ws.readyState, 'url=', input.url)
-	if (ws.readyState === globalThis.WebSocket.OPEN) return Effect.void
+	dbg('waitOpen: readyState=', ws.readyState, connState())
+	if (ws.readyState === globalThis.WebSocket.OPEN) {
+		_openConns++
+		_totalOpened++
+		dbg('waitOpen: already open,', connState())
+		return Effect.void
+	}
 	if (ws.readyState === globalThis.WebSocket.CLOSING || ws.readyState === globalThis.WebSocket.CLOSED) {
 		return Effect.fail(
 			transportError('open', `WebSocket closed before opening (state ${ws.readyState})`, {
@@ -78,10 +92,15 @@ const waitOpen = (ws: globalThis.WebSocket, input: WebSocketRequest) => {
 		}
 		const onOpen = () => {
 			cleanup()
+			_openConns++
+			_totalOpened++
+			dbg('waitOpen: connected,', connState())
 			resume(Effect.void)
 		}
 		const onError = (event: Event) => {
 			cleanup()
+			_totalFailed++
+			dbg('waitOpen: FAILED,', connState(), eventMessage(event))
 			resume(
 				Effect.fail(
 					transportError('open', `Failed to open WebSocket: ${eventMessage(event)}`, {
@@ -155,7 +174,7 @@ export const fromWebSocket = (
 
 		const onMessage = (event: MessageEvent) => {
 			if (typeof event.data === 'string') {
-				const preview = event.data.length > 120 ? event.data.substring(0, 120) + '...' : event.data
+				const preview = event.data.length > 120 ? `${event.data.substring(0, 120)}...` : event.data
 				dbg('msg:', preview)
 				return Queue.offerUnsafe(messages, event.data)
 			}
@@ -197,7 +216,9 @@ export const fromWebSocket = (
 			)
 		}
 		const cleanup = Effect.sync(() => {
-			dbg('cleanup: removing listeners, readyState=', ws.readyState)
+			_openConns--
+			_totalClosed++
+			dbg('cleanup: readyState=', ws.readyState, connState())
 			ws.removeEventListener('message', onMessage)
 			ws.removeEventListener('error', onError)
 			ws.removeEventListener('close', onClose)
