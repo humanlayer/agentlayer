@@ -1,5 +1,5 @@
 // @ts-nocheck — vendored from opencode, tested upstream under different tsconfig
-import { Cause, Context, Effect, Layer, Queue, Stream } from 'effect'
+import { Cause, Context, Effect, Layer, Queue, Schedule, Stream } from 'effect'
 import type { Headers } from 'effect/unstable/http'
 import { LLMError, TransportReason } from '../../schema'
 import * as HttpTransport from './http'
@@ -303,22 +303,33 @@ export const json = <Body, Message>(input: JsonInput<Body, Message>): JsonTransp
 			)
 		}
 		const decoder = new TextDecoder()
-		return Stream.unwrap(
-			Effect.gen(function* () {
-				dbg('frames: opening WS to', prepared.url)
-				const connection = yield* Effect.acquireRelease(
-					webSocket.open({ url: prepared.url, headers: prepared.headers }),
-					(connection) => {
-						dbg('frames: acquireRelease finalizer — closing WS')
-						return connection.close
-					},
-				)
-				dbg('frames: WS open, sending message')
-				yield* connection.sendText(prepared.message)
-				dbg('frames: message sent, returning message stream')
-				return connection.messages.pipe(Stream.map((message) => messageText(message, decoder)))
+		const openAndStream = Effect.gen(function* () {
+			dbg('frames: opening WS to', prepared.url)
+			const connection = yield* Effect.acquireRelease(
+				webSocket.open({ url: prepared.url, headers: prepared.headers }),
+				(connection) => {
+					dbg('frames: acquireRelease finalizer — closing WS')
+					return connection.close
+				},
+			)
+			dbg('frames: WS open, sending message')
+			yield* connection.sendText(prepared.message)
+			dbg('frames: message sent, returning message stream')
+			return connection.messages.pipe(Stream.map((message) => messageText(message, decoder)))
+		})
+		const withRetry = openAndStream.pipe(
+			Effect.tapError((error) =>
+				Effect.sync(() => dbg('frames: WS open failed, will retry if transport error.', connState(), error.reason._tag, error.reason.message)),
+			),
+			Effect.retry({
+				schedule: Schedule.both(Schedule.exponential('500 millis'), Schedule.recurs(5)),
+				while: (error: LLMError) => error.reason._tag === 'Transport',
 			}),
+			Effect.tapError((error) =>
+				Effect.sync(() => dbg('frames: all retries exhausted,', connState(), error.reason.message)),
+			),
 		)
+		return Stream.unwrap(withRetry)
 	},
 })
 
