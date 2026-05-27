@@ -329,7 +329,10 @@ export const json = <Body, Message>(input: JsonInput<Body, Message>): JsonTransp
 				),
 			),
 			Effect.retry({
-				schedule: Schedule.both(Schedule.jittered(Schedule.exponential('1 seconds')), Schedule.recurs(6)),
+				schedule: Schedule.andThen(
+					Schedule.both(Schedule.jittered(Schedule.exponential('1 seconds')), Schedule.recurs(4)),
+					Schedule.both(Schedule.jittered(Schedule.spaced('15 seconds')), Schedule.recurs(6)),
+				),
 				while: (error: LLMError) => error.reason._tag === 'Transport',
 			}),
 			Effect.tapError((error) =>
