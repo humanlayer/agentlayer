@@ -5,6 +5,9 @@ import { LLMError, TransportReason } from '../../schema'
 import * as HttpTransport from './http'
 import type { Transport } from './index'
 
+const DEBUG = process.env.DEBUG_CODEX_WS === '1'
+const dbg = (...args: unknown[]) => { if (DEBUG) console.error('[ws-transport]', ...args) }
+
 export interface WebSocketRequest {
 	readonly url: string
 	readonly headers: Headers.Headers
@@ -51,6 +54,7 @@ const binaryMessage = (data: unknown) => {
 }
 
 const waitOpen = (ws: globalThis.WebSocket, input: WebSocketRequest) => {
+	dbg('waitOpen: readyState=', ws.readyState, 'url=', input.url)
 	if (ws.readyState === globalThis.WebSocket.OPEN) return Effect.void
 	if (ws.readyState === globalThis.WebSocket.CLOSING || ws.readyState === globalThis.WebSocket.CLOSED) {
 		return Effect.fail(
@@ -150,7 +154,11 @@ export const fromWebSocket = (
 		const messages = yield* Queue.bounded<string | Uint8Array, LLMError | Cause.Done<void>>(128)
 
 		const onMessage = (event: MessageEvent) => {
-			if (typeof event.data === 'string') return Queue.offerUnsafe(messages, event.data)
+			if (typeof event.data === 'string') {
+				const preview = event.data.length > 120 ? event.data.substring(0, 120) + '...' : event.data
+				dbg('msg:', preview)
+				return Queue.offerUnsafe(messages, event.data)
+			}
 			const binary = binaryMessage(event.data)
 			if (binary) return Queue.offerUnsafe(messages, binary)
 			Queue.failCauseUnsafe(
@@ -164,6 +172,7 @@ export const fromWebSocket = (
 			)
 		}
 		const onError = (event: Event) => {
+			dbg('ws onerror:', eventMessage(event))
 			Queue.failCauseUnsafe(
 				messages,
 				Cause.fail(
@@ -175,6 +184,7 @@ export const fromWebSocket = (
 			)
 		}
 		const onClose = (event: CloseEvent) => {
+			dbg('ws onclose: code=', event.code, 'reason=', event.reason)
 			if (event.code === 1000 || event.code === 1005) return Queue.endUnsafe(messages)
 			Queue.failCauseUnsafe(
 				messages,
@@ -187,6 +197,7 @@ export const fromWebSocket = (
 			)
 		}
 		const cleanup = Effect.sync(() => {
+			dbg('cleanup: removing listeners, readyState=', ws.readyState)
 			ws.removeEventListener('message', onMessage)
 			ws.removeEventListener('error', onError)
 			ws.removeEventListener('close', onClose)
@@ -273,11 +284,17 @@ export const json = <Body, Message>(input: JsonInput<Body, Message>): JsonTransp
 		const decoder = new TextDecoder()
 		return Stream.unwrap(
 			Effect.gen(function* () {
+				dbg('frames: opening WS to', prepared.url)
 				const connection = yield* Effect.acquireRelease(
 					webSocket.open({ url: prepared.url, headers: prepared.headers }),
-					(connection) => connection.close,
+					(connection) => {
+						dbg('frames: acquireRelease finalizer — closing WS')
+						return connection.close
+					},
 				)
+				dbg('frames: WS open, sending message')
 				yield* connection.sendText(prepared.message)
+				dbg('frames: message sent, returning message stream')
 				return connection.messages.pipe(Stream.map((message) => messageText(message, decoder)))
 			}),
 		)

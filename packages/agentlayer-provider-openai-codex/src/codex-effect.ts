@@ -22,6 +22,12 @@ import {
 } from './codex'
 import { convertCallOptionsToLLMRequest } from './codex-ws-adapter'
 
+// Debug logging gated behind DEBUG_CODEX_WS=1
+const DEBUG = process.env.DEBUG_CODEX_WS === '1'
+const dbg = (...args: unknown[]) => {
+	if (DEBUG) console.error('[codex-ws]', ...args)
+}
+
 export interface CodexEffectProviderOptions extends CodexProviderOptions {
 	/**
 	 * Optional Effect layer that provides the LLMClient.Service. When set,
@@ -75,6 +81,7 @@ const emptyUsage: LanguageModelV3Usage = {
 type AnyLLMEvent = Record<string, unknown> & { type: string }
 
 function llmEventToStreamParts(event: AnyLLMEvent): LanguageModelV3StreamPart[] {
+	dbg('llmEvent:', event.type, event.type === 'finish' ? `reason=${event.reason}` : '')
 	switch (event.type) {
 		case 'text-start':
 			return [
@@ -166,10 +173,12 @@ function effectStreamToReadableStream(
 
 	return new ReadableStream<LanguageModelV3StreamPart>({
 		start(controller) {
+			dbg('ReadableStream.start — launching fiber')
 			// Run the Effect stream, pushing each element into the ReadableStream controller
 			const program = Stream.runForEach(effectStream, (part) =>
 				Effect.sync(() => {
 					if (!cancelled) {
+						dbg('enqueue:', part.type)
 						controller.enqueue(part)
 					}
 				}),
@@ -182,12 +191,16 @@ function effectStreamToReadableStream(
 			Fiber.join(fiber)
 				.pipe(Effect.runPromise)
 				.then(() => {
+					dbg('fiber completed — closing controller')
 					if (!cancelled) controller.close()
 				})
 				.catch((err) => {
+					dbg('fiber failed:', err instanceof Error ? err.message : typeof err, err)
 					if (!cancelled) {
+						const error =
+							err instanceof Error ? err : new Error(`LLM stream failed: ${JSON.stringify(err)}`)
 						try {
-							controller.error(err)
+							controller.error(error)
 						} catch {
 							// controller may already be closed
 						}
@@ -219,6 +232,7 @@ function effectStreamToReadableStream(
 			}
 		},
 		cancel() {
+			dbg('ReadableStream.cancel called')
 			cancelled = true
 			if (fiberRef) {
 				Fiber.interrupt(fiberRef)
@@ -297,6 +311,7 @@ function createEffectCodexModel(
 		},
 
 		async doStream(options) {
+			dbg('doStream called, abortSignal:', !!options.abortSignal)
 			// 1. Resolve auth
 			const { token, accountId } = await resolveAuth()
 
@@ -347,6 +362,7 @@ function createEffectCodexModel(
 
 			// 7. Convert Effect Stream to ReadableStream with abort signal support
 			const stream = effectStreamToReadableStream(fullStream, options.abortSignal)
+			dbg('doStream returning ReadableStream')
 
 			return {
 				stream,
