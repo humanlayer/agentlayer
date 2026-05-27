@@ -4,7 +4,12 @@
 	"private": true,
 	"type": "module",
 	"exports": {
-		"./protocols/openai-responses": "./src/protocols/openai-responses.ts"
+		"./protocols/openai-responses": "./src/protocols/openai-responses.ts",
+		"./route/client": "./src/route/client.ts",
+		"./route/executor": "./src/route/executor.ts",
+		"./route/auth": "./src/route/auth.ts",
+		"./route/transport/websocket": "./src/route/transport/websocket.ts",
+		"./schema": "./src/schema/index.ts"
 	},
 	"dependencies": {
 		"effect": "4.0.0-beta.66"

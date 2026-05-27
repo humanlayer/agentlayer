@@ -220,12 +220,12 @@
       "dependencies": {
         "@ai-sdk/openai": "catalog:",
         "@ai-sdk/provider": "catalog:",
+        "@humanlayer/agentlayer-core": "workspace:*",
         "@humanlayer/agentlayer-provider-auth": "workspace:*",
         "ai": "catalog:",
         "effect": "4.0.0-beta.66",
       },
       "devDependencies": {
-        "@humanlayer/agentlayer-core": "workspace:*",
         "@humanlayer/opencode-llm-vendor": "workspace:*",
         "@types/bun": "latest",
       },

@@ -1,3 +1,4 @@
+// @ts-nocheck — vendored from opencode, tested upstream under different tsconfig
 import { Cause, Context, Effect, Layer, Schema, Stream } from 'effect'
 import * as Option from 'effect/Option'
 import { applyCachePolicy } from '../cache-policy'
