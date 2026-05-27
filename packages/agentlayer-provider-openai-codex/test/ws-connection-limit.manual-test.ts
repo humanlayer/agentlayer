@@ -9,12 +9,7 @@
  */
 import { describe, test } from 'bun:test'
 import { ensureFileAuthStore } from '@humanlayer/agentlayer-provider-auth'
-import {
-	buildCodexUserAgent,
-	CODEX_API_ENDPOINT,
-	CODEX_DEFAULT_VERSION,
-	resolveCodexAuth,
-} from '../src/codex'
+import { buildCodexUserAgent, CODEX_API_ENDPOINT, CODEX_DEFAULT_VERSION, resolveCodexAuth } from '../src/codex'
 
 const WS_URL = CODEX_API_ENDPOINT.replace(/\/responses$/, '/responses').replace('https://', 'wss://')
 
@@ -50,11 +45,7 @@ async function resolveHeaders(): Promise<Record<string, string>> {
 	return headers
 }
 
-function openConnection(
-	index: number,
-	headers: Record<string, string>,
-	timeoutMs: number,
-): Promise<ConnectionResult> {
+function openConnection(index: number, headers: Record<string, string>, timeoutMs: number): Promise<ConnectionResult> {
 	const start = Date.now()
 	return new Promise((resolve) => {
 		let resolved = false
@@ -66,7 +57,9 @@ function openConnection(
 		}
 
 		const timer = setTimeout(() => {
-			try { ws.close() } catch {}
+			try {
+				ws.close()
+			} catch {}
 			done({ index, status: 'error', error: 'timeout', durationMs: Date.now() - start })
 		}, timeoutMs)
 
@@ -102,7 +95,11 @@ function openConnection(
 					})
 					return
 				}
-				if (parsed.type === 'response.completed' || parsed.type === 'response.failed' || parsed.type === 'response.incomplete') {
+				if (
+					parsed.type === 'response.completed' ||
+					parsed.type === 'response.failed' ||
+					parsed.type === 'response.incomplete'
+				) {
 					console.log(`  [${index}] ${parsed.type} (${Date.now() - start}ms)`)
 					ws.close()
 					done({ index, status: 'completed', firstEventType: parsed.type, durationMs: Date.now() - start })
@@ -139,27 +136,23 @@ async function probeConnectionLimit(headers: Record<string, string>, maxN: numbe
 
 	for (let n = 1; n <= maxN; n++) {
 		// Open N connections simultaneously
-		const promises = Array.from({ length: n }, (_, i) =>
-			openConnection(i, headers, 30000),
-		)
+		const promises = Array.from({ length: n }, (_, i) => openConnection(i, headers, 30000))
 
 		const results = await Promise.all(promises)
 		const succeeded = results.filter((r) => r.status === 'completed' || r.status === 'message-received')
 		const failed = results.filter((r) => r.status === 'error')
 
-		const avgDuration = Math.round(
-			results.reduce((sum, r) => sum + r.durationMs, 0) / results.length,
-		)
+		const avgDuration = Math.round(results.reduce((sum, r) => sum + r.durationMs, 0) / results.length)
 
 		const failReasons = failed.map((r) => r.error ?? 'unknown')
 		const uniqueReasons = [...new Set(failReasons)]
 
 		console.log(
 			`N=${String(n).padStart(2)}: ` +
-			`${String(succeeded.length).padStart(2)} ok, ` +
-			`${String(failed.length).padStart(2)} failed ` +
-			`(avg ${avgDuration}ms)` +
-			(uniqueReasons.length > 0 ? ` — ${uniqueReasons.join('; ')}` : ''),
+				`${String(succeeded.length).padStart(2)} ok, ` +
+				`${String(failed.length).padStart(2)} failed ` +
+				`(avg ${avgDuration}ms)` +
+				(uniqueReasons.length > 0 ? ` — ${uniqueReasons.join('; ')}` : ''),
 		)
 
 		// If we hit failures, run a couple more rounds to confirm the limit
@@ -167,11 +160,11 @@ async function probeConnectionLimit(headers: Record<string, string>, maxN: numbe
 			console.log(`\n>>> First failures at N=${n}. Running 2 more rounds to confirm...`)
 			for (let retry = 0; retry < 2; retry++) {
 				await new Promise((r) => setTimeout(r, 3000)) // cooldown
-				const retryPromises = Array.from({ length: n }, (_, i) =>
-					openConnection(i, headers, 30000),
-				)
+				const retryPromises = Array.from({ length: n }, (_, i) => openConnection(i, headers, 30000))
 				const retryResults = await Promise.all(retryPromises)
-				const retryOk = retryResults.filter((r) => r.status === 'completed' || r.status === 'message-received').length
+				const retryOk = retryResults.filter(
+					(r) => r.status === 'completed' || r.status === 'message-received',
+				).length
 				const retryFail = retryResults.filter((r) => r.status === 'error').length
 				console.log(`  Retry ${retry + 1}: ${retryOk} ok, ${retryFail} failed`)
 			}

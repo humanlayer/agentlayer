@@ -887,7 +887,12 @@ export class Agent<TTools extends Record<string, Tool<any, any>> = Record<string
 		}
 
 		if (streamError) {
-			const msg = streamError instanceof Error ? streamError.message : String(streamError)
+			const msg =
+				streamError instanceof Error
+					? streamError.message
+					: typeof streamError === 'string'
+						? streamError
+						: JSON.stringify(streamError)
 			throw new AgentError('unexpected_error', `Model stream error: ${msg}`)
 		}
 
@@ -902,7 +907,7 @@ export class Agent<TTools extends Record<string, Tool<any, any>> = Record<string
 				streamError instanceof Error
 					? streamError.message
 					: streamError != null
-						? String(streamError)
+						? (typeof streamError === 'string' ? streamError : JSON.stringify(streamError))
 						: undefined
 			const originalErrorMessage = err instanceof Error ? err.message : String(err)
 			const combinedMessage = streamErrorMessage
