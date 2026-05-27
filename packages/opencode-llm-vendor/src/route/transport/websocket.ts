@@ -319,10 +319,17 @@ export const json = <Body, Message>(input: JsonInput<Body, Message>): JsonTransp
 		})
 		const withRetry = openAndStream.pipe(
 			Effect.tapError((error) =>
-				Effect.sync(() => dbg('frames: WS open failed, will retry if transport error.', connState(), error.reason._tag, error.reason.message)),
+				Effect.sync(() =>
+					dbg(
+						'frames: WS open failed, will retry if transport error.',
+						connState(),
+						error.reason._tag,
+						error.reason.message,
+					),
+				),
 			),
 			Effect.retry({
-				schedule: Schedule.both(Schedule.exponential('500 millis'), Schedule.recurs(5)),
+				schedule: Schedule.both(Schedule.jittered(Schedule.exponential('500 millis')), Schedule.recurs(5)),
 				while: (error: LLMError) => error.reason._tag === 'Transport',
 			}),
 			Effect.tapError((error) =>
