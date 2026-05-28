@@ -2,7 +2,15 @@
 import { Schema } from 'effect'
 import { isRecord } from '../utils/record'
 import { JsonSchema, MessageRole, ProviderMetadata } from './ids'
-import { CacheHint, CachePolicy, GenerationOptions, HttpOptions, ModelSchema, ProviderOptions } from './options'
+import {
+	CacheHint,
+	CachePolicy,
+	GenerationOptions,
+	HttpOptions,
+	ModelSchema,
+	ProviderOptions,
+	StreamOptions,
+} from './options'
 
 const systemPartSchema = Schema.Struct({
 	type: Schema.Literal('text'),
@@ -236,6 +244,7 @@ export class LLMRequest extends Schema.Class<LLMRequest>('LLM.Request')({
 	generation: Schema.optional(GenerationOptions),
 	providerOptions: Schema.optional(ProviderOptions),
 	http: Schema.optional(HttpOptions),
+	stream: Schema.optional(StreamOptions),
 	responseFormat: Schema.optional(ResponseFormat),
 	cache: Schema.optional(CachePolicy),
 	metadata: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
@@ -254,6 +263,7 @@ export namespace LLMRequest {
 		generation: request.generation,
 		providerOptions: request.providerOptions,
 		http: request.http,
+		stream: request.stream,
 		responseFormat: request.responseFormat,
 		cache: request.cache,
 		metadata: request.metadata,

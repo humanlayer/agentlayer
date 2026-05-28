@@ -22,7 +22,14 @@ import {
 	ToolDefinition,
 	type ToolResultPart,
 } from '@humanlayer/opencode-llm-vendor/schema'
-import { CODEX_FAST_SERVICE_TIER } from './constants'
+import {
+	CODEX_EVENT_IDLE_TIMEOUT_MS,
+	CODEX_FAST_SERVICE_TIER,
+	CODEX_FIRST_EVENT_RETRY_BASE_DELAY_MS,
+	CODEX_FIRST_EVENT_RETRY_MAX_DELAY_MS,
+	CODEX_FIRST_EVENT_TIMEOUT_MS,
+	CODEX_FIRST_EVENT_TIMEOUT_RETRIES,
+} from './constants'
 import { strictifySchema } from './schema'
 import { normalizeCodexServiceTier } from './service-tier'
 
@@ -58,6 +65,13 @@ export function buildCodexModel(modelId: string, auth: Auth, baseURL: string, ro
 	const codexRoute = route.with({
 		auth,
 		endpoint: { baseURL },
+		stream: {
+			firstEventTimeoutMs: CODEX_FIRST_EVENT_TIMEOUT_MS,
+			firstEventTimeoutRetries: CODEX_FIRST_EVENT_TIMEOUT_RETRIES,
+			firstEventRetryBaseDelayMs: CODEX_FIRST_EVENT_RETRY_BASE_DELAY_MS,
+			firstEventRetryMaxDelayMs: CODEX_FIRST_EVENT_RETRY_MAX_DELAY_MS,
+			eventIdleTimeoutMs: CODEX_EVENT_IDLE_TIMEOUT_MS,
+		},
 	})
 
 	return Model.make({
