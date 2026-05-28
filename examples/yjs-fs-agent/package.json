@@ -1,6 +1,6 @@
 {
 	"name": "@humanlayer/yjs-fs-agent-example",
-	"version": "0.0.0",
+	"version": "0.0.36",
 	"private": true,
 	"type": "module",
 	"scripts": {

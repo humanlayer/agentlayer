@@ -25,5 +25,6 @@
 			"default": "./src/index.ts"
 		}
 	},
-	"dependencies": {}
+	"dependencies": {},
+	"version": "0.0.36"
 }
