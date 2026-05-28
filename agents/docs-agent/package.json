@@ -2,7 +2,7 @@
 	"name": "@humanlayer/docs-agent",
 	"module": "src/index.ts",
 	"type": "module",
-	"version": "0.0.0",
+	"version": "0.0.36",
 	"private": true,
 	"scripts": {
 		"typecheck": "tsgo --noEmit",

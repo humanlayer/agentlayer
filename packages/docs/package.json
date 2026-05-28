@@ -31,5 +31,6 @@
 		"preview": "vitepress preview content",
 		"pulumi:preview": "pulumi preview -s humanlayer/agentlayer-docs/prod --non-interactive",
 		"pulumi:up": "pulumi up -s humanlayer/agentlayer-docs/prod --yes --non-interactive"
-	}
+	},
+	"version": "0.0.36"
 }

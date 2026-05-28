@@ -1,5 +1,5 @@
 // @ts-nocheck — vendored from opencode, tested upstream under different tsconfig
-import { Cause, Context, Effect, Layer, Queue, Stream } from 'effect'
+import { Cause, Context, Effect, Layer, Queue, Schedule, Stream } from 'effect'
 import type { Headers } from 'effect/unstable/http'
 import { LLMError, TransportReason } from '../../schema'
 import * as HttpTransport from './http'
@@ -126,6 +126,8 @@ const webSocketUrl = (value: string) =>
 			}),
 	})
 
+const wsRetrySchedule = Schedule.exponential('500 millis').pipe(Schedule.jittered, Schedule.both(Schedule.recurs(5)))
+
 export const open = (input: WebSocketRequest) =>
 	Effect.try({
 		try: () =>
@@ -137,7 +139,10 @@ export const open = (input: WebSocketRequest) =>
 				url: input.url,
 				kind: 'open',
 			}),
-	}).pipe(Effect.flatMap((ws) => fromWebSocket(ws, input)))
+	}).pipe(
+		Effect.flatMap((ws) => fromWebSocket(ws, input)),
+		Effect.retry({ schedule: wsRetrySchedule, while: (error) => error.retryable }),
+	)
 
 export const layer: Layer.Layer<Service> = Layer.succeed(Service, Service.of({ open }))
 
