@@ -126,10 +126,7 @@ const webSocketUrl = (value: string) =>
 			}),
 	})
 
-const wsRetrySchedule = Schedule.exponential('500 millis').pipe(
-	Schedule.jittered,
-	Schedule.both(Schedule.recurs(2)),
-)
+const wsRetrySchedule = Schedule.exponential('500 millis').pipe(Schedule.jittered, Schedule.both(Schedule.recurs(5)))
 
 export const open = (input: WebSocketRequest) =>
 	Effect.try({
