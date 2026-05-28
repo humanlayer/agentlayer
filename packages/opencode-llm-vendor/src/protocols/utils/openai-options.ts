@@ -51,8 +51,10 @@ export const reasoningEffort = (request: LLMRequest): ReasoningEffort | undefine
 	return isAnyReasoningEffort(value) ? value : undefined
 }
 
-export const reasoningSummary = (request: LLMRequest): 'auto' | undefined =>
-	options(request)?.reasoningSummary === 'auto' ? 'auto' : undefined
+export const reasoningSummary = (request: LLMRequest): string | undefined => {
+	const value = options(request)?.reasoningSummary
+	return typeof value === 'string' ? value : undefined
+}
 
 // Resolve the OpenAI Responses `include` field. Filters out unknown
 // includable values defensively so a typo in upstream config drops the

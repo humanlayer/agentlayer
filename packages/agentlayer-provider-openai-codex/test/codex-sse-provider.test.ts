@@ -324,6 +324,9 @@ describe('codex SSE vendor provider (HTTP SSE transport)', () => {
 			prompt: [{ role: 'user', content: [{ type: 'text', text: 'Think through this.' }] }],
 		})
 
+		expect(result.content).toContainEqual(
+			expect.objectContaining({ type: 'reasoning', text: 'Thinking deeply via SSE.' }),
+		)
 		expect(result.content).toContainEqual(expect.objectContaining({ type: 'text', text: 'Final answer via SSE.' }))
 		expect(result.finishReason).toMatchObject({ unified: 'stop' })
 	})

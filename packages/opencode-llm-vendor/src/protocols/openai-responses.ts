@@ -132,7 +132,7 @@ const OpenAIResponsesCoreFields = {
 	reasoning: Schema.optional(
 		Schema.Struct({
 			effort: Schema.optional(OpenAIOptions.OpenAIReasoningEffort),
-			summary: Schema.optional(Schema.Literal('auto')),
+			summary: Schema.optional(Schema.String),
 		}),
 	),
 	text: Schema.optional(
