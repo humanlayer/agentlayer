@@ -361,6 +361,49 @@ describe('createCodelayerAgent', () => {
 		})
 	})
 
+	test('uses summarized adaptive thinking for opus 4.8 by default without changing provider defaults', () => {
+		const model = createMockModel('claude-opus-4-8')
+
+		expect(DEFAULT_MODELS.anthropic).toBe('claude-opus-4-5')
+		expect(buildProviderOptions(model).anthropic).toEqual({
+			thinking: { type: 'adaptive', display: 'summarized' },
+			effort: 'medium',
+			cacheControl: { type: 'ephemeral' },
+		})
+	})
+
+	test('uses summarized adaptive thinking with explicit xhigh CLI effort for opus 4.8', () => {
+		const model = createMockModel('claude-opus-4-8')
+		const overrides = applyCliThinkingOverride({
+			provider: 'anthropic',
+			modelId: 'claude-opus-4-8',
+			thinking: 'xhigh',
+			overrides: {},
+		})
+
+		expect(buildProviderOptions(model, overrides).anthropic).toEqual({
+			thinking: { type: 'adaptive', display: 'summarized' },
+			effort: 'xhigh',
+			cacheControl: { type: 'ephemeral' },
+		})
+	})
+
+	test('supports dot-form opus 4.8 CLI thinking validation', () => {
+		const model = createMockModel('claude-opus-4.8')
+		const overrides = applyCliThinkingOverride({
+			provider: 'anthropic',
+			modelId: 'claude-opus-4.8',
+			thinking: 'max',
+			overrides: {},
+		})
+
+		expect(buildProviderOptions(model, overrides).anthropic).toEqual({
+			thinking: { type: 'adaptive', display: 'summarized' },
+			effort: 'max',
+			cacheControl: { type: 'ephemeral' },
+		})
+	})
+
 	test('rejects invalid known model thinking combinations', () => {
 		expect(() =>
 			applyCliThinkingOverride({
@@ -379,6 +422,15 @@ describe('createCodelayerAgent', () => {
 				overrides: {},
 			}),
 		).toThrow('Unsupported --thinking value "xhigh"')
+
+		expect(() =>
+			applyCliThinkingOverride({
+				provider: 'anthropic',
+				modelId: 'claude-opus-4-8',
+				thinking: 'extreme',
+				overrides: {},
+			}),
+		).toThrow('Unsupported --thinking value "extreme"')
 	})
 
 	test('preserves explicit provider-option reasoning values over CLI defaults', () => {
