@@ -6,6 +6,7 @@ import {
 	type LanguageModelV3Usage,
 	NoSuchModelError,
 	type ProviderV3,
+	type SharedV3ProviderMetadata,
 } from '@ai-sdk/provider'
 import { createFileAuthStore } from '@humanlayer/agentlayer-provider-auth'
 import { route as httpSseRoute } from '@humanlayer/opencode-llm-vendor/protocols/openai-responses'
@@ -83,9 +84,30 @@ function createSseCodexModel(
 			let usage: LanguageModelV3Usage = emptyUsage
 			let finishReason: LanguageModelV3FinishReason = { unified: 'other', raw: undefined }
 			let text = ''
+			const reasoningBlocks = new Map<string, { text: string; providerMetadata?: SharedV3ProviderMetadata }>()
 
 			for (const part of parts) {
 				if (part.type === 'text-delta') text += part.delta
+				if (part.type === 'reasoning-start') {
+					reasoningBlocks.set(part.id, { text: '', providerMetadata: part.providerMetadata })
+				}
+				if (part.type === 'reasoning-delta') {
+					const block = reasoningBlocks.get(part.id) ?? { text: '', providerMetadata: part.providerMetadata }
+					block.text += part.delta
+					if (part.providerMetadata) block.providerMetadata = part.providerMetadata
+					reasoningBlocks.set(part.id, block)
+				}
+				if (part.type === 'reasoning-end') {
+					const block = reasoningBlocks.get(part.id)
+					if (block && block.text) {
+						content.push({
+							type: 'reasoning',
+							text: block.text,
+							providerMetadata: part.providerMetadata ?? block.providerMetadata,
+						})
+						reasoningBlocks.delete(part.id)
+					}
+				}
 				if (part.type === 'tool-call') {
 					content.push({
 						type: 'tool-call',
@@ -97,6 +119,11 @@ function createSseCodexModel(
 				if (part.type === 'finish') {
 					usage = part.usage
 					finishReason = part.finishReason
+				}
+			}
+			for (const block of reasoningBlocks.values()) {
+				if (block.text) {
+					content.push({ type: 'reasoning', text: block.text, providerMetadata: block.providerMetadata })
 				}
 			}
 

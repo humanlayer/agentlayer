@@ -590,14 +590,11 @@ describe('codex effect provider (WebSocket transport)', () => {
 		const { provider } = createTestProvider(REASONING_EVENTS)
 		const model = provider.languageModel('gpt-5.4')
 
-		// doGenerate collects stream parts internally. It reconstructs text
-		// from text-delta parts. Reasoning parts flow through the stream but
-		// are not assembled into content by doGenerate (they require streamText
-		// for the AI SDK to reconstruct them).
 		const result = await model.doGenerate({
 			prompt: [{ role: 'user', content: [{ type: 'text', text: 'Think through this.' }] }],
 		})
 
+		expect(result.content).toContainEqual(expect.objectContaining({ type: 'reasoning', text: 'Thinking deeply.' }))
 		expect(result.content).toContainEqual(expect.objectContaining({ type: 'text', text: 'Final answer.' }))
 		expect(result.finishReason).toMatchObject({ unified: 'stop' })
 	})
@@ -726,12 +723,7 @@ describe('codex effect provider (WebSocket transport)', () => {
 		const reasoning = body.reasoning as Record<string, unknown> | undefined
 		expect(reasoning).toBeDefined()
 		expect(reasoning!.effort).toBe('medium')
-		// The vendor's OpenAIOptions.reasoningSummary() only passes 'auto' to
-		// the wire body; 'detailed' (the adapter default) is not recognized by
-		// the vendor's lowerOptions, so reasoning.summary is undefined on wire.
-		// The adapter still sets providerOptions.openai.reasoningSummary to
-		// 'detailed' — the vendor just doesn't lower it to the wire body.
-		expect(reasoning!.summary).toBeUndefined()
+		expect(reasoning!.summary).toBe('detailed')
 	})
 
 	test('oauth auth injects ChatGPT-Account-Id header', async () => {
