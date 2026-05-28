@@ -1,3 +1,4 @@
+// @ts-nocheck — vendored from opencode, tested upstream under different tsconfig
 import { Cause, Context, Effect, Layer, Schema, Stream } from 'effect'
 import * as Option from 'effect/Option'
 import { applyCachePolicy } from '../cache-policy'
@@ -285,7 +286,7 @@ function makeFromTransport<Body, Prepared, Frame, Event, State>(
 					)
 				return events.pipe(
 					Stream.mapAccumEffect(
-						protocol.stream.initial,
+						() => protocol.stream.initial(request),
 						protocol.stream.step,
 						protocol.stream.onHalt ? { onHalt: protocol.stream.onHalt } : undefined,
 					),

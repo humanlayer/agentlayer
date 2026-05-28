@@ -11,7 +11,7 @@ import {
 	refreshAccessToken,
 	startDeviceOAuth,
 	writeOAuthTokens,
-} from '../src/codex-oauth'
+} from '../src/oauth'
 
 function createJwt(payload: Record<string, unknown>): string {
 	const encoded = Buffer.from(JSON.stringify(payload)).toString('base64url')

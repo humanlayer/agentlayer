@@ -1,19 +1,17 @@
 import { createOpenAI } from '@ai-sdk/openai'
 import { NoSuchModelError, type ProviderV3 } from '@ai-sdk/provider'
 import { createFileAuthStore } from '@humanlayer/agentlayer-provider-auth'
+import type { CodexFetchLike } from '../../oauth'
+import { buildCodexUserAgent, resolveCodexAuth } from '../../shared/auth'
 import {
-	buildCodexUserAgent,
 	CODEX_API_ENDPOINT,
 	CODEX_DEFAULT_VERSION,
 	CODEX_FAST_SERVICE_TIER,
-	type CodexProviderOptions,
-	normalizeCodexServiceTier,
-	resolveCodexAuth,
-} from './codex'
-import type { CodexFetchLike } from './codex-oauth'
-
-/** Default timeout for SSE chunk reads (2 minutes) - matches codex.ts */
-const DEFAULT_CHUNK_TIMEOUT_MS = 120_000
+	DEFAULT_CHUNK_TIMEOUT_MS,
+} from '../../shared/constants'
+import { normalizeCodexServiceTier } from '../../shared/service-tier'
+import { wrapSSE } from '../../shared/sse'
+import type { CodexProviderOptions } from '../../shared/types'
 
 export interface CodexResponsesProviderOptions extends CodexProviderOptions {
 	/**
@@ -22,60 +20,6 @@ export interface CodexResponsesProviderOptions extends CodexProviderOptions {
 	 * @default 120000 (2 minutes)
 	 */
 	chunkTimeout?: number | false
-}
-
-/**
- * Wraps an SSE response body with a per-chunk timeout. If no chunk arrives
- * within the timeout window, the AbortController is fired and the stream errors.
- *
- * Only wraps responses with content-type: text/event-stream.
- */
-function wrapSSE(res: Response, timeoutMs: number, abortCtl: AbortController): Response {
-	if (typeof timeoutMs !== 'number' || timeoutMs <= 0) return res
-	if (!res.body) return res
-	if (!res.headers.get('content-type')?.includes('text/event-stream')) return res
-
-	const reader = res.body.getReader()
-	const body = new ReadableStream<Uint8Array>({
-		async pull(ctrl) {
-			const part = await new Promise<{ done: boolean; value?: Uint8Array }>((resolve, reject) => {
-				const id = setTimeout(() => {
-					const err = new Error(`SSE stream read timed out after ${timeoutMs}ms - no data received`)
-					abortCtl.abort(err)
-					void reader.cancel(err)
-					reject(err)
-				}, timeoutMs)
-
-				reader.read().then(
-					(result) => {
-						clearTimeout(id)
-						resolve(result)
-					},
-					(err) => {
-						clearTimeout(id)
-						reject(err)
-					},
-				)
-			})
-
-			if (part.done) {
-				ctrl.close()
-				return
-			}
-
-			ctrl.enqueue(part.value)
-		},
-		async cancel(reason) {
-			abortCtl.abort(reason)
-			await reader.cancel(reason)
-		},
-	})
-
-	return new Response(body, {
-		headers: new Headers(res.headers),
-		status: res.status,
-		statusText: res.statusText,
-	})
 }
 
 /**

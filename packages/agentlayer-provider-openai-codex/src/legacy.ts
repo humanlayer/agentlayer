@@ -14,7 +14,7 @@ import {
 } from '@ai-sdk/provider'
 import type { AuthInfo, AuthStore, OAuthAuthInfo } from '@humanlayer/agentlayer-provider-auth'
 import { createFileAuthStore } from '@humanlayer/agentlayer-provider-auth'
-import { type CodexFetchLike, refreshAccessToken } from './codex-oauth'
+import { type CodexFetchLike, refreshAccessToken } from './oauth'
 
 export const CODEX_API_ENDPOINT = 'https://chatgpt.com/backend-api/codex/responses'
 export const CODEX_PROVIDER = 'openai.codex'

@@ -1,3 +1,4 @@
+// @ts-nocheck — vendored from opencode, tested upstream under different tsconfig
 import { Cause, Context, Effect, Layer, Queue, Stream } from 'effect'
 import type { Headers } from 'effect/unstable/http'
 import { LLMError, TransportReason } from '../../schema'

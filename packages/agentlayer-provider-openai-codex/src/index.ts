@@ -1,26 +1,23 @@
-export type { CodexProviderOptions, CodexRequestBody, CodexRequestOptions } from './codex'
+// --- Providers ---
+
+export type CodexProviderMode = 'sse' | 'aisdk_responses' | 'websockets'
+
+// --- JWT ---
+export * from './jwt'
+export type { CodexRequestBody } from './legacy'
+// --- Legacy (from old codex.ts — keep for backward compat until removed) ---
 export {
 	buildCodexHeaders,
 	buildCodexRequestBody,
-	buildCodexUserAgent,
-	CODEX_API_ENDPOINT,
-	CODEX_DEFAULT_VERSION,
-	CODEX_FAST_SERVICE_TIER,
-	CODEX_FLEX_SERVICE_TIER,
-	CODEX_PROVIDER,
-	CODEX_PROVIDER_ID,
 	createCodexLanguageModel,
 	createCodexProvider,
 	createCodexSseStream,
-	normalizeCodexServiceTier,
 	parseCodexSseResponse,
 	prepareCodexRequest,
-	resolveCodexAuth,
 	streamPartsToGenerateResult,
 	transformCodexPrompt,
-} from './codex'
-export { type CodexEffectProviderOptions, createCodexEffectProvider } from './codex-effect'
-export * from './codex-jwt'
+} from './legacy'
+// --- OAuth ---
 export {
 	type BrowserOAuthStartResult,
 	buildAuthorizeUrl,
@@ -46,5 +43,20 @@ export {
 	startBrowserOAuth,
 	startDeviceOAuth,
 	writeOAuthTokens,
-} from './codex-oauth'
-export { type CodexResponsesProviderOptions, createCodexResponsesProvider } from './codex-responses'
+} from './oauth'
+export { type CodexResponsesProviderOptions, createCodexResponsesProvider } from './providers/aisdk-codex-provider'
+export { type CodexSseVendorProviderOptions, createCodexSseVendorProvider } from './providers/sse-vendor-provider'
+export { type CodexEffectProviderOptions, createCodexEffectProvider } from './providers/websockets-vendor-provider'
+// --- Auth ---
+export { buildCodexUserAgent, resolveCodexAuth } from './shared/auth'
+// --- Shared constants ---
+export {
+	CODEX_API_ENDPOINT,
+	CODEX_DEFAULT_VERSION,
+	CODEX_FAST_SERVICE_TIER,
+	CODEX_FLEX_SERVICE_TIER,
+	CODEX_PROVIDER,
+	CODEX_PROVIDER_ID,
+} from './shared/constants'
+export { normalizeCodexServiceTier } from './shared/service-tier'
+export type { CodexProviderOptions, CodexRequestOptions } from './shared/types'

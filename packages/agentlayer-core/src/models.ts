@@ -74,7 +74,9 @@ export class ModelProvider {
 
 			// AI SDK provider keys include a suffix (e.g. "anthropic.messages", "openai.chat")
 			// but models.dev uses the base provider name (e.g. "anthropic", "openai")
-			const providerKey = rawProviderKey.split('.')[0]!
+			const baseKey = rawProviderKey.split('.')[0]!
+			// Codex providers use custom names but their models are OpenAI models
+			const providerKey = baseKey.startsWith('codex') ? 'openai' : baseKey
 
 			const provider = this.modelsData[providerKey]
 			if (!provider?.models) return undefined

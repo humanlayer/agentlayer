@@ -17,7 +17,7 @@ setDefaultTimeout(60_000) // 60 second timeout for real API calls
 
 import { createFileAuthStore } from '@humanlayer/agentlayer-provider-auth'
 import { streamText } from 'ai'
-import { buildCodexRequestBody, createCodexLanguageModel } from '../src/codex'
+import { buildCodexRequestBody, createCodexLanguageModel } from '../src/legacy'
 
 const authStore = createFileAuthStore()
 const hasAuth = await authStore
