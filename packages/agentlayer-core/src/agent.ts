@@ -907,7 +907,9 @@ export class Agent<TTools extends Record<string, Tool<any, any>> = Record<string
 				streamError instanceof Error
 					? streamError.message
 					: streamError != null
-						? (typeof streamError === 'string' ? streamError : JSON.stringify(streamError))
+						? typeof streamError === 'string'
+							? streamError
+							: JSON.stringify(streamError)
 						: undefined
 			const originalErrorMessage = err instanceof Error ? err.message : String(err)
 			const combinedMessage = streamErrorMessage

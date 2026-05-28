@@ -1,30 +1,27 @@
-export type { CodexProviderOptions, CodexRequestBody, CodexRequestOptions } from './codex'
+// --- Providers ---
+export { type CodexEffectProviderOptions, createCodexEffectProvider } from './providers/websocket-codex-provider'
 export {
-	buildCodexHeaders,
-	buildCodexRequestBody,
-	buildCodexUserAgent,
+	type CodexCustomResponsesProviderOptions,
+	createCodexCustomResponsesProvider,
+} from './providers/custom-codex-provider'
+export { type CodexResponsesProviderOptions, createCodexResponsesProvider } from './providers/aisdk-codex-provider'
+
+// --- Shared constants ---
+export {
 	CODEX_API_ENDPOINT,
 	CODEX_DEFAULT_VERSION,
 	CODEX_FAST_SERVICE_TIER,
 	CODEX_FLEX_SERVICE_TIER,
 	CODEX_PROVIDER,
 	CODEX_PROVIDER_ID,
-	createCodexLanguageModel,
-	createCodexProvider,
-	createCodexSseStream,
-	normalizeCodexServiceTier,
-	parseCodexSseResponse,
-	prepareCodexRequest,
-	resolveCodexAuth,
-	streamPartsToGenerateResult,
-	transformCodexPrompt,
-} from './codex'
-export {
-	type CodexCustomResponsesProviderOptions,
-	createCodexCustomResponsesProvider,
-} from './codex-custom-responses'
-export { type CodexEffectProviderOptions, createCodexEffectProvider } from './codex-effect'
-export * from './codex-jwt'
+} from './shared/constants'
+
+// --- Auth ---
+export { resolveCodexAuth, buildCodexUserAgent } from './shared/auth'
+export { normalizeCodexServiceTier } from './shared/service-tier'
+export type { CodexProviderOptions, CodexRequestOptions } from './shared/types'
+
+// --- OAuth ---
 export {
 	type BrowserOAuthStartResult,
 	buildAuthorizeUrl,
@@ -50,5 +47,21 @@ export {
 	startBrowserOAuth,
 	startDeviceOAuth,
 	writeOAuthTokens,
-} from './codex-oauth'
-export { type CodexResponsesProviderOptions, createCodexResponsesProvider } from './codex-responses'
+} from './oauth'
+
+// --- JWT ---
+export * from './jwt'
+
+// --- Legacy (from old codex.ts — keep for backward compat until removed) ---
+export {
+	buildCodexHeaders,
+	buildCodexRequestBody,
+	createCodexLanguageModel,
+	createCodexProvider,
+	createCodexSseStream,
+	parseCodexSseResponse,
+	prepareCodexRequest,
+	streamPartsToGenerateResult,
+	transformCodexPrompt,
+} from './legacy'
+export type { CodexRequestBody } from './legacy'

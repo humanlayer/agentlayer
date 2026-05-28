@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test'
-import { buildCodexRequestBody, normalizeCodexServiceTier } from '../src/codex'
+import { buildCodexRequestBody } from '../src/legacy'
+import { normalizeCodexServiceTier } from '../src/shared/service-tier'
 
 describe('buildCodexRequestBody', () => {
 	test('moves system and developer instructions into top-level instructions', () => {

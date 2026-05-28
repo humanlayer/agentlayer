@@ -1,7 +1,8 @@
 import { createServer } from 'node:http'
 import { setTimeout as sleep } from 'node:timers/promises'
 import type { AuthStore, OAuthAuthInfo } from '@humanlayer/agentlayer-provider-auth'
-import { type CodexTokenResponse, extractAccountId } from './codex-jwt'
+import { buildCodexUserAgent } from './shared/auth'
+import { type CodexTokenResponse, extractAccountId } from './jwt'
 
 export const CODEX_CLIENT_ID = 'app_EMoamEEZ73f0CkXaXp7hrann'
 export const CODEX_ISSUER = 'https://auth.openai.com'
@@ -363,9 +364,7 @@ export async function startDeviceOAuth(options: StartDeviceOAuthOptions): Promis
 	}
 }
 
-export function buildCodexUserAgent(version: string): string {
-	return `opencode/${version}`
-}
+export { buildCodexUserAgent } from './shared/auth'
 
 function renderSuccessHtml(): string {
 	return `<!doctype html>

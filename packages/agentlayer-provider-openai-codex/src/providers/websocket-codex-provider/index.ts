@@ -12,15 +12,13 @@ import { Auth } from '@humanlayer/opencode-llm-vendor/route/auth'
 import { LLMClient } from '@humanlayer/opencode-llm-vendor/route/client'
 import { RequestExecutor } from '@humanlayer/opencode-llm-vendor/route/executor'
 import { WebSocketExecutor } from '@humanlayer/opencode-llm-vendor/route/transport/websocket'
-import { Effect, Fiber, Layer, Stream } from 'effect'
-import {
-	buildCodexUserAgent,
-	CODEX_API_ENDPOINT,
-	CODEX_DEFAULT_VERSION,
-	type CodexProviderOptions,
-	resolveCodexAuth,
-} from './codex'
-import { convertCallOptionsToLLMRequest } from './codex-ws-adapter'
+import { Effect, Layer, Stream } from 'effect'
+import { buildCodexUserAgent, resolveCodexAuth } from '../../shared/auth'
+import { CODEX_API_ENDPOINT, CODEX_DEFAULT_VERSION } from '../../shared/constants'
+import { type AnyLLMEvent, emptyUsage, llmEventToStreamParts } from '../../shared/events'
+import type { CodexProviderOptions } from '../../shared/types'
+import { convertCallOptionsToLLMRequest } from './adapter'
+import { effectStreamToReadableStream } from './bridge'
 
 // Debug logging gated behind DEBUG_CODEX_WS=1
 const DEBUG = process.env.DEBUG_CODEX_WS === '1'
@@ -41,112 +39,6 @@ export interface CodexEffectProviderOptions extends CodexProviderOptions {
 }
 
 // ---------------------------------------------------------------------------
-// LLMEvent -> LanguageModelV3StreamPart
-// ---------------------------------------------------------------------------
-
-function convertUsage(event: Record<string, unknown>): LanguageModelV3Usage {
-	const u = event.usage as Record<string, number | undefined> | undefined
-	return {
-		inputTokens: {
-			total: u?.inputTokens ?? 0,
-			noCache: u?.nonCachedInputTokens ?? undefined,
-			cacheRead: u?.cacheReadInputTokens ?? undefined,
-			cacheWrite: u?.cacheWriteInputTokens ?? undefined,
-		},
-		outputTokens: {
-			total: u?.outputTokens ?? 0,
-			reasoning: u?.reasoningTokens ?? undefined,
-			text: u ? Math.max(0, (u.outputTokens ?? 0) - (u.reasoningTokens ?? 0)) : undefined,
-		},
-	}
-}
-
-function convertFinishReason(reason: string): LanguageModelV3FinishReason {
-	const map: Record<string, 'stop' | 'length' | 'content-filter' | 'tool-calls' | 'error' | 'other'> = {
-		stop: 'stop',
-		length: 'length',
-		'content-filter': 'content-filter',
-		'tool-calls': 'tool-calls',
-		error: 'error',
-	}
-	return { unified: map[reason] ?? 'other', raw: reason }
-}
-
-const emptyUsage: LanguageModelV3Usage = {
-	inputTokens: { total: 0, noCache: undefined, cacheRead: undefined, cacheWrite: undefined },
-	outputTokens: { total: 0, text: undefined, reasoning: undefined },
-}
-
-// The LLMEvent type is a tagged union from Effect Schema. We access fields via record indexing.
-type AnyLLMEvent = Record<string, unknown> & { type: string }
-
-function llmEventToStreamParts(event: AnyLLMEvent): LanguageModelV3StreamPart[] {
-	dbg('llmEvent:', event.type, event.type === 'finish' ? `reason=${event.reason}` : '')
-	switch (event.type) {
-		case 'text-start':
-			return [
-				{ type: 'text-start', id: event.id as string, providerMetadata: event.providerMetadata as undefined },
-			]
-		case 'text-delta':
-			return [{ type: 'text-delta', id: event.id as string, delta: event.text as string }]
-		case 'text-end':
-			return [
-				{
-					type: 'text-end',
-					id: event.id as string,
-					providerMetadata: event.providerMetadata as undefined,
-				},
-			]
-		case 'reasoning-start':
-			return [
-				{
-					type: 'reasoning-start',
-					id: event.id as string,
-					providerMetadata: event.providerMetadata as undefined,
-				},
-			]
-		case 'reasoning-delta':
-			return [{ type: 'reasoning-delta', id: event.id as string, delta: event.text as string }]
-		case 'reasoning-end':
-			return [
-				{
-					type: 'reasoning-end',
-					id: event.id as string,
-					providerMetadata: event.providerMetadata as undefined,
-				},
-			]
-		case 'tool-input-start':
-			return [{ type: 'tool-input-start', id: event.id as string, toolName: event.name as string }]
-		case 'tool-input-delta':
-			return [{ type: 'tool-input-delta', id: event.id as string, delta: event.text as string }]
-		case 'tool-input-end':
-			return [{ type: 'tool-input-end', id: event.id as string }]
-		case 'tool-call':
-			return [
-				{
-					type: 'tool-call',
-					toolCallId: event.id as string,
-					toolName: event.name as string,
-					input: typeof event.input === 'string' ? event.input : JSON.stringify(event.input),
-				},
-			]
-		case 'finish':
-			return [
-				{
-					type: 'finish',
-					finishReason: convertFinishReason(event.reason as string),
-					usage: convertUsage(event),
-					providerMetadata: event.providerMetadata as undefined,
-				},
-			]
-		case 'provider-error':
-			return [{ type: 'error', error: new Error(event.message as string) }]
-		default:
-			return []
-	}
-}
-
-// ---------------------------------------------------------------------------
 // Build LLMClient layer
 // ---------------------------------------------------------------------------
 
@@ -154,94 +46,6 @@ const llmClientLayer = LLMClient.layer.pipe(
 	Layer.provide(RequestExecutor.defaultLayer),
 	Layer.provide(WebSocketExecutor.layer),
 )
-
-// ---------------------------------------------------------------------------
-// Effect Stream -> ReadableStream bridge with abort signal support
-// ---------------------------------------------------------------------------
-
-/**
- * Convert an Effect Stream into a ReadableStream, with optional AbortSignal
- * support. When the abort signal fires, the Effect fiber is interrupted which
- * propagates through the vendor's acquireRelease to close the WebSocket.
- */
-function effectStreamToReadableStream(
-	effectStream: Stream.Stream<LanguageModelV3StreamPart, unknown>,
-	abortSignal?: AbortSignal,
-): ReadableStream<LanguageModelV3StreamPart> {
-	let cancelled = false
-	let fiberRef: ReturnType<typeof Effect.runFork> | undefined
-
-	return new ReadableStream<LanguageModelV3StreamPart>({
-		start(controller) {
-			dbg('ReadableStream.start — launching fiber')
-			// Run the Effect stream, pushing each element into the ReadableStream controller
-			const program = Stream.runForEach(effectStream, (part) =>
-				Effect.sync(() => {
-					if (!cancelled) {
-						dbg('enqueue:', part.type)
-						controller.enqueue(part)
-					}
-				}),
-			).pipe(Effect.scoped)
-
-			const fiber = Effect.runFork(program)
-			fiberRef = fiber
-
-			// When the fiber completes, close or error the controller
-			Fiber.join(fiber)
-				.pipe(Effect.runPromise)
-				.then(() => {
-					dbg('fiber completed — closing controller')
-					if (!cancelled) controller.close()
-				})
-				.catch((err) => {
-					dbg('fiber failed:', err instanceof Error ? err.message : typeof err, err)
-					if (!cancelled) {
-						const error =
-							err instanceof Error ? err : new Error(`LLM stream failed: ${JSON.stringify(err)}`)
-						try {
-							controller.error(error)
-						} catch {
-							// controller may already be closed
-						}
-					}
-				})
-
-			// Wire abort signal to fiber interruption (DQ6 pattern)
-			if (abortSignal) {
-				if (abortSignal.aborted) {
-					cancelled = true
-					Fiber.interrupt(fiber)
-						.pipe(Effect.runPromise)
-						.catch(() => {})
-					controller.close()
-				} else {
-					const onAbort = () => {
-						cancelled = true
-						Fiber.interrupt(fiber)
-							.pipe(Effect.runPromise)
-							.catch(() => {})
-						try {
-							controller.close()
-						} catch {
-							// controller may already be closed
-						}
-					}
-					abortSignal.addEventListener('abort', onAbort, { once: true })
-				}
-			}
-		},
-		cancel() {
-			dbg('ReadableStream.cancel called')
-			cancelled = true
-			if (fiberRef) {
-				Fiber.interrupt(fiberRef)
-					.pipe(Effect.runPromise)
-					.catch(() => {})
-			}
-		},
-	})
-}
 
 // ---------------------------------------------------------------------------
 // LanguageModelV3 implementation

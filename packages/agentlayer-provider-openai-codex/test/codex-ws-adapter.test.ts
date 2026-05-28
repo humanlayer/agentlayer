@@ -9,7 +9,7 @@ import {
 	convertTools,
 	mapProviderOptions,
 	strictifySchema,
-} from '../src/codex-ws-adapter'
+} from '../src/providers/websocket-codex-provider/adapter'
 
 // ---------------------------------------------------------------------------
 // Helpers

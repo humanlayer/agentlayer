@@ -14,7 +14,7 @@ import {
 	CODEX_PROVIDER_ID,
 	createCodexLanguageModel,
 	createCodexProvider,
-} from '../src/codex'
+} from '../src/legacy'
 
 function encodeSseEvents(events: unknown[], includeDone = true): string {
 	return `${events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join('')}${includeDone ? 'data: [DONE]\n\n' : ''}`

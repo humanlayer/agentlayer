@@ -20,8 +20,8 @@ import {
 import type { LLMError } from '@humanlayer/opencode-llm-vendor/schema'
 import { jsonSchema, streamText } from 'ai'
 import { type Cause, Effect, Layer, Queue, Stream } from 'effect'
-import { CODEX_PROVIDER_ID } from '../src/codex'
-import { createCodexEffectProvider } from '../src/codex-effect'
+import { CODEX_PROVIDER_ID } from '../src/shared/constants'
+import { createCodexEffectProvider } from '../src/providers/websocket-codex-provider'
 
 // ---------------------------------------------------------------------------
 // Mock WebSocket helpers

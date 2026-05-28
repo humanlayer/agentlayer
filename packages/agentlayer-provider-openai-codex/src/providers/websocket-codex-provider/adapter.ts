@@ -23,29 +23,12 @@ import {
 	ToolDefinition,
 	type ToolResultPart,
 } from '@humanlayer/opencode-llm-vendor/schema'
-import { CODEX_FAST_SERVICE_TIER, normalizeCodexServiceTier } from './codex'
+import { CODEX_FAST_SERVICE_TIER } from '../../shared/constants'
+import { normalizeCodexServiceTier } from '../../shared/service-tier'
 
-// ---------------------------------------------------------------------------
-// strictifySchema — reused from the existing codex-effect.ts
-// ---------------------------------------------------------------------------
-
-export function strictifySchema(schema: Record<string, unknown>): void {
-	delete schema.format
-	const props = schema.properties as Record<string, Record<string, unknown>> | undefined
-	if (props) {
-		schema.required = Object.keys(props)
-		schema.additionalProperties = false
-		for (const prop of Object.values(props)) {
-			strictifySchema(prop)
-		}
-	}
-	const items = schema.items as Record<string, unknown> | undefined
-	if (items) strictifySchema(items)
-	const anyOf = schema.anyOf as Record<string, unknown>[] | undefined
-	if (anyOf) for (const s of anyOf) strictifySchema(s)
-	const oneOf = schema.oneOf as Record<string, unknown>[] | undefined
-	if (oneOf) for (const s of oneOf) strictifySchema(s)
-}
+// Re-export for backward compatibility with tests
+export { strictifySchema } from '../../shared/schema'
+import { strictifySchema } from '../../shared/schema'
 
 // ---------------------------------------------------------------------------
 // Adapter config
