@@ -1,5 +1,5 @@
 // @ts-nocheck — vendored from opencode, tested upstream under different tsconfig
-import { Cause, Context, Effect, Layer, Schema, Stream } from 'effect'
+import { Cause, Context, Effect, Layer, Random, Schema, Sink, Stream } from 'effect'
 import * as Option from 'effect/Option'
 import { applyCachePolicy } from '../cache-policy'
 import * as ProviderShared from '../protocols/shared'
@@ -15,8 +15,11 @@ import {
 	mergeGenerationOptions,
 	mergeHttpOptions,
 	mergeProviderOptions,
+	mergeStreamOptions,
 	PreparedRequest,
 	ProviderID,
+	StreamOptions,
+	TransportReason,
 } from '../schema'
 import type { Tools } from '../tool'
 import * as ToolRuntime from '../tool-runtime'
@@ -72,6 +75,7 @@ export interface RouteDefaults {
 	readonly generation?: GenerationOptions
 	readonly providerOptions?: ProviderOptions
 	readonly http?: HttpOptions
+	readonly stream?: StreamOptions
 }
 
 export interface RouteDefaultsInput {
@@ -80,6 +84,7 @@ export interface RouteDefaultsInput {
 	readonly generation?: GenerationOptions.Input
 	readonly providerOptions?: ProviderOptions
 	readonly http?: HttpOptions.Input
+	readonly stream?: StreamOptions.Input
 }
 
 export interface RoutePatch<Body, Prepared> extends RouteDefaultsInput {
@@ -118,6 +123,7 @@ const mergeRouteDefaults = (base: RouteDefaults | undefined, patch: RouteDefault
 			httpOptions(patch.http),
 			headers === undefined ? undefined : new HttpOptions({ headers }),
 		),
+		stream: mergeStreamOptions(base?.stream, streamOptions(patch.stream)),
 	}
 }
 
@@ -140,6 +146,11 @@ export const generationOptions = (input: GenerationOptions.Input | undefined) =>
 export const httpOptions = (input: HttpOptionsInput | undefined) => {
 	if (input === undefined) return input
 	return HttpOptions.make(input)
+}
+
+export const streamOptions = (input: StreamOptions.Input | undefined) => {
+	if (input === undefined) return input
+	return StreamOptions.make(input)
 }
 
 export interface Interface {
@@ -177,6 +188,7 @@ const resolveRequestOptions = (request: LLMRequest) =>
 			new GenerationOptions({}),
 		providerOptions: mergeProviderOptions(request.model.route.defaults.providerOptions, request.providerOptions),
 		http: mergeHttpOptions(request.model.route.defaults.http, request.http),
+		stream: mergeStreamOptions(request.model.route.defaults.stream, request.stream),
 	})
 
 export interface MakeInput<Body, Frame, Event, State> {
@@ -221,6 +233,98 @@ const streamError = (route: string, message: string, cause: Cause.Cause<unknown>
 	const failed = cause.reasons.find(Cause.isFailReason)?.error
 	if (failed instanceof LLMErrorClass) return failed
 	return ProviderShared.eventError(route, message, Cause.pretty(cause))
+}
+
+const FIRST_EVENT_TIMEOUT_KIND = 'ProtocolFirstEventTimeout'
+const EVENT_IDLE_TIMEOUT_KIND = 'ProtocolEventIdleTimeout'
+const DEFAULT_FIRST_EVENT_RETRY_BASE_DELAY_MS = 1_000
+const DEFAULT_FIRST_EVENT_RETRY_MAX_DELAY_MS = 10_000
+
+const positiveNumber = (value: number | undefined) =>
+	typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : undefined
+
+const nonNegativeInteger = (value: number | undefined) =>
+	typeof value === 'number' && Number.isFinite(value) && value > 0 ? Math.floor(value) : 0
+
+const durationMs = (value: number) => `${Math.round(value)} millis`
+
+const protocolEventTimeoutError = (route: string, kind: string, timeoutMs: number) =>
+	new LLMErrorClass({
+		module: 'LLMClient',
+		method: 'stream',
+		reason: new TransportReason({
+			message: `No provider protocol event received for ${timeoutMs}ms while streaming ${route}`,
+			kind,
+		}),
+	})
+
+const isFirstEventTimeout = (error: LLMError) =>
+	error instanceof LLMErrorClass &&
+	error.reason?._tag === 'Transport' &&
+	error.reason?.kind === FIRST_EVENT_TIMEOUT_KIND
+
+const withEventIdleTimeout = <A>(stream: Stream.Stream<A, LLMError>, route: string, timeoutMs: number | undefined) => {
+	const idleTimeoutMs = positiveNumber(timeoutMs)
+	if (!idleTimeoutMs) return stream
+	return stream.pipe(
+		Stream.timeoutOrElse({
+			duration: durationMs(idleTimeoutMs),
+			orElse: () => Stream.fail(protocolEventTimeoutError(route, EVENT_IDLE_TIMEOUT_KIND, idleTimeoutMs)),
+		}),
+	)
+}
+
+const withProtocolEventTimeouts = <A>(
+	stream: Stream.Stream<A, LLMError>,
+	route: string,
+	request: LLMRequest,
+): Stream.Stream<A, LLMError> => {
+	const firstTimeoutMs = positiveNumber(request.stream?.firstEventTimeoutMs)
+	const idleTimeoutMs = positiveNumber(request.stream?.eventIdleTimeoutMs)
+	if (!firstTimeoutMs) return withEventIdleTimeout(stream, route, idleTimeoutMs)
+
+	return Stream.unwrap(
+		Effect.gen(function* () {
+			const [first, rest] = yield* Stream.peel(stream, Sink.head()).pipe(
+				Effect.timeoutOrElse({
+					duration: durationMs(firstTimeoutMs),
+					orElse: () =>
+						Effect.fail(protocolEventTimeoutError(route, FIRST_EVENT_TIMEOUT_KIND, firstTimeoutMs)),
+				}),
+			)
+			if (Option.isNone(first)) return Stream.empty
+			return Stream.concat(Stream.make(first.value), withEventIdleTimeout(rest, route, idleTimeoutMs))
+		}),
+	)
+}
+
+const firstEventRetryDelay = (options: StreamOptions, attempt: number) => {
+	const baseDelayMs = positiveNumber(options.firstEventRetryBaseDelayMs) ?? DEFAULT_FIRST_EVENT_RETRY_BASE_DELAY_MS
+	const maxDelayMs = positiveNumber(options.firstEventRetryMaxDelayMs) ?? DEFAULT_FIRST_EVENT_RETRY_MAX_DELAY_MS
+	const target = Math.min(baseDelayMs * 2 ** attempt, maxDelayMs)
+	return Random.nextBetween(Math.min(target * 0.8, maxDelayMs), Math.min(target * 1.2, maxDelayMs)).pipe(
+		Effect.map((delay) => Math.round(delay)),
+	)
+}
+
+const retryFirstEventTimeout = <A>(
+	makeStream: () => Stream.Stream<A, LLMError>,
+	options: StreamOptions | undefined,
+	attempt = 0,
+): Stream.Stream<A, LLMError> => {
+	const retries = nonNegativeInteger(options?.firstEventTimeoutRetries)
+	if (retries <= 0) return makeStream()
+	return makeStream().pipe(
+		Stream.catchTag('LLM.Error', (error) => {
+			if (!isFirstEventTimeout(error) || attempt >= retries) return Stream.fail(error)
+			return Stream.unwrap(
+				firstEventRetryDelay(options!, attempt).pipe(
+					Effect.flatMap((delay) => Effect.sleep(durationMs(delay))),
+					Effect.map(() => retryFirstEventTimeout(makeStream, options, attempt + 1)),
+				),
+			)
+		}),
+	)
 }
 
 function makeFromTransport<Body, Prepared, Frame, Event, State>(
@@ -278,12 +382,13 @@ function makeFromTransport<Body, Prepared, Frame, Event, State>(
 				}),
 			streamPrepared: (prepared: Prepared, request: LLMRequest, runtime: TransportRuntime) => {
 				const route = `${request.model.provider}/${request.model.route.id}`
-				const events = routeInput.transport
+				const decodedEvents = routeInput.transport
 					.frames(prepared, request, runtime)
 					.pipe(
 						Stream.mapEffect(decodeEvent(route)),
 						protocol.stream.terminal ? Stream.takeUntil(protocol.stream.terminal) : (stream) => stream,
 					)
+				const events = withProtocolEventTimeouts(decodedEvents, route, request)
 				return events.pipe(
 					Stream.mapAccumEffect(
 						() => protocol.stream.initial(request),
@@ -373,13 +478,19 @@ const prepareWith = Effect.fn('LLMClient.prepare')(function* (request: LLMReques
 	})
 })
 
-const streamRequestWith = (runtime: TransportRuntime) => (request: LLMRequest) =>
-	Stream.unwrap(
-		Effect.gen(function* () {
-			const compiled = yield* compile(request)
-			return compiled.route.streamPrepared(compiled.prepared, compiled.request, runtime)
-		}),
+const streamRequestWith = (runtime: TransportRuntime) => (request: LLMRequest) => {
+	const options = mergeStreamOptions(request.model.route.defaults.stream, request.stream)
+	return retryFirstEventTimeout(
+		() =>
+			Stream.unwrap(
+				Effect.gen(function* () {
+					const compiled = yield* compile(request)
+					return compiled.route.streamPrepared(compiled.prepared, compiled.request, runtime)
+				}),
+			),
+		options,
 	)
+}
 
 const isToolRunOptions = (input: LLMRequest | ToolRuntime.RunOptions<Tools>): input is ToolRuntime.RunOptions<Tools> =>
 	'request' in input && 'tools' in input

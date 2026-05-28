@@ -71,6 +71,38 @@ export const mergeHttpOptions = (...items: ReadonlyArray<HttpOptions | undefined
 	return new HttpOptions({ body, headers, query })
 }
 
+export class StreamOptions extends Schema.Class<StreamOptions>('LLM.StreamOptions')({
+	firstEventTimeoutMs: Schema.optional(Schema.Number),
+	firstEventTimeoutRetries: Schema.optional(Schema.Number),
+	firstEventRetryBaseDelayMs: Schema.optional(Schema.Number),
+	firstEventRetryMaxDelayMs: Schema.optional(Schema.Number),
+	eventIdleTimeoutMs: Schema.optional(Schema.Number),
+}) {}
+
+export namespace StreamOptions {
+	export type Input = StreamOptions | ConstructorParameters<typeof StreamOptions>[0]
+
+	/** Normalize stream option input into the canonical `StreamOptions` class. */
+	export const make = (input: Input) => (input instanceof StreamOptions ? input : new StreamOptions(input))
+}
+
+export const mergeStreamOptions = (...items: ReadonlyArray<StreamOptions | undefined>): StreamOptions | undefined => {
+	const defined = items.filter((item): item is StreamOptions => item !== undefined)
+	if (defined.length === 0) return undefined
+	const result = Object.fromEntries(
+		defined.flatMap((item) =>
+			Object.entries({
+				firstEventTimeoutMs: item.firstEventTimeoutMs,
+				firstEventTimeoutRetries: item.firstEventTimeoutRetries,
+				firstEventRetryBaseDelayMs: item.firstEventRetryBaseDelayMs,
+				firstEventRetryMaxDelayMs: item.firstEventRetryMaxDelayMs,
+				eventIdleTimeoutMs: item.eventIdleTimeoutMs,
+			}).filter((entry): entry is [string, number] => entry[1] !== undefined),
+		),
+	)
+	return Object.keys(result).length === 0 ? undefined : new StreamOptions(result)
+}
+
 export class GenerationOptions extends Schema.Class<GenerationOptions>('LLM.GenerationOptions')({
 	maxTokens: Schema.optional(Schema.Number),
 	temperature: Schema.optional(Schema.Number),
