@@ -99,7 +99,7 @@ function createSseCodexModel(
 				}
 				if (part.type === 'reasoning-end') {
 					const block = reasoningBlocks.get(part.id)
-					if (block && block.text) {
+					if (block?.text) {
 						content.push({
 							type: 'reasoning',
 							text: block.text,
