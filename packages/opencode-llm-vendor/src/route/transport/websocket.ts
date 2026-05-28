@@ -1,5 +1,5 @@
 // @ts-nocheck — vendored from opencode, tested upstream under different tsconfig
-import { Cause, Context, Effect, Layer, Queue, Stream } from 'effect'
+import { Cause, Context, Effect, Layer, Queue, Random, Stream } from 'effect'
 import type { Headers } from 'effect/unstable/http'
 import { LLMError, TransportReason } from '../../schema'
 import * as HttpTransport from './http'
@@ -126,18 +126,41 @@ const webSocketUrl = (value: string) =>
 			}),
 	})
 
+const WS_MAX_RETRIES = 2
+const WS_BASE_DELAY_MS = 500
+const WS_MAX_DELAY_MS = 10_000
+
+const retryWebSocketOpen = <A>(
+	effect: Effect.Effect<A, LLMError>,
+	retries = WS_MAX_RETRIES,
+	attempt = 0,
+): Effect.Effect<A, LLMError> =>
+	Effect.catchTag(effect, 'LLM.Error', (error): Effect.Effect<A, LLMError> => {
+		if (!error.retryable || retries <= 0) return Effect.fail(error)
+		return Random.nextBetween(
+			Math.min(WS_BASE_DELAY_MS * 2 ** attempt * 0.8, WS_MAX_DELAY_MS),
+			Math.min(WS_BASE_DELAY_MS * 2 ** attempt * 1.2, WS_MAX_DELAY_MS),
+		).pipe(
+			Effect.map((delay) => Math.round(delay)),
+			Effect.flatMap((delay) => Effect.sleep(delay)),
+			Effect.flatMap(() => retryWebSocketOpen(effect, retries - 1, attempt + 1)),
+		)
+	})
+
 export const open = (input: WebSocketRequest) =>
-	Effect.try({
-		try: () =>
-			new (globalThis.WebSocket as unknown as WebSocketConstructorWithHeaders)(input.url, {
-				headers: input.headers,
-			}),
-		catch: (error) =>
-			transportError('open', error instanceof Error ? error.message : 'Failed to construct WebSocket', {
-				url: input.url,
-				kind: 'open',
-			}),
-	}).pipe(Effect.flatMap((ws) => fromWebSocket(ws, input)))
+	retryWebSocketOpen(
+		Effect.try({
+			try: () =>
+				new (globalThis.WebSocket as unknown as WebSocketConstructorWithHeaders)(input.url, {
+					headers: input.headers,
+				}),
+			catch: (error) =>
+				transportError('open', error instanceof Error ? error.message : 'Failed to construct WebSocket', {
+					url: input.url,
+					kind: 'open',
+				}),
+		}).pipe(Effect.flatMap((ws) => fromWebSocket(ws, input))),
+	)
 
 export const layer: Layer.Layer<Service> = Layer.succeed(Service, Service.of({ open }))
 
