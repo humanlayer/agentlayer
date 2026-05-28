@@ -379,6 +379,7 @@ export class Agent<TTools extends Record<string, Tool<any, any>> = Record<string
 						newMessages,
 						finishReason: 'interrupted',
 						tokenUsage: accumulator.snapshot(),
+						contextWindowLimit: this.contextWindowLimit,
 					})
 					return
 				}
@@ -442,6 +443,7 @@ export class Agent<TTools extends Record<string, Tool<any, any>> = Record<string
 						newMessages,
 						finishReason: 'complete',
 						tokenUsage: accumulator.snapshot(),
+						contextWindowLimit: this.contextWindowLimit,
 					})
 					return
 				}
@@ -586,6 +588,7 @@ export class Agent<TTools extends Record<string, Tool<any, any>> = Record<string
 							newMessages,
 							finishReason: 'approvalRequired',
 							tokenUsage: accumulator.snapshot(),
+							contextWindowLimit: this.contextWindowLimit,
 						})
 						return
 					}
@@ -611,6 +614,7 @@ export class Agent<TTools extends Record<string, Tool<any, any>> = Record<string
 							newMessages,
 							finishReason: 'approvalRequired',
 							tokenUsage: accumulator.snapshot(),
+							contextWindowLimit: this.contextWindowLimit,
 						})
 						return
 					}
@@ -764,6 +768,7 @@ export class Agent<TTools extends Record<string, Tool<any, any>> = Record<string
 						finishReason: 'stopCondition',
 						stopCondition: { name: 'ctx.stop', message: stopOptions.reason },
 						tokenUsage: accumulator.snapshot(),
+						contextWindowLimit: this.contextWindowLimit,
 					})
 					return
 				}

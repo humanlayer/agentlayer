@@ -1,3 +1,11 @@
+/**
+ * Bridge between Effect streams and Web ReadableStreams. Both vendor providers
+ * (SSE and WebSocket) use this to convert the Effect `Stream<LanguageModelV3StreamPart>`
+ * produced by `LLMClient.stream()` into the `ReadableStream` that the AI SDK expects.
+ *
+ * Extracted from `providers/websockets-vendor-provider/bridge.ts` with no
+ * functional changes.
+ */
 import type { LanguageModelV3StreamPart } from '@ai-sdk/provider'
 import { Effect, Fiber, Stream } from 'effect'
 

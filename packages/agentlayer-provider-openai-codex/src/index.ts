@@ -1,26 +1,22 @@
 // --- Providers ---
-export { type CodexEffectProviderOptions, createCodexEffectProvider } from './providers/websocket-codex-provider'
+
+export type CodexProviderMode = 'sse' | 'aisdk_responses' | 'websockets'
+
+// --- JWT ---
+export * from './jwt'
+export type { CodexRequestBody } from './legacy'
+// --- Legacy (from old codex.ts — keep for backward compat until removed) ---
 export {
-	type CodexCustomResponsesProviderOptions,
-	createCodexCustomResponsesProvider,
-} from './providers/custom-codex-provider'
-export { type CodexResponsesProviderOptions, createCodexResponsesProvider } from './providers/aisdk-codex-provider'
-
-// --- Shared constants ---
-export {
-	CODEX_API_ENDPOINT,
-	CODEX_DEFAULT_VERSION,
-	CODEX_FAST_SERVICE_TIER,
-	CODEX_FLEX_SERVICE_TIER,
-	CODEX_PROVIDER,
-	CODEX_PROVIDER_ID,
-} from './shared/constants'
-
-// --- Auth ---
-export { resolveCodexAuth, buildCodexUserAgent } from './shared/auth'
-export { normalizeCodexServiceTier } from './shared/service-tier'
-export type { CodexProviderOptions, CodexRequestOptions } from './shared/types'
-
+	buildCodexHeaders,
+	buildCodexRequestBody,
+	createCodexLanguageModel,
+	createCodexProvider,
+	createCodexSseStream,
+	parseCodexSseResponse,
+	prepareCodexRequest,
+	streamPartsToGenerateResult,
+	transformCodexPrompt,
+} from './legacy'
 // --- OAuth ---
 export {
 	type BrowserOAuthStartResult,
@@ -48,20 +44,19 @@ export {
 	startDeviceOAuth,
 	writeOAuthTokens,
 } from './oauth'
-
-// --- JWT ---
-export * from './jwt'
-
-// --- Legacy (from old codex.ts — keep for backward compat until removed) ---
+export { type CodexResponsesProviderOptions, createCodexResponsesProvider } from './providers/aisdk-codex-provider'
+export { type CodexSseVendorProviderOptions, createCodexSseVendorProvider } from './providers/sse-vendor-provider'
+export { type CodexEffectProviderOptions, createCodexEffectProvider } from './providers/websockets-vendor-provider'
+// --- Auth ---
+export { buildCodexUserAgent, resolveCodexAuth } from './shared/auth'
+// --- Shared constants ---
 export {
-	buildCodexHeaders,
-	buildCodexRequestBody,
-	createCodexLanguageModel,
-	createCodexProvider,
-	createCodexSseStream,
-	parseCodexSseResponse,
-	prepareCodexRequest,
-	streamPartsToGenerateResult,
-	transformCodexPrompt,
-} from './legacy'
-export type { CodexRequestBody } from './legacy'
+	CODEX_API_ENDPOINT,
+	CODEX_DEFAULT_VERSION,
+	CODEX_FAST_SERVICE_TIER,
+	CODEX_FLEX_SERVICE_TIER,
+	CODEX_PROVIDER,
+	CODEX_PROVIDER_ID,
+} from './shared/constants'
+export { normalizeCodexServiceTier } from './shared/service-tier'
+export type { CodexProviderOptions, CodexRequestOptions } from './shared/types'

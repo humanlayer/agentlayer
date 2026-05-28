@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import type { LanguageModelV3CallOptions, LanguageModelV3Prompt } from '@ai-sdk/provider'
+import { webSocketRoute } from '@humanlayer/opencode-llm-vendor/protocols/openai-responses'
 import * as AuthModule from '@humanlayer/opencode-llm-vendor/route/auth'
 import {
 	type AdapterConfig,
@@ -9,7 +10,7 @@ import {
 	convertTools,
 	mapProviderOptions,
 	strictifySchema,
-} from '../src/providers/websocket-codex-provider/adapter'
+} from '../src/shared/adapter'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -19,6 +20,7 @@ function makeConfig(overrides?: Partial<AdapterConfig>): AdapterConfig {
 	return {
 		auth: AuthModule.bearer('test-token'),
 		baseURL: 'https://chatgpt.com/backend-api/codex',
+		route: webSocketRoute,
 		...overrides,
 	}
 }
@@ -400,7 +402,7 @@ describe('convertTools', () => {
 // ---------------------------------------------------------------------------
 
 describe('mapProviderOptions', () => {
-	test('sets defaults: reasoningEffort medium, reasoningSummary auto, store false, includeEncryptedReasoning true', () => {
+	test('sets defaults: reasoningEffort medium, reasoningSummary detailed, store false, include reasoning.encrypted_content', () => {
 		const config = makeConfig()
 		const options = makeOptions()
 
@@ -408,9 +410,9 @@ describe('mapProviderOptions', () => {
 
 		expect(result.openai).toBeDefined()
 		expect(result.openai!.reasoningEffort).toBe('medium')
-		expect(result.openai!.reasoningSummary).toBe('auto')
+		expect(result.openai!.reasoningSummary).toBe('detailed')
 		expect(result.openai!.store).toBe(false)
-		expect(result.openai!.includeEncryptedReasoning).toBe(true)
+		expect(result.openai!.include).toEqual(['reasoning.encrypted_content'])
 	})
 
 	test('passes through explicit reasoningEffort from provider options', () => {
@@ -424,7 +426,7 @@ describe('mapProviderOptions', () => {
 		expect(result.openai!.reasoningEffort).toBe('high')
 	})
 
-	test('passes through explicit reasoningSummary from provider options', () => {
+	test('passes through explicit reasoningSummary from provider options (overrides default)', () => {
 		const config = makeConfig()
 		const options = makeOptions({
 			providerOptions: { openai: { reasoningSummary: 'auto' } },
@@ -538,7 +540,7 @@ describe('mapProviderOptions', () => {
 describe('buildCodexModel', () => {
 	test('creates a Model with the correct modelId', () => {
 		const auth = AuthModule.bearer('test-token')
-		const model = buildCodexModel('gpt-5.4', auth, 'https://chatgpt.com/backend-api/codex')
+		const model = buildCodexModel('gpt-5.4', auth, 'https://chatgpt.com/backend-api/codex', webSocketRoute)
 
 		expect(String(model.id)).toBe('gpt-5.4')
 		expect(String(model.provider)).toBe('openai')
@@ -546,7 +548,7 @@ describe('buildCodexModel', () => {
 
 	test('creates a Model with a patched webSocketRoute', () => {
 		const auth = AuthModule.bearer('test-token')
-		const model = buildCodexModel('gpt-5.4', auth, 'https://chatgpt.com/backend-api/codex')
+		const model = buildCodexModel('gpt-5.4', auth, 'https://chatgpt.com/backend-api/codex', webSocketRoute)
 
 		// The route should be the WebSocket route (patched from the vendor)
 		expect(model.route).toBeDefined()
@@ -555,7 +557,7 @@ describe('buildCodexModel', () => {
 
 	test('patches endpoint baseURL on the route', () => {
 		const auth = AuthModule.bearer('test-token')
-		const model = buildCodexModel('gpt-5.4', auth, 'https://custom.example.com/api')
+		const model = buildCodexModel('gpt-5.4', auth, 'https://custom.example.com/api', webSocketRoute)
 
 		// The endpoint should have the custom base URL
 		expect(model.route.endpoint.baseURL).toBe('https://custom.example.com/api')
@@ -667,9 +669,9 @@ describe('convertCallOptionsToLLMRequest', () => {
 		expect(request.providerOptions).toBeDefined()
 		expect(request.providerOptions!.openai).toBeDefined()
 		expect(request.providerOptions!.openai!.reasoningEffort).toBe('medium')
-		expect(request.providerOptions!.openai!.reasoningSummary).toBe('auto')
+		expect(request.providerOptions!.openai!.reasoningSummary).toBe('detailed')
 		expect(request.providerOptions!.openai!.store).toBe(false)
-		expect(request.providerOptions!.openai!.includeEncryptedReasoning).toBe(true)
+		expect(request.providerOptions!.openai!.include).toEqual(['reasoning.encrypted_content'])
 	})
 
 	test('handles fastMode in config by setting serviceTier to priority', () => {

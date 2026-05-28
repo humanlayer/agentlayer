@@ -8,17 +8,18 @@ import {
 	type ProviderV3,
 } from '@ai-sdk/provider'
 import { createFileAuthStore } from '@humanlayer/agentlayer-provider-auth'
+import { webSocketRoute } from '@humanlayer/opencode-llm-vendor/protocols/openai-responses'
 import { Auth } from '@humanlayer/opencode-llm-vendor/route/auth'
 import { LLMClient } from '@humanlayer/opencode-llm-vendor/route/client'
 import { RequestExecutor } from '@humanlayer/opencode-llm-vendor/route/executor'
 import { WebSocketExecutor } from '@humanlayer/opencode-llm-vendor/route/transport/websocket'
-import { Effect, Layer, Stream } from 'effect'
+import { Layer, Stream } from 'effect'
+import { convertCallOptionsToLLMRequest } from '../../shared/adapter'
 import { buildCodexUserAgent, resolveCodexAuth } from '../../shared/auth'
+import { effectStreamToReadableStream } from '../../shared/bridge'
 import { CODEX_API_ENDPOINT, CODEX_DEFAULT_VERSION } from '../../shared/constants'
 import { type AnyLLMEvent, emptyUsage, llmEventToStreamParts } from '../../shared/events'
 import type { CodexProviderOptions } from '../../shared/types'
-import { convertCallOptionsToLLMRequest } from './adapter'
-import { effectStreamToReadableStream } from './bridge'
 
 // Debug logging gated behind DEBUG_CODEX_WS=1
 const DEBUG = process.env.DEBUG_CODEX_WS === '1'
@@ -133,10 +134,11 @@ function createEffectCodexModel(
 
 			const auth = Auth.bearer(token).andThen(Auth.headers(customHeaders))
 
-			// 3. Build LLMRequest via adapter
+			// 3. Build LLMRequest via shared adapter with WebSocket route
 			const request = convertCallOptionsToLLMRequest(modelId, options, {
 				auth,
 				baseURL: providerOptions.baseURL,
+				route: webSocketRoute,
 				fastMode: providerOptions.fastMode,
 				serviceTier: providerOptions.serviceTier,
 			})

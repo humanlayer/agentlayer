@@ -4,13 +4,13 @@ import type { LanguageModel } from 'ai'
 import { ensureFileAuthStore, type AuthInfo } from '@humanlayer/agentlayer-provider-auth'
 import { createCopilotProvider } from '@humanlayer/agentlayer-provider-github-copilot'
 import {
-	createCodexCustomResponsesProvider,
+	createCodexSseVendorProvider,
 	createCodexEffectProvider,
 	createCodexResponsesProvider,
 	CODEX_DEFAULT_VERSION,
 } from '@humanlayer/agentlayer-provider-openai-codex'
 
-export type CodexProviderMode = 'websockets' | 'aisdk_responses' | 'custom_responses'
+export type CodexProviderMode = 'sse' | 'aisdk_responses' | 'websockets'
 
 export type ProviderType = 'anthropic' | 'openai' | 'codex' | 'copilot' | 'firepass'
 
@@ -70,17 +70,17 @@ export async function resolveModel(provider: ProviderType, modelId: string): Pro
 		}
 		case 'codex': {
 			const authStore = await ensureFileAuthStore()
-			const codexMode = (process.env.CODEX_PROVIDER ?? 'websockets') as CodexProviderMode
+			const codexMode = (process.env.CODEX_PROVIDER ?? 'sse') as CodexProviderMode
 			const codexOpts = { authStore, version: CODEX_DEFAULT_VERSION, fastMode: true }
 			console.error(`[codex-provider] using ${codexMode} transport for model ${modelId}`)
 			switch (codexMode) {
 				case 'aisdk_responses':
 					return createCodexResponsesProvider(codexOpts).languageModel(modelId) as LanguageModel
-				case 'custom_responses':
-					return createCodexCustomResponsesProvider(codexOpts).languageModel(modelId) as LanguageModel
 				case 'websockets':
-				default:
 					return createCodexEffectProvider(codexOpts).languageModel(modelId) as LanguageModel
+				case 'sse':
+				default:
+					return createCodexSseVendorProvider(codexOpts).languageModel(modelId) as LanguageModel
 			}
 		}
 		case 'copilot': {

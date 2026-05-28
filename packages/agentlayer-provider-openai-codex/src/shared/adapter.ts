@@ -1,17 +1,16 @@
 /**
- * Adapter layer that converts AI SDK `LanguageModelV3CallOptions` into the
- * vendor's `LLMRequest` type, allowing the Codex provider to use the vendored
- * `LLMClient.stream()` pipeline instead of hand-rolled HTTP fetch + SSE
- * parsing.
+ * Shared adapter layer that converts AI SDK `LanguageModelV3CallOptions` into
+ * the vendor's `LLMRequest` type, allowing both the SSE and WebSocket vendor
+ * providers to use the vendored `LLMClient.stream()` pipeline.
  *
- * This implements DQ2 Option A from the design discussion: replicate the
- * conversion chain from OpenCode's native-request.ts pattern to produce an
- * `LLMRequest` that flows through the vendor's full compile -> stream -> parse
- * pipeline.
+ * Extracted from `providers/websockets-vendor-provider/adapter.ts` and
+ * generalized: `buildCodexModel()` accepts a `route` parameter instead of
+ * hardcoding `webSocketRoute`, so callers pass either the HTTP SSE route or
+ * the WebSocket route.
  */
 import type { LanguageModelV3CallOptions, LanguageModelV3Prompt } from '@ai-sdk/provider'
-import { webSocketRoute } from '@humanlayer/opencode-llm-vendor/protocols/openai-responses'
 import type { Auth } from '@humanlayer/opencode-llm-vendor/route/auth'
+import type { AnyRoute } from '@humanlayer/opencode-llm-vendor/route/client'
 import {
 	type ContentPart,
 	GenerationOptions,
@@ -23,12 +22,12 @@ import {
 	ToolDefinition,
 	type ToolResultPart,
 } from '@humanlayer/opencode-llm-vendor/schema'
-import { CODEX_FAST_SERVICE_TIER } from '../../shared/constants'
-import { normalizeCodexServiceTier } from '../../shared/service-tier'
+import { CODEX_FAST_SERVICE_TIER } from './constants'
+import { strictifySchema } from './schema'
+import { normalizeCodexServiceTier } from './service-tier'
 
 // Re-export for backward compatibility with tests
-export { strictifySchema } from '../../shared/schema'
-import { strictifySchema } from '../../shared/schema'
+export { strictifySchema } from './schema'
 
 // ---------------------------------------------------------------------------
 // Adapter config
@@ -37,6 +36,7 @@ import { strictifySchema } from '../../shared/schema'
 export interface AdapterConfig {
 	auth: Auth
 	baseURL: string
+	route: AnyRoute
 	fastMode?: boolean
 	serviceTier?: string
 }
@@ -46,15 +46,16 @@ export interface AdapterConfig {
 // ---------------------------------------------------------------------------
 
 /**
- * Construct a vendor `Model` object using the `webSocketRoute` patched with
+ * Construct a vendor `Model` object using the provided route patched with
  * Codex endpoint and auth.
  *
- * The `webSocketRoute` comes from the vendor's openai-responses module with
- * `Auth.none` and the default OpenAI endpoint. We override both via
- * `.with()` to point at the Codex endpoint and inject bearer auth.
+ * The caller passes either the HTTP SSE `route` or `webSocketRoute` from the
+ * vendor's openai-responses module. Both come with `Auth.none` and the default
+ * OpenAI endpoint. We override both via `.with()` to point at the Codex
+ * endpoint and inject bearer auth.
  */
-export function buildCodexModel(modelId: string, auth: Auth, baseURL: string): Model {
-	const codexRoute = webSocketRoute.with({
+export function buildCodexModel(modelId: string, auth: Auth, baseURL: string, route: AnyRoute): Model {
+	const codexRoute = route.with({
 		auth,
 		endpoint: { baseURL },
 	})
@@ -238,11 +239,11 @@ export function convertTools(tools: LanguageModelV3CallOptions['tools']): ToolDe
 
 /**
  * Build the `providerOptions.openai` namespace from AI SDK call options
- * and adapter config. Sets defaults matching the current Codex behavior:
+ * and adapter config. Sets defaults matching the Codex behavior:
  * - `reasoningEffort: 'medium'`
- * - `reasoningSummary: 'auto'`
+ * - `reasoningSummary: 'detailed'`
  * - `store: false`
- * - `includeEncryptedReasoning: true`
+ * - `include: ['reasoning.encrypted_content']`
  *
  * Handles `service_tier`/`fastMode` normalization (DQ4).
  */
@@ -253,9 +254,9 @@ export function mapProviderOptions(
 	const providerOptions = options.providerOptions?.openai as Record<string, unknown> | undefined
 
 	const reasoningEffort = (providerOptions?.reasoningEffort as string | undefined) ?? 'medium'
-	const reasoningSummary = (providerOptions?.reasoningSummary as string | undefined) ?? 'auto'
+	const reasoningSummary = (providerOptions?.reasoningSummary as string | undefined) ?? 'detailed'
 	const store = false // Codex always uses store: false
-	const includeEncryptedReasoning = (providerOptions?.includeEncryptedReasoning as boolean | undefined) ?? true
+	const include = (providerOptions?.include as string[] | undefined) ?? ['reasoning.encrypted_content']
 	const promptCacheKey = providerOptions?.promptCacheKey as string | undefined
 
 	// service_tier normalization (DQ4)
@@ -281,7 +282,7 @@ export function mapProviderOptions(
 			reasoningEffort,
 			reasoningSummary,
 			store,
-			includeEncryptedReasoning,
+			include,
 			...(promptCacheKey ? { promptCacheKey } : {}),
 			...(serviceTier !== undefined ? { serviceTier } : {}),
 			...(instructions ? { instructions } : {}),
@@ -320,15 +321,15 @@ function convertToolChoice(toolChoice: LanguageModelV3CallOptions['toolChoice'])
  *
  * The vendor's pipeline (`fromRequest` -> `lowerOptions` -> `lowerMessages`)
  * then handles converting the LLMRequest into the wire format body, applying
- * the transport (WebSocket framing), and running the protocol state machine
- * to parse streamed events.
+ * the transport (HTTP SSE or WebSocket framing), and running the protocol
+ * state machine to parse streamed events.
  */
 export function convertCallOptionsToLLMRequest(
 	modelId: string,
 	options: LanguageModelV3CallOptions,
 	config: AdapterConfig,
 ): LLMRequest {
-	const model = buildCodexModel(modelId, config.auth, config.baseURL)
+	const model = buildCodexModel(modelId, config.auth, config.baseURL, config.route)
 	const { system, messages } = convertPromptMessages(options.prompt)
 	const tools = convertTools(options.tools)
 	const toolChoice = convertToolChoice(options.toolChoice)

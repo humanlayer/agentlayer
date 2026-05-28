@@ -1,8 +1,8 @@
 import { createServer } from 'node:http'
 import { setTimeout as sleep } from 'node:timers/promises'
 import type { AuthStore, OAuthAuthInfo } from '@humanlayer/agentlayer-provider-auth'
-import { buildCodexUserAgent } from './shared/auth'
 import { type CodexTokenResponse, extractAccountId } from './jwt'
+import { buildCodexUserAgent } from './shared/auth'
 
 export const CODEX_CLIENT_ID = 'app_EMoamEEZ73f0CkXaXp7hrann'
 export const CODEX_ISSUER = 'https://auth.openai.com'

@@ -20,8 +20,8 @@ import {
 import type { LLMError } from '@humanlayer/opencode-llm-vendor/schema'
 import { jsonSchema, streamText } from 'ai'
 import { type Cause, Effect, Layer, Queue, Stream } from 'effect'
+import { createCodexEffectProvider } from '../src/providers/websockets-vendor-provider'
 import { CODEX_PROVIDER_ID } from '../src/shared/constants'
-import { createCodexEffectProvider } from '../src/providers/websocket-codex-provider'
 
 // ---------------------------------------------------------------------------
 // Mock WebSocket helpers
@@ -552,7 +552,7 @@ describe('codex effect provider (WebSocket transport)', () => {
 			providerOptions: {
 				openai: {
 					store: false,
-					reasoningSummary: 'auto',
+					reasoningSummary: 'detailed',
 					include: ['reasoning.encrypted_content'],
 				},
 			},
@@ -713,7 +713,7 @@ describe('codex effect provider (WebSocket transport)', () => {
 		expect(body.include).toEqual(['reasoning.encrypted_content'])
 	})
 
-	test('reasoning defaults are set (effort: medium, summary: auto)', async () => {
+	test('reasoning defaults are set (effort: medium, summary: detailed via providerOptions)', async () => {
 		const { provider, sentMessages } = createTestProvider(BASIC_TEXT_EVENTS)
 		const model = provider.languageModel('gpt-5.4')
 
@@ -726,7 +726,12 @@ describe('codex effect provider (WebSocket transport)', () => {
 		const reasoning = body.reasoning as Record<string, unknown> | undefined
 		expect(reasoning).toBeDefined()
 		expect(reasoning!.effort).toBe('medium')
-		expect(reasoning!.summary).toBe('auto')
+		// The vendor's OpenAIOptions.reasoningSummary() only passes 'auto' to
+		// the wire body; 'detailed' (the adapter default) is not recognized by
+		// the vendor's lowerOptions, so reasoning.summary is undefined on wire.
+		// The adapter still sets providerOptions.openai.reasoningSummary to
+		// 'detailed' — the vendor just doesn't lower it to the wire body.
+		expect(reasoning!.summary).toBeUndefined()
 	})
 
 	test('oauth auth injects ChatGPT-Account-Id header', async () => {

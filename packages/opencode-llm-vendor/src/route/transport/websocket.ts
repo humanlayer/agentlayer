@@ -1,21 +1,9 @@
 // @ts-nocheck — vendored from opencode, tested upstream under different tsconfig
-import { Cause, Context, Effect, Layer, Queue, Schedule, Stream } from 'effect'
+import { Cause, Context, Effect, Layer, Queue, Stream } from 'effect'
 import type { Headers } from 'effect/unstable/http'
 import { LLMError, TransportReason } from '../../schema'
 import * as HttpTransport from './http'
 import type { Transport } from './index'
-
-const DEBUG = process.env.DEBUG_CODEX_WS === '1'
-const dbg = (...args: unknown[]) => {
-	if (DEBUG) console.error('[ws-transport]', ...args)
-}
-
-// Global connection tracking — tells us exactly how many are open when a 101 fires
-let _openConns = 0
-let _totalOpened = 0
-let _totalClosed = 0
-let _totalFailed = 0
-const connState = () => `open=${_openConns} opened=${_totalOpened} closed=${_totalClosed} failed=${_totalFailed}`
 
 export interface WebSocketRequest {
 	readonly url: string
@@ -63,13 +51,7 @@ const binaryMessage = (data: unknown) => {
 }
 
 const waitOpen = (ws: globalThis.WebSocket, input: WebSocketRequest) => {
-	dbg('waitOpen: readyState=', ws.readyState, connState())
-	if (ws.readyState === globalThis.WebSocket.OPEN) {
-		_openConns++
-		_totalOpened++
-		dbg('waitOpen: already open,', connState())
-		return Effect.void
-	}
+	if (ws.readyState === globalThis.WebSocket.OPEN) return Effect.void
 	if (ws.readyState === globalThis.WebSocket.CLOSING || ws.readyState === globalThis.WebSocket.CLOSED) {
 		return Effect.fail(
 			transportError('open', `WebSocket closed before opening (state ${ws.readyState})`, {
@@ -92,15 +74,10 @@ const waitOpen = (ws: globalThis.WebSocket, input: WebSocketRequest) => {
 		}
 		const onOpen = () => {
 			cleanup()
-			_openConns++
-			_totalOpened++
-			dbg('waitOpen: connected,', connState())
 			resume(Effect.void)
 		}
 		const onError = (event: Event) => {
 			cleanup()
-			_totalFailed++
-			dbg('waitOpen: FAILED,', connState(), eventMessage(event))
 			resume(
 				Effect.fail(
 					transportError('open', `Failed to open WebSocket: ${eventMessage(event)}`, {
@@ -173,11 +150,7 @@ export const fromWebSocket = (
 		const messages = yield* Queue.bounded<string | Uint8Array, LLMError | Cause.Done<void>>(128)
 
 		const onMessage = (event: MessageEvent) => {
-			if (typeof event.data === 'string') {
-				const preview = event.data.length > 120 ? `${event.data.substring(0, 120)}...` : event.data
-				dbg('msg:', preview)
-				return Queue.offerUnsafe(messages, event.data)
-			}
+			if (typeof event.data === 'string') return Queue.offerUnsafe(messages, event.data)
 			const binary = binaryMessage(event.data)
 			if (binary) return Queue.offerUnsafe(messages, binary)
 			Queue.failCauseUnsafe(
@@ -191,7 +164,6 @@ export const fromWebSocket = (
 			)
 		}
 		const onError = (event: Event) => {
-			dbg('ws onerror:', eventMessage(event))
 			Queue.failCauseUnsafe(
 				messages,
 				Cause.fail(
@@ -203,7 +175,6 @@ export const fromWebSocket = (
 			)
 		}
 		const onClose = (event: CloseEvent) => {
-			dbg('ws onclose: code=', event.code, 'reason=', event.reason)
 			if (event.code === 1000 || event.code === 1005) return Queue.endUnsafe(messages)
 			Queue.failCauseUnsafe(
 				messages,
@@ -216,9 +187,6 @@ export const fromWebSocket = (
 			)
 		}
 		const cleanup = Effect.sync(() => {
-			_openConns--
-			_totalClosed++
-			dbg('cleanup: readyState=', ws.readyState, connState())
 			ws.removeEventListener('message', onMessage)
 			ws.removeEventListener('error', onError)
 			ws.removeEventListener('close', onClose)
@@ -303,43 +271,16 @@ export const json = <Body, Message>(input: JsonInput<Body, Message>): JsonTransp
 			)
 		}
 		const decoder = new TextDecoder()
-		const openAndStream = Effect.gen(function* () {
-			dbg('frames: opening WS to', prepared.url)
-			const connection = yield* Effect.acquireRelease(
-				webSocket.open({ url: prepared.url, headers: prepared.headers }),
-				(connection) => {
-					dbg('frames: acquireRelease finalizer — closing WS')
-					return connection.close
-				},
-			)
-			dbg('frames: WS open, sending message')
-			yield* connection.sendText(prepared.message)
-			dbg('frames: message sent, returning message stream')
-			return connection.messages.pipe(Stream.map((message) => messageText(message, decoder)))
-		})
-		const withRetry = openAndStream.pipe(
-			Effect.tapError((error) =>
-				Effect.sync(() =>
-					dbg(
-						'frames: WS open failed, will retry if transport error.',
-						connState(),
-						error.reason._tag,
-						error.reason.message,
-					),
-				),
-			),
-			Effect.retry({
-				schedule: Schedule.andThen(
-					Schedule.both(Schedule.jittered(Schedule.exponential('1 seconds')), Schedule.recurs(4)),
-					Schedule.both(Schedule.jittered(Schedule.spaced('15 seconds')), Schedule.recurs(6)),
-				),
-				while: (error: LLMError) => error.reason._tag === 'Transport',
+		return Stream.unwrap(
+			Effect.gen(function* () {
+				const connection = yield* Effect.acquireRelease(
+					webSocket.open({ url: prepared.url, headers: prepared.headers }),
+					(connection) => connection.close,
+				)
+				yield* connection.sendText(prepared.message)
+				return connection.messages.pipe(Stream.map((message) => messageText(message, decoder)))
 			}),
-			Effect.tapError((error) =>
-				Effect.sync(() => dbg('frames: all retries exhausted,', connState(), error.reason.message)),
-			),
 		)
-		return Stream.unwrap(withRetry)
 	},
 })
 

@@ -9,8 +9,8 @@
  */
 import { describe, test } from 'bun:test'
 import { ensureFileAuthStore } from '@humanlayer/agentlayer-provider-auth'
-import { CODEX_API_ENDPOINT, CODEX_DEFAULT_VERSION } from '../src/shared/constants'
 import { buildCodexUserAgent, resolveCodexAuth } from '../src/shared/auth'
+import { CODEX_API_ENDPOINT, CODEX_DEFAULT_VERSION } from '../src/shared/constants'
 
 const WS_URL = CODEX_API_ENDPOINT.replace(/\/responses$/, '/responses').replace('https://', 'wss://')
 

@@ -1,15 +1,17 @@
 import { createOpenAI } from '@ai-sdk/openai'
 import { NoSuchModelError, type ProviderV3 } from '@ai-sdk/provider'
 import { createFileAuthStore } from '@humanlayer/agentlayer-provider-auth'
-import { buildCodexUserAgent } from '../../shared/auth'
-import { CODEX_API_ENDPOINT, CODEX_DEFAULT_VERSION, DEFAULT_CHUNK_TIMEOUT_MS } from '../../shared/constants'
-import { createCodexFetch } from '../../shared/fetch'
+import type { CodexFetchLike } from '../../oauth'
+import { buildCodexUserAgent, resolveCodexAuth } from '../../shared/auth'
+import {
+	CODEX_API_ENDPOINT,
+	CODEX_DEFAULT_VERSION,
+	CODEX_FAST_SERVICE_TIER,
+	DEFAULT_CHUNK_TIMEOUT_MS,
+} from '../../shared/constants'
+import { normalizeCodexServiceTier } from '../../shared/service-tier'
 import { wrapSSE } from '../../shared/sse'
 import type { CodexProviderOptions } from '../../shared/types'
-import type { CodexFetchLike } from '../../oauth'
-import { normalizeCodexServiceTier } from '../../shared/service-tier'
-import { CODEX_FAST_SERVICE_TIER } from '../../shared/constants'
-import { resolveCodexAuth } from '../../shared/auth'
 
 export interface CodexResponsesProviderOptions extends CodexProviderOptions {
 	/**
