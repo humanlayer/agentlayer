@@ -4,7 +4,12 @@ import * as ProviderShared from '../../protocols/shared'
 import type { LLMRequest } from '../../schema'
 import { LLMError, mergeJsonRecords, TransportReason } from '../../schema'
 import { Auth } from '../auth'
-import { type Interface as DiagnosticsInterface, isTransportError, llmErrorMetadata, noopDiagnostics } from '../diagnostics'
+import {
+	type Interface as DiagnosticsInterface,
+	isTransportError,
+	llmErrorMetadata,
+	noopDiagnostics,
+} from '../diagnostics'
 import { render as renderEndpoint } from '../endpoint'
 import { Framing, type Framing as FramingDef } from '../framing'
 import type { Transport, TransportPrepareInput } from './index'
@@ -155,9 +160,7 @@ export const httpJson = <Body, Frame>(input: HttpJsonInput<Body, Frame>): HttpJs
 			withTimeout.pipe(
 				Effect.map((response) =>
 					prepared.framing.frame(
-						response.stream.pipe(
-							Stream.mapError((error) => streamReadError(route, error)),
-						),
+						response.stream.pipe(Stream.mapError((error) => streamReadError(route, error))),
 					),
 				),
 			),
