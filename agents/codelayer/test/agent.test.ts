@@ -162,7 +162,7 @@ describe('provider resolution', () => {
 	})
 
 	test('forwards codex diagnostics context into the Codex provider factory', async () => {
-		const providerSpy = spyOn(codexProvider, 'createCodexResponsesProvider')
+		const providerSpy = spyOn(codexProvider, 'createCodexSseVendorProvider')
 		const codexDiagnostics = {
 			annotations: { sessionId: 'session-xyz', model: 'gpt-5.5', provider: 'codex' },
 			onEvent: () => {},

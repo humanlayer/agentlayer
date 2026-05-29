@@ -85,7 +85,7 @@ export async function resolveModel(
 		}
 		case 'codex': {
 			const authStore = await ensureFileAuthStore()
-			const codexMode = (process.env.CODEX_PROVIDER ?? 'aisdk_responses') as CodexProviderMode
+			const codexMode = (process.env.CODEX_PROVIDER ?? 'sse') as CodexProviderMode
 			const codexOpts = {
 				authStore,
 				version: CODEX_DEFAULT_VERSION,
