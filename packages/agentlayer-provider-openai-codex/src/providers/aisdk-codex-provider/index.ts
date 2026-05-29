@@ -12,7 +12,7 @@ import {
 } from '../../shared/constants'
 import { normalizeCodexServiceTier } from '../../shared/service-tier'
 import { wrapSSE } from '../../shared/sse'
-import type { CodexDiagnosticRecord, CodexDiagnosticsContext, CodexProviderOptions } from '../../shared/types'
+import type { CodexDiagnosticRecord, CodexProviderOptions } from '../../shared/types'
 
 export interface CodexResponsesProviderOptions extends CodexProviderOptions {
 	/**
@@ -45,11 +45,7 @@ export function createCodexResponsesProvider(options: CodexResponsesProviderOpti
 	const headerTimeout = options.headerTimeout === false ? 0 : (options.headerTimeout ?? CODEX_HEADER_TIMEOUT_MS)
 	const diagnostics = options.diagnostics
 
-	const emit = (
-		event: string,
-		severity: CodexDiagnosticRecord['severity'],
-		metadata: Record<string, unknown>,
-	) => {
+	const emit = (event: string, severity: CodexDiagnosticRecord['severity'], metadata: Record<string, unknown>) => {
 		diagnostics?.onEvent({
 			event,
 			severity,

@@ -1,9 +1,8 @@
 import { Effect, Stream } from 'effect'
 import { Headers, HttpClientError, type HttpClientRequest } from 'effect/unstable/http'
 import * as ProviderShared from '../../protocols/shared'
-import { LLMError, TransportReason } from '../../schema'
 import type { LLMRequest } from '../../schema'
-import { mergeJsonRecords } from '../../schema'
+import { LLMError, mergeJsonRecords, TransportReason } from '../../schema'
 import { Auth } from '../auth'
 import { render as renderEndpoint } from '../endpoint'
 import { Framing, type Framing as FramingDef } from '../framing'
@@ -127,10 +126,7 @@ export const httpJson = <Body, Frame>(input: HttpJsonInput<Body, Frame>): HttpJs
 						prepared.framing.frame(
 							response.stream.pipe(
 								Stream.mapError((error) =>
-									streamReadError(
-										`${request.model.provider}/${request.model.route.id}`,
-										error,
-									),
+									streamReadError(`${request.model.provider}/${request.model.route.id}`, error),
 								),
 							),
 						),
