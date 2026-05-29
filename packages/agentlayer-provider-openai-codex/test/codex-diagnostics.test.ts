@@ -21,17 +21,24 @@ import { Endpoint, Protocol, Route } from '@humanlayer/opencode-llm-vendor/route
 import { LLMClient } from '@humanlayer/opencode-llm-vendor/route/client'
 import { LLMDiagnostics } from '@humanlayer/opencode-llm-vendor/route/diagnostics'
 import { RequestExecutor } from '@humanlayer/opencode-llm-vendor/route/executor'
-import { LLMError, LLMEvent, LLMRequest, ToolFailure, TransportReason } from '@humanlayer/opencode-llm-vendor/schema'
+import {
+	InvalidRequestReason,
+	LLMError,
+	LLMEvent,
+	LLMRequest,
+	ToolFailure,
+	TransportReason,
+} from '@humanlayer/opencode-llm-vendor/schema'
 import { Effect, Layer, Schema, Stream } from 'effect'
 import { createCodexSseVendorProvider } from '../src/providers/sse-vendor-provider'
 import { CODEX_PROVIDER_ID } from '../src/shared/constants'
 import type { CodexDiagnosticRecord } from '../src/shared/types'
 
 /**
- * A real `LLMClient.layer` whose RequestExecutor always fails with a retryable
- * transport error. Because `firstEventTimeoutRetries` defaults to 0 here and the
- * executor's own retries are exhausted, the failure propagates through the
- * vendored stream pipeline to the final `catchCause`.
+ * A real `LLMClient.layer` whose RequestExecutor always fails with a
+ * non-retryable error. Uses `InvalidRequestReason` so the failure propagates
+ * immediately through the vendored stream pipeline to the final `catchCause`
+ * without triggering retries.
  */
 function failingClientLayer(): Layer.Layer<any> {
 	const failingExecutor = Layer.succeed(
@@ -42,7 +49,7 @@ function failingClientLayer(): Layer.Layer<any> {
 					new LLMError({
 						module: 'RequestExecutor',
 						method: 'execute',
-						reason: new TransportReason({ message: 'simulated transport failure', kind: 'open' }),
+						reason: new InvalidRequestReason({ message: 'simulated request failure' }),
 					}),
 				),
 		}),
@@ -386,7 +393,7 @@ describe('codex provider diagnostics (Phase 2 - event idle timeout)', () => {
 // ---------------------------------------------------------------------------
 
 describe('codex provider diagnostics (Phase 2 - HTTP status retry)', () => {
-	test('emits stream.failed for transport failures through the full provider pipeline', async () => {
+	test('emits stream.failed for non-retryable failures through the full provider pipeline', async () => {
 		const { provider, records } = createFailingProvider()
 		const model = provider.languageModel('gpt-5.4')
 
@@ -395,14 +402,110 @@ describe('codex provider diagnostics (Phase 2 - HTTP status retry)', () => {
 		})
 		await drain(result.stream as ReadableStream<{ type: string }>)
 
-		// The transport failure propagates to the stream.failed diagnostic
 		const streamFailed = records.find((r) => r.event === 'codex.provider.stream.failed')
 		expect(streamFailed).toBeDefined()
 		expect(streamFailed!.severity).toBe('error')
 		expect(streamFailed!.metadata).toMatchObject({
 			terminal: true,
-			reasonTag: 'Transport',
+			reasonTag: 'InvalidRequest',
 		})
+	})
+})
+
+// ---------------------------------------------------------------------------
+// Mid-stream transport retry
+// ---------------------------------------------------------------------------
+
+describe('codex provider diagnostics (mid-stream transport retry)', () => {
+	test('retries retryable transport errors and succeeds on later attempt', async () => {
+		const records: CodexDiagnosticRecord[] = []
+		const diagnosticsLayer = makeDiagnosticsLayer(records)
+		const clientLayer = LLMClient.layer.pipe(
+			Layer.provide(unusedRequestExecutorLayer),
+			Layer.provide(diagnosticsLayer),
+		)
+
+		const { request, attempts } = createVendorTestRequest(
+			(attempt) => {
+				if (attempt <= 2) {
+					return Stream.fail(
+						new LLMError({
+							module: 'ProviderShared',
+							method: 'stream',
+							reason: new TransportReason({ message: 'socket closed mid-stream', kind: 'StreamRead' }),
+						}),
+					)
+				}
+				return Stream.make({ type: 'delta', text: 'ok after transport retry' }, { type: 'done' })
+			},
+			{
+				firstEventTimeoutMs: 500,
+				firstEventTimeoutRetries: 3,
+				firstEventRetryBaseDelayMs: 1,
+				firstEventRetryMaxDelayMs: 1,
+				eventIdleTimeoutMs: 500,
+			},
+		)
+
+		const events = Array.from(
+			await Effect.runPromise(Stream.runCollect(Stream.provide(LLMClient.stream(request), clientLayer))),
+		)
+		expect(events).toContainEqual({ type: 'text-delta', id: 'text-0', text: 'ok after transport retry' })
+		expect(attempts()).toBe(3)
+
+		const retryWarnings = records.filter((r) => r.event === 'codex.provider.stream.transport_retry')
+		expect(retryWarnings.length).toBe(2)
+		for (const w of retryWarnings) {
+			expect(w.severity).toBe('warning')
+			expect(w.metadata).toMatchObject({ terminal: false, reasonTag: 'Transport' })
+		}
+
+		const exhaustion = records.find((r) => r.event === 'codex.provider.stream.retry_exhausted')
+		expect(exhaustion).toBeUndefined()
+	})
+
+	test('emits terminal error when transport retries are exhausted', async () => {
+		const records: CodexDiagnosticRecord[] = []
+		const diagnosticsLayer = makeDiagnosticsLayer(records)
+		const clientLayer = LLMClient.layer.pipe(
+			Layer.provide(unusedRequestExecutorLayer),
+			Layer.provide(diagnosticsLayer),
+		)
+
+		const { request, attempts } = createVendorTestRequest(
+			() =>
+				Stream.fail(
+					new LLMError({
+						module: 'ProviderShared',
+						method: 'stream',
+						reason: new TransportReason({ message: 'socket closed mid-stream', kind: 'StreamRead' }),
+					}),
+				),
+			{
+				firstEventTimeoutMs: 500,
+				firstEventTimeoutRetries: 2,
+				firstEventRetryBaseDelayMs: 1,
+				firstEventRetryMaxDelayMs: 1,
+			},
+		)
+
+		let error: unknown
+		try {
+			await Effect.runPromise(Stream.runCollect(Stream.provide(LLMClient.stream(request), clientLayer)))
+		} catch (err) {
+			error = err
+		}
+
+		expect(attempts()).toBe(3)
+		expect((error as { reason?: { _tag?: string } }).reason?._tag).toBe('Transport')
+
+		const retryWarnings = records.filter((r) => r.event === 'codex.provider.stream.transport_retry')
+		expect(retryWarnings.length).toBe(2)
+
+		const exhaustion = records.find((r) => r.event === 'codex.provider.stream.retry_exhausted')
+		expect(exhaustion).toBeDefined()
+		expect(exhaustion!.severity).toBe('error')
+		expect(exhaustion!.metadata).toMatchObject({ terminal: true })
 	})
 })
 

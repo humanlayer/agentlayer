@@ -271,6 +271,12 @@ const isFirstEventTimeout = (error: LLMError) =>
 	error.reason?._tag === 'Transport' &&
 	error.reason?.kind === FIRST_EVENT_TIMEOUT_KIND
 
+const isRetryableStreamError = (error: LLMError) =>
+	error instanceof LLMErrorClass &&
+	error.retryable &&
+	error.reason?._tag === 'Transport' &&
+	error.reason?.kind !== EVENT_IDLE_TIMEOUT_KIND
+
 const withEventIdleTimeout = <A>(
 	stream: Stream.Stream<A, LLMError>,
 	route: string,
@@ -346,9 +352,10 @@ const retryFirstEventTimeout = <A>(
 	if (retries <= 0) return makeStream()
 	return makeStream().pipe(
 		Stream.catchTag('LLM.Error', (error) => {
-			if (!isFirstEventTimeout(error) || attempt >= retries) {
-				// Terminal: retry budget exhausted or non-retryable error
-				if (isFirstEventTimeout(error) && attempt >= retries) {
+			const isTimeout = isFirstEventTimeout(error)
+			const isTransport = !isTimeout && isRetryableStreamError(error)
+			if ((!isTimeout && !isTransport) || attempt >= retries) {
+				if (isTimeout && attempt >= retries) {
 					return Stream.unwrap(
 						diagnostics
 							.error('codex.provider.timeout.first_event.exhausted', {
@@ -360,11 +367,29 @@ const retryFirstEventTimeout = <A>(
 							.pipe(Effect.as(Stream.fail(error))),
 					)
 				}
+				if (isTransport && attempt >= retries) {
+					return Stream.unwrap(
+						diagnostics
+							.error('codex.provider.stream.retry_exhausted', {
+								terminal: true,
+								attempt: attempt + 1,
+								maxRetries: retries,
+								...llmErrorMetadata(error),
+							})
+							.pipe(Effect.as(Stream.fail(error))),
+					)
+				}
 				return Stream.fail(error)
 			}
+			const eventName = isTimeout
+				? 'codex.provider.timeout.first_event.retry'
+				: 'codex.provider.stream.transport_retry'
+			const scheduledEventName = isTimeout
+				? 'codex.provider.timeout.first_event.retry_scheduled'
+				: 'codex.provider.stream.transport_retry_scheduled'
 			return Stream.unwrap(
 				diagnostics
-					.warning('codex.provider.timeout.first_event.retry', {
+					.warning(eventName, {
 						terminal: false,
 						attempt: attempt + 1,
 						maxRetries: retries,
@@ -374,7 +399,7 @@ const retryFirstEventTimeout = <A>(
 						Effect.flatMap(() => firstEventRetryDelay(options!, attempt)),
 						Effect.flatMap((delay) =>
 							diagnostics
-								.info('codex.provider.timeout.first_event.retry_scheduled', {
+								.info(scheduledEventName, {
 									attempt: attempt + 1,
 									delayMs: delay,
 								})
@@ -464,6 +489,7 @@ function makeFromTransport<Body, Prepared, Frame, Event, State>(
 								.error('codex.provider.stream.failed', {
 									route,
 									terminal: true,
+									causePretty: Cause.pretty(cause),
 									...llmErrorMetadata(error),
 								})
 								.pipe(Effect.as(Stream.fail(error))),

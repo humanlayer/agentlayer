@@ -162,7 +162,7 @@ describe('provider resolution', () => {
 	})
 
 	test('forwards codex diagnostics context into the Codex provider factory', async () => {
-		const sseSpy = spyOn(codexProvider, 'createCodexSseVendorProvider')
+		const providerSpy = spyOn(codexProvider, 'createCodexResponsesProvider')
 		const codexDiagnostics = {
 			annotations: { sessionId: 'session-xyz', model: 'gpt-5.5', provider: 'codex' },
 			onEvent: () => {},
@@ -171,7 +171,7 @@ describe('provider resolution', () => {
 		const model = await resolveModel('codex', 'gpt-5.5', { codexDiagnostics })
 
 		expect(model).toBeDefined()
-		expect(sseSpy).toHaveBeenCalledWith(
+		expect(providerSpy).toHaveBeenCalledWith(
 			expect.objectContaining({
 				diagnostics: codexDiagnostics,
 				sessionId: 'session-xyz',
