@@ -164,7 +164,7 @@ function createEffectCodexModel(
 				'User-Agent': buildCodexUserAgent(providerOptions.version),
 			}
 			if (providerOptions.sessionId) {
-				customHeaders.session_id = providerOptions.sessionId
+				customHeaders['session-id'] = providerOptions.sessionId
 			}
 			if (accountId) {
 				customHeaders['ChatGPT-Account-Id'] = accountId
@@ -179,6 +179,7 @@ function createEffectCodexModel(
 				route: webSocketRoute,
 				fastMode: providerOptions.fastMode,
 				serviceTier: providerOptions.serviceTier,
+				sessionId: providerOptions.sessionId,
 			})
 
 			// 4. Build the streaming Effect pipeline:

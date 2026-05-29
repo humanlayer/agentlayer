@@ -631,7 +631,7 @@ describe('codex effect provider (WebSocket transport)', () => {
 		expect(authHeader).toBe('Bearer test-api-key')
 	})
 
-	test('custom headers (originator, User-Agent, session_id) are passed', async () => {
+	test('custom headers (originator, User-Agent, session-id) are passed', async () => {
 		const { provider, openCalls } = createTestProvider(BASIC_TEXT_EVENTS)
 		const model = provider.languageModel('gpt-5.4')
 
@@ -642,7 +642,7 @@ describe('codex effect provider (WebSocket transport)', () => {
 		expect(openCalls.length).toBeGreaterThan(0)
 		const headers = openCalls[0]!.headers as Record<string, string>
 		expect(headers.originator).toBe('opencode')
-		expect(headers.session_id).toBe('test-session')
+		expect(headers['session-id']).toBe('test-session')
 		expect(headers['user-agent']).toMatch(/^opencode\//)
 	})
 

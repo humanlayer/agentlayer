@@ -55,8 +55,10 @@ export {
 	CODEX_DEFAULT_VERSION,
 	CODEX_FAST_SERVICE_TIER,
 	CODEX_FLEX_SERVICE_TIER,
+	CODEX_HEADER_TIMEOUT_MS,
 	CODEX_PROVIDER,
 	CODEX_PROVIDER_ID,
+	CODEX_WEBSOCKET_CONNECT_TIMEOUT_MS,
 } from './shared/constants'
 // --- Diagnostics ---
 export { type CodexDiagnosticsLayerOptions, makeCodexDiagnosticsLayer } from './shared/diagnostics'

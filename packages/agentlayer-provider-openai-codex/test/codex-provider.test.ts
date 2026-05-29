@@ -177,7 +177,7 @@ describe('codex provider wrapper', () => {
 		expect(headers.get('authorization')).toBe('Bearer oauth-access')
 		expect(headers.get('ChatGPT-Account-Id')).toBe('acct_123')
 		expect(headers.get('originator')).toBe('opencode')
-		expect(headers.get('session_id')).toBe('session-abc')
+		expect(headers.get('session-id')).toBe('session-abc')
 		expect(headers.get('User-Agent')).toBe(buildCodexUserAgent('1.2.3'))
 		expect(headers.get('x-extra')).toBe('extra-header')
 

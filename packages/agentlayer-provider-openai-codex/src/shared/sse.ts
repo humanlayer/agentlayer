@@ -16,7 +16,12 @@ export function parseSseEvents(buffer: string): { events: string[]; remainder: s
 	return { events, remainder: buffer.slice(pos) }
 }
 
-export function wrapSSE(res: Response, timeoutMs: number, abortCtl: AbortController): Response {
+export function wrapSSE(
+	res: Response,
+	timeoutMs: number,
+	abortCtl: AbortController,
+	onTimeout?: () => void,
+): Response {
 	if (typeof timeoutMs !== 'number' || timeoutMs <= 0) return res
 	if (!res.body) return res
 	if (!res.headers.get('content-type')?.includes('text/event-stream')) return res
@@ -27,6 +32,7 @@ export function wrapSSE(res: Response, timeoutMs: number, abortCtl: AbortControl
 			const part = await new Promise<{ done: boolean; value?: Uint8Array }>((resolve, reject) => {
 				const id = setTimeout(() => {
 					const err = new Error(`SSE stream read timed out after ${timeoutMs}ms - no data received`)
+					onTimeout?.()
 					abortCtl.abort(err)
 					void reader.cancel(err)
 					reject(err)

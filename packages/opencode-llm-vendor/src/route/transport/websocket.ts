@@ -1,5 +1,5 @@
 // @ts-nocheck — vendored from opencode, tested upstream under different tsconfig
-import { Cause, Context, Effect, Layer, Queue, Schedule, Stream } from 'effect'
+import { Cause, Context, Duration, Effect, Layer, Queue, Schedule, Stream } from 'effect'
 import * as Option from 'effect/Option'
 import type { Headers } from 'effect/unstable/http'
 import { LLMError, TransportReason } from '../../schema'
@@ -175,12 +175,23 @@ export const open = (input: WebSocketRequest) => {
 
 export const layer: Layer.Layer<Service> = Layer.succeed(Service, Service.of({ open }))
 
+const CONNECT_TIMEOUT_MS = 15_000
+
 export const fromWebSocket = (
 	ws: globalThis.WebSocket,
 	input: WebSocketRequest,
 ): Effect.Effect<WebSocketConnection, LLMError> =>
 	Effect.gen(function* () {
-		yield* waitOpen(ws, input)
+		yield* waitOpen(ws, input).pipe(
+			Effect.timeoutFail({
+				duration: Duration.millis(CONNECT_TIMEOUT_MS),
+				onTimeout: () =>
+					transportError('open', `WebSocket connect timeout after ${CONNECT_TIMEOUT_MS}ms`, {
+						url: input.url,
+						kind: 'timeout',
+					}),
+			}),
+		)
 		const messages = yield* Queue.bounded<string | Uint8Array, LLMError | Cause.Done<void>>(128)
 
 		const onMessage = (event: MessageEvent) => {
@@ -210,10 +221,11 @@ export const fromWebSocket = (
 		}
 		const onClose = (event: CloseEvent) => {
 			if (event.code === 1000 || event.code === 1005) return Queue.endUnsafe(messages)
+			const reason = event.reason ? `: ${event.reason}` : ''
 			Queue.failCauseUnsafe(
 				messages,
 				Cause.fail(
-					transportError('message', `WebSocket closed with code ${event.code}`, {
+					transportError('message', `WebSocket closed with code ${event.code}${reason}`, {
 						url: input.url,
 						kind: 'close',
 					}),
