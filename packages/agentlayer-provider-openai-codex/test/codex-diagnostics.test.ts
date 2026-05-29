@@ -428,9 +428,7 @@ describe('codex provider diagnostics (mid-stream transport retry)', () => {
 		const { request, attempts } = createVendorTestRequest(
 			(attempt) => {
 				if (attempt <= 1) {
-					return Stream.fromEffect(
-						Effect.die(new Error('The socket connection was closed unexpectedly')),
-					)
+					return Stream.fromEffect(Effect.die(new Error('The socket connection was closed unexpectedly')))
 				}
 				return Stream.make({ type: 'delta', text: 'recovered from socket close' }, { type: 'done' })
 			},

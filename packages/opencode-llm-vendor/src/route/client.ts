@@ -26,8 +26,8 @@ import * as ToolRuntime from '../tool-runtime'
 import { Auth, type Auth as AuthDef } from './auth'
 import {
 	type Interface as DiagnosticsInterface,
-	LLMDiagnostics,
 	isTransportError,
+	LLMDiagnostics,
 	llmErrorMetadata,
 	noopDiagnostics,
 } from './diagnostics'
