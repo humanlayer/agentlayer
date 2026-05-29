@@ -1,9 +1,10 @@
 import { Effect, Stream } from 'effect'
-import { Headers, HttpClientError, type HttpClientRequest } from 'effect/unstable/http'
+import { Headers, type HttpClientRequest } from 'effect/unstable/http'
 import * as ProviderShared from '../../protocols/shared'
 import type { LLMRequest } from '../../schema'
 import { LLMError, mergeJsonRecords, TransportReason } from '../../schema'
 import { Auth } from '../auth'
+import { isTransportError } from '../diagnostics'
 import { render as renderEndpoint } from '../endpoint'
 import { Framing, type Framing as FramingDef } from '../framing'
 import type { Transport, TransportPrepareInput } from './index'
@@ -67,27 +68,6 @@ export type HttpJsonPatch<Body, Frame> = Partial<HttpJsonInput<Body, Frame>>
 
 export interface HttpJsonTransport<Body, Frame> extends Transport<Body, HttpPrepared<Frame>, Frame> {
 	readonly with: (patch: HttpJsonPatch<Body, Frame>) => HttpJsonTransport<Body, Frame>
-}
-
-const isTransportError = (error: unknown): boolean => {
-	if (error instanceof Error) {
-		const msg = error.message.toLowerCase()
-		if (
-			msg.includes('socket') ||
-			msg.includes('econnreset') ||
-			msg.includes('econnrefused') ||
-			msg.includes('epipe') ||
-			msg.includes('etimedout') ||
-			msg.includes('network') ||
-			msg.includes('aborted') ||
-			msg.includes('closed unexpectedly') ||
-			msg.includes('connection') ||
-			msg.includes('fetch failed')
-		)
-			return true
-	}
-	if (HttpClientError.isHttpClientError(error)) return true
-	return false
 }
 
 const streamReadError = (route: string, error: unknown): LLMError => {

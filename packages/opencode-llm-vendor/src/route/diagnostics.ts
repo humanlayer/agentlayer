@@ -61,6 +61,30 @@ export const llmErrorMetadata = (error: unknown): Record<string, unknown> => {
 	}
 }
 
+// Heuristic for detecting transport-level errors (socket close, connection
+// reset, network failures) from raw JavaScript Error objects or Effect HTTP
+// client errors. Used by both http.ts (Stream.mapError for typed failures)
+// and client.ts (streamError for defects/Die causes that bypass mapError).
+export const isTransportError = (error: unknown): boolean => {
+	if (error instanceof Error) {
+		const msg = error.message.toLowerCase()
+		if (
+			msg.includes('socket') ||
+			msg.includes('econnreset') ||
+			msg.includes('econnrefused') ||
+			msg.includes('epipe') ||
+			msg.includes('etimedout') ||
+			msg.includes('network') ||
+			msg.includes('aborted') ||
+			msg.includes('closed unexpectedly') ||
+			msg.includes('connection') ||
+			msg.includes('fetch failed')
+		)
+			return true
+	}
+	return false
+}
+
 // Fallback diagnostics used when no `LLMDiagnostics` sink is installed in the
 // runtime. Every method is a successful, side-effect-free effect so emitting a
 // diagnostic never changes stream control flow.

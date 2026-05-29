@@ -27,6 +27,7 @@ import { Auth, type Auth as AuthDef } from './auth'
 import {
 	type Interface as DiagnosticsInterface,
 	LLMDiagnostics,
+	isTransportError,
 	llmErrorMetadata,
 	noopDiagnostics,
 } from './diagnostics'
@@ -238,6 +239,17 @@ export interface MakeTransportInput<Body, Prepared, Frame, Event, State> {
 const streamError = (route: string, message: string, cause: Cause.Cause<unknown>) => {
 	const failed = cause.reasons.find(Cause.isFailReason)?.error
 	if (failed instanceof LLMErrorClass) return failed
+	const defect = cause.reasons.find(Cause.isDieReason)?.defect
+	if (defect && isTransportError(defect)) {
+		return new LLMErrorClass({
+			module: 'ProviderShared',
+			method: 'stream',
+			reason: new TransportReason({
+				message: `${message}: ${ProviderShared.errorText(defect)}`,
+				kind: 'StreamRead',
+			}),
+		})
+	}
 	return ProviderShared.eventError(route, message, Cause.pretty(cause))
 }
 

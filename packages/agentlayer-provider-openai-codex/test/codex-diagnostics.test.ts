@@ -417,6 +417,47 @@ describe('codex provider diagnostics (Phase 2 - HTTP status retry)', () => {
 // ---------------------------------------------------------------------------
 
 describe('codex provider diagnostics (mid-stream transport retry)', () => {
+	test('classifies socket close defects as TransportReason and retries them', async () => {
+		const records: CodexDiagnosticRecord[] = []
+		const diagnosticsLayer = makeDiagnosticsLayer(records)
+		const clientLayer = LLMClient.layer.pipe(
+			Layer.provide(unusedRequestExecutorLayer),
+			Layer.provide(diagnosticsLayer),
+		)
+
+		const { request, attempts } = createVendorTestRequest(
+			(attempt) => {
+				if (attempt <= 1) {
+					return Stream.fromEffect(
+						Effect.die(new Error('The socket connection was closed unexpectedly')),
+					)
+				}
+				return Stream.make({ type: 'delta', text: 'recovered from socket close' }, { type: 'done' })
+			},
+			{
+				firstEventTimeoutMs: 500,
+				firstEventTimeoutRetries: 3,
+				firstEventRetryBaseDelayMs: 1,
+				firstEventRetryMaxDelayMs: 1,
+				eventIdleTimeoutMs: 500,
+			},
+		)
+
+		const events = Array.from(
+			await Effect.runPromise(Stream.runCollect(Stream.provide(LLMClient.stream(request), clientLayer))),
+		)
+		expect(events).toContainEqual({ type: 'text-delta', id: 'text-0', text: 'recovered from socket close' })
+		expect(attempts()).toBe(2)
+
+		const retryWarnings = records.filter((r) => r.event === 'codex.provider.stream.transport_retry')
+		expect(retryWarnings.length).toBe(1)
+		expect(retryWarnings[0]!.metadata).toMatchObject({
+			terminal: false,
+			reasonTag: 'Transport',
+			transportKind: 'StreamRead',
+		})
+	})
+
 	test('retries retryable transport errors and succeeds on later attempt', async () => {
 		const records: CodexDiagnosticRecord[] = []
 		const diagnosticsLayer = makeDiagnosticsLayer(records)
