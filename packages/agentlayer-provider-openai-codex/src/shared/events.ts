@@ -95,8 +95,22 @@ export function llmEventToStreamParts(event: AnyLLMEvent): LanguageModelV3Stream
 				},
 			]
 		// DQ5: Map provider-error to AI SDK error part
-		case 'provider-error':
-			return [{ type: 'error', error: new Error(event.message as string) }]
+		case 'provider-error': {
+			const message = event.message as string
+			const code = event.code as string | undefined
+			if (
+				code === 'websocket_connection_limit_reached' ||
+				message?.includes('websocket_connection_limit_reached')
+			) {
+				return [
+					{
+						type: 'error',
+						error: new Error(`Codex WebSocket connection limit reached (${message})`),
+					},
+				]
+			}
+			return [{ type: 'error', error: new Error(message) }]
+		}
 		default:
 			return []
 	}

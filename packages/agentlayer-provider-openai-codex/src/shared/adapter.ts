@@ -46,6 +46,7 @@ export interface AdapterConfig {
 	route: AnyRoute
 	fastMode?: boolean
 	serviceTier?: string
+	sessionId?: string
 }
 
 // ---------------------------------------------------------------------------
@@ -271,7 +272,7 @@ export function mapProviderOptions(
 	const reasoningSummary = (providerOptions?.reasoningSummary as string | undefined) ?? 'detailed'
 	const store = false // Codex always uses store: false
 	const include = (providerOptions?.include as string[] | undefined) ?? ['reasoning.encrypted_content']
-	const promptCacheKey = providerOptions?.promptCacheKey as string | undefined
+	const promptCacheKey = (providerOptions?.promptCacheKey as string | undefined) ?? config.sessionId
 
 	// service_tier normalization (DQ4)
 	let serviceTier: string | undefined

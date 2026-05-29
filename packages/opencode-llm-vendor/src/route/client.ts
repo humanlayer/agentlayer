@@ -24,6 +24,13 @@ import {
 import type { Tools } from '../tool'
 import * as ToolRuntime from '../tool-runtime'
 import { Auth, type Auth as AuthDef } from './auth'
+import {
+	type Interface as DiagnosticsInterface,
+	isTransportError,
+	LLMDiagnostics,
+	llmErrorMetadata,
+	noopDiagnostics,
+} from './diagnostics'
 import { Endpoint, type EndpointPatch } from './endpoint'
 import { RequestExecutor } from './executor'
 import type { Framing } from './framing'
@@ -232,8 +239,21 @@ export interface MakeTransportInput<Body, Prepared, Frame, Event, State> {
 const streamError = (route: string, message: string, cause: Cause.Cause<unknown>) => {
 	const failed = cause.reasons.find(Cause.isFailReason)?.error
 	if (failed instanceof LLMErrorClass) return failed
+	const defect = cause.reasons.find(Cause.isDieReason)?.defect
+	if (defect && isTransportError(defect)) {
+		return new LLMErrorClass({
+			module: 'ProviderShared',
+			method: 'stream',
+			reason: new TransportReason({
+				message: `${message}: ${ProviderShared.errorText(defect)}`,
+				kind: 'StreamRead',
+			}),
+		})
+	}
 	return ProviderShared.eventError(route, message, Cause.pretty(cause))
 }
+
+const resolveDiagnostics = (runtime: TransportRuntime): DiagnosticsInterface => runtime.diagnostics ?? noopDiagnostics
 
 const FIRST_EVENT_TIMEOUT_KIND = 'ProtocolFirstEventTimeout'
 const EVENT_IDLE_TIMEOUT_KIND = 'ProtocolEventIdleTimeout'
@@ -263,13 +283,36 @@ const isFirstEventTimeout = (error: LLMError) =>
 	error.reason?._tag === 'Transport' &&
 	error.reason?.kind === FIRST_EVENT_TIMEOUT_KIND
 
-const withEventIdleTimeout = <A>(stream: Stream.Stream<A, LLMError>, route: string, timeoutMs: number | undefined) => {
+const isRetryableStreamError = (error: LLMError) =>
+	error instanceof LLMErrorClass &&
+	error.retryable &&
+	error.reason?._tag === 'Transport' &&
+	error.reason?.kind !== EVENT_IDLE_TIMEOUT_KIND
+
+const withEventIdleTimeout = <A>(
+	stream: Stream.Stream<A, LLMError>,
+	route: string,
+	timeoutMs: number | undefined,
+	diagnostics: DiagnosticsInterface = noopDiagnostics,
+) => {
 	const idleTimeoutMs = positiveNumber(timeoutMs)
 	if (!idleTimeoutMs) return stream
 	return stream.pipe(
 		Stream.timeoutOrElse({
 			duration: durationMs(idleTimeoutMs),
-			orElse: () => Stream.fail(protocolEventTimeoutError(route, EVENT_IDLE_TIMEOUT_KIND, idleTimeoutMs)),
+			orElse: () => {
+				const error = protocolEventTimeoutError(route, EVENT_IDLE_TIMEOUT_KIND, idleTimeoutMs)
+				return Stream.unwrap(
+					diagnostics
+						.error('codex.provider.timeout.event_idle', {
+							route,
+							terminal: true,
+							timeoutMs: idleTimeoutMs,
+							...llmErrorMetadata(error),
+						})
+						.pipe(Effect.as(Stream.fail(error))),
+				)
+			},
 		}),
 	)
 }
@@ -278,10 +321,11 @@ const withProtocolEventTimeouts = <A>(
 	stream: Stream.Stream<A, LLMError>,
 	route: string,
 	request: LLMRequest,
+	diagnostics: DiagnosticsInterface = noopDiagnostics,
 ): Stream.Stream<A, LLMError> => {
 	const firstTimeoutMs = positiveNumber(request.stream?.firstEventTimeoutMs)
 	const idleTimeoutMs = positiveNumber(request.stream?.eventIdleTimeoutMs)
-	if (!firstTimeoutMs) return withEventIdleTimeout(stream, route, idleTimeoutMs)
+	if (!firstTimeoutMs) return withEventIdleTimeout(stream, route, idleTimeoutMs, diagnostics)
 
 	return Stream.unwrap(
 		Effect.gen(function* () {
@@ -293,7 +337,10 @@ const withProtocolEventTimeouts = <A>(
 				}),
 			)
 			if (Option.isNone(first)) return Stream.empty
-			return Stream.concat(Stream.make(first.value), withEventIdleTimeout(rest, route, idleTimeoutMs))
+			return Stream.concat(
+				Stream.make(first.value),
+				withEventIdleTimeout(rest, route, idleTimeoutMs, diagnostics),
+			)
 		}),
 	)
 }
@@ -310,18 +357,69 @@ const firstEventRetryDelay = (options: StreamOptions, attempt: number) => {
 const retryFirstEventTimeout = <A>(
 	makeStream: () => Stream.Stream<A, LLMError>,
 	options: StreamOptions | undefined,
+	diagnostics: DiagnosticsInterface = noopDiagnostics,
 	attempt = 0,
 ): Stream.Stream<A, LLMError> => {
 	const retries = nonNegativeInteger(options?.firstEventTimeoutRetries)
 	if (retries <= 0) return makeStream()
 	return makeStream().pipe(
 		Stream.catchTag('LLM.Error', (error) => {
-			if (!isFirstEventTimeout(error) || attempt >= retries) return Stream.fail(error)
+			const isTimeout = isFirstEventTimeout(error)
+			const isTransport = !isTimeout && isRetryableStreamError(error)
+			if ((!isTimeout && !isTransport) || attempt >= retries) {
+				if (isTimeout && attempt >= retries) {
+					return Stream.unwrap(
+						diagnostics
+							.error('codex.provider.timeout.first_event.exhausted', {
+								terminal: true,
+								attempt: attempt + 1,
+								maxRetries: retries,
+								...llmErrorMetadata(error),
+							})
+							.pipe(Effect.as(Stream.fail(error))),
+					)
+				}
+				if (isTransport && attempt >= retries) {
+					return Stream.unwrap(
+						diagnostics
+							.error('codex.provider.stream.retry_exhausted', {
+								terminal: true,
+								attempt: attempt + 1,
+								maxRetries: retries,
+								...llmErrorMetadata(error),
+							})
+							.pipe(Effect.as(Stream.fail(error))),
+					)
+				}
+				return Stream.fail(error)
+			}
+			const eventName = isTimeout
+				? 'codex.provider.timeout.first_event.retry'
+				: 'codex.provider.stream.transport_retry'
+			const scheduledEventName = isTimeout
+				? 'codex.provider.timeout.first_event.retry_scheduled'
+				: 'codex.provider.stream.transport_retry_scheduled'
 			return Stream.unwrap(
-				firstEventRetryDelay(options!, attempt).pipe(
-					Effect.flatMap((delay) => Effect.sleep(durationMs(delay))),
-					Effect.map(() => retryFirstEventTimeout(makeStream, options, attempt + 1)),
-				),
+				diagnostics
+					.warning(eventName, {
+						terminal: false,
+						attempt: attempt + 1,
+						maxRetries: retries,
+						...llmErrorMetadata(error),
+					})
+					.pipe(
+						Effect.flatMap(() => firstEventRetryDelay(options!, attempt)),
+						Effect.flatMap((delay) =>
+							diagnostics
+								.info(scheduledEventName, {
+									attempt: attempt + 1,
+									delayMs: delay,
+								})
+								.pipe(Effect.as(delay)),
+						),
+						Effect.flatMap((delay) => Effect.sleep(durationMs(delay))),
+						Effect.map(() => retryFirstEventTimeout(makeStream, options, diagnostics, attempt + 1)),
+					),
 			)
 		}),
 	)
@@ -382,22 +480,33 @@ function makeFromTransport<Body, Prepared, Frame, Event, State>(
 				}),
 			streamPrepared: (prepared: Prepared, request: LLMRequest, runtime: TransportRuntime) => {
 				const route = `${request.model.provider}/${request.model.route.id}`
+				const diagnostics = resolveDiagnostics(runtime)
 				const decodedEvents = routeInput.transport
 					.frames(prepared, request, runtime)
 					.pipe(
 						Stream.mapEffect(decodeEvent(route)),
 						protocol.stream.terminal ? Stream.takeUntil(protocol.stream.terminal) : (stream) => stream,
 					)
-				const events = withProtocolEventTimeouts(decodedEvents, route, request)
+				const events = withProtocolEventTimeouts(decodedEvents, route, request, diagnostics)
 				return events.pipe(
 					Stream.mapAccumEffect(
 						() => protocol.stream.initial(request),
 						protocol.stream.step,
 						protocol.stream.onHalt ? { onHalt: protocol.stream.onHalt } : undefined,
 					),
-					Stream.catchCause((cause) =>
-						Stream.fail(streamError(route, `Failed to read ${route} stream`, cause)),
-					),
+					Stream.catchCause((cause) => {
+						const error = streamError(route, `Failed to read ${route} stream`, cause)
+						return Stream.unwrap(
+							diagnostics
+								.error('codex.provider.stream.failed', {
+									route,
+									terminal: true,
+									causePretty: Cause.pretty(cause),
+									...llmErrorMetadata(error),
+								})
+								.pipe(Effect.as(Stream.fail(error))),
+						)
+					}),
 				)
 			},
 		} satisfies Route<Body, Prepared>
@@ -480,6 +589,7 @@ const prepareWith = Effect.fn('LLMClient.prepare')(function* (request: LLMReques
 
 const streamRequestWith = (runtime: TransportRuntime) => (request: LLMRequest) => {
 	const options = mergeStreamOptions(request.model.route.defaults.stream, request.stream)
+	const diagnostics = resolveDiagnostics(runtime)
 	return retryFirstEventTimeout(
 		() =>
 			Stream.unwrap(
@@ -489,6 +599,7 @@ const streamRequestWith = (runtime: TransportRuntime) => (request: LLMRequest) =
 				}),
 			),
 		options,
+		diagnostics,
 	)
 }
 
@@ -552,11 +663,18 @@ export const layer: Layer.Layer<Service, never, RequestExecutor.Service> = Layer
 			streamRequestWith({
 				http: yield* RequestExecutor.Service,
 				webSocket: Option.getOrUndefined(yield* Effect.serviceOption(WebSocketExecutor.Service)),
+				// Resolved optionally (precedent: `WebSocketExecutor` above) so the
+				// public requirement type of `layer` stays `RequestExecutor.Service`
+				// only. Falls back to a no-op sink at the call sites when absent.
+				diagnostics: Option.getOrUndefined(yield* Effect.serviceOption(LLMDiagnostics.Service)),
 			}),
 		)
 		return Service.of({ prepare: prepareWith as Interface['prepare'], stream, generate: generateWith(stream) })
 	}),
 )
+
+// Re-export from diagnostics.ts for backward compatibility with Phase 1 callers
+export { llmErrorMetadata } from './diagnostics'
 
 export const Route = { make } as const
 

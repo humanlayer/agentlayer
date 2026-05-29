@@ -1,8 +1,10 @@
 import { Effect, Stream } from 'effect'
 import { Headers, type HttpClientRequest } from 'effect/unstable/http'
 import * as ProviderShared from '../../protocols/shared'
-import { type LLMRequest, mergeJsonRecords } from '../../schema'
+import type { LLMRequest } from '../../schema'
+import { LLMError, mergeJsonRecords, TransportReason } from '../../schema'
 import { Auth } from '../auth'
+import { isTransportError } from '../diagnostics'
 import { render as renderEndpoint } from '../endpoint'
 import { Framing, type Framing as FramingDef } from '../framing'
 import type { Transport, TransportPrepareInput } from './index'
@@ -68,6 +70,21 @@ export interface HttpJsonTransport<Body, Frame> extends Transport<Body, HttpPrep
 	readonly with: (patch: HttpJsonPatch<Body, Frame>) => HttpJsonTransport<Body, Frame>
 }
 
+const streamReadError = (route: string, error: unknown): LLMError => {
+	const message = `Failed to read ${route} stream: ${ProviderShared.errorText(error)}`
+	if (isTransportError(error)) {
+		return new LLMError({
+			module: 'ProviderShared',
+			method: 'stream',
+			reason: new TransportReason({
+				message,
+				kind: 'StreamRead',
+			}),
+		})
+	}
+	return ProviderShared.eventError(route, message, ProviderShared.errorText(error))
+}
+
 export const httpJson = <Body, Frame>(input: HttpJsonInput<Body, Frame>): HttpJsonTransport<Body, Frame> => ({
 	id: 'http-json',
 	with: (patch) => httpJson({ ...input, ...patch }),
@@ -89,11 +106,7 @@ export const httpJson = <Body, Frame>(input: HttpJsonInput<Body, Frame>): HttpJs
 						prepared.framing.frame(
 							response.stream.pipe(
 								Stream.mapError((error) =>
-									ProviderShared.eventError(
-										`${request.model.provider}/${request.model.route.id}`,
-										`Failed to read ${request.model.provider}/${request.model.route.id} stream`,
-										ProviderShared.errorText(error),
-									),
+									streamReadError(`${request.model.provider}/${request.model.route.id}`, error),
 								),
 							),
 						),

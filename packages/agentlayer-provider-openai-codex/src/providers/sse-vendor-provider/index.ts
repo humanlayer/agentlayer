@@ -12,14 +12,16 @@ import { createFileAuthStore } from '@humanlayer/agentlayer-provider-auth'
 import { route as httpSseRoute } from '@humanlayer/opencode-llm-vendor/protocols/openai-responses'
 import { Auth } from '@humanlayer/opencode-llm-vendor/route/auth'
 import { LLMClient } from '@humanlayer/opencode-llm-vendor/route/client'
+import { LLMDiagnostics } from '@humanlayer/opencode-llm-vendor/route/diagnostics'
 import { RequestExecutor } from '@humanlayer/opencode-llm-vendor/route/executor'
 import { Layer, Stream } from 'effect'
 import { convertCallOptionsToLLMRequest } from '../../shared/adapter'
 import { buildCodexUserAgent, resolveCodexAuth } from '../../shared/auth'
 import { effectStreamToReadableStream } from '../../shared/bridge'
 import { CODEX_API_ENDPOINT, CODEX_DEFAULT_VERSION } from '../../shared/constants'
+import { makeCodexDiagnosticsLayer } from '../../shared/diagnostics'
 import { type AnyLLMEvent, emptyUsage, llmEventToStreamParts } from '../../shared/events'
-import type { CodexProviderOptions } from '../../shared/types'
+import type { CodexDiagnosticsContext, CodexProviderOptions } from '../../shared/types'
 
 // Debug logging gated behind DEBUG_CODEX_SSE=1
 const DEBUG = process.env.DEBUG_CODEX_SSE === '1'
@@ -48,6 +50,14 @@ const llmClientLayer = LLMClient.layer.pipe(
 	// No WebSocketExecutor needed -- HTTP SSE transport uses RequestExecutor only
 )
 
+// Resolve the diagnostics layer satisfied alongside `llmClientLayer`. When the
+// host supplies a diagnostics context the provider installs the concrete sink;
+// otherwise it falls back to the vendor noop so the optional service is always
+// satisfiable before `bridge.ts` runs the stream.
+function diagnosticsLayerFor(diagnostics: CodexDiagnosticsContext | undefined) {
+	return diagnostics ? makeCodexDiagnosticsLayer(diagnostics, { transport: 'sse' }) : LLMDiagnostics.noopLayer
+}
+
 // ---------------------------------------------------------------------------
 // LanguageModelV3 implementation
 // ---------------------------------------------------------------------------
@@ -61,6 +71,7 @@ function createSseCodexModel(
 		fastMode?: boolean
 		serviceTier?: string
 		baseURL: string
+		diagnostics?: CodexDiagnosticsContext
 		_testLayers?: Layer.Layer<any>
 	},
 ): LanguageModelV3 {
@@ -152,7 +163,7 @@ function createSseCodexModel(
 				'User-Agent': buildCodexUserAgent(providerOptions.version),
 			}
 			if (providerOptions.sessionId) {
-				customHeaders.session_id = providerOptions.sessionId
+				customHeaders['session-id'] = providerOptions.sessionId
 			}
 			if (accountId) {
 				customHeaders['ChatGPT-Account-Id'] = accountId
@@ -167,6 +178,7 @@ function createSseCodexModel(
 				route: httpSseRoute,
 				fastMode: providerOptions.fastMode,
 				serviceTier: providerOptions.serviceTier,
+				sessionId: providerOptions.sessionId,
 			})
 
 			// 4. Build the streaming Effect pipeline:
@@ -179,8 +191,11 @@ function createSseCodexModel(
 			)
 
 			// 5. Provide LLMClient layers so the stream's service requirements are satisfied
-			//    SSE transport only needs RequestExecutor, no WebSocketExecutor
-			const layers = providerOptions._testLayers ?? llmClientLayer
+			//    SSE transport only needs RequestExecutor, no WebSocketExecutor.
+			//    The diagnostics layer is piped on so the optional service is
+			//    satisfied before `bridge.ts` runs the stream.
+			const baseLayers = providerOptions._testLayers ?? llmClientLayer
+			const layers = Layer.provideMerge(baseLayers, diagnosticsLayerFor(providerOptions.diagnostics))
 			const providedStream = Stream.provide(llmStream, layers) as Stream.Stream<
 				LanguageModelV3StreamPart,
 				unknown
@@ -234,6 +249,7 @@ export function createCodexSseVendorProvider(options: CodexSseVendorProviderOpti
 				fastMode: options.fastMode,
 				serviceTier: options.serviceTier ?? undefined,
 				baseURL: CODEX_API_ENDPOINT.replace(/\/responses$/, ''),
+				diagnostics: options.diagnostics,
 				_testLayers: options._testLayers,
 			})
 		},
