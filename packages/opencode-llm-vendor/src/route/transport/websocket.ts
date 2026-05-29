@@ -1,7 +1,9 @@
 // @ts-nocheck — vendored from opencode, tested upstream under different tsconfig
 import { Cause, Context, Effect, Layer, Queue, Schedule, Stream } from 'effect'
+import * as Option from 'effect/Option'
 import type { Headers } from 'effect/unstable/http'
 import { LLMError, TransportReason } from '../../schema'
+import { LLMDiagnostics, llmErrorMetadata, noopDiagnostics } from '../diagnostics'
 import * as HttpTransport from './http'
 import type { Transport } from './index'
 
@@ -128,8 +130,10 @@ const webSocketUrl = (value: string) =>
 
 const wsRetrySchedule = Schedule.exponential('500 millis').pipe(Schedule.jittered, Schedule.both(Schedule.recurs(5)))
 
-export const open = (input: WebSocketRequest) =>
-	Effect.try({
+export const open = (input: WebSocketRequest) => {
+	let openAttempt = 0
+
+	const tryOpen = Effect.try({
 		try: () =>
 			new (globalThis.WebSocket as unknown as WebSocketConstructorWithHeaders)(input.url, {
 				headers: input.headers,
@@ -141,8 +145,33 @@ export const open = (input: WebSocketRequest) =>
 			}),
 	}).pipe(
 		Effect.flatMap((ws) => fromWebSocket(ws, input)),
-		Effect.retry({ schedule: wsRetrySchedule, while: (error) => error.retryable }),
+		Effect.tapError((error) => {
+			openAttempt++
+			return Effect.flatMap(Effect.serviceOption(LLMDiagnostics.Service), (optDiag) => {
+				const diag = Option.getOrElse(optDiag, () => noopDiagnostics)
+				return diag.warning('codex.provider.websocket.open_failed', {
+					terminal: false,
+					attempt: openAttempt,
+					...llmErrorMetadata(error),
+				})
+			})
+		}),
 	)
+
+	return tryOpen.pipe(
+		Effect.retry({ schedule: wsRetrySchedule, while: (error) => error.retryable }),
+		Effect.tapError((error) =>
+			Effect.flatMap(Effect.serviceOption(LLMDiagnostics.Service), (optDiag) => {
+				const diag = Option.getOrElse(optDiag, () => noopDiagnostics)
+				return diag.error('codex.provider.websocket.open_exhausted', {
+					terminal: true,
+					attempt: openAttempt,
+					...llmErrorMetadata(error),
+				})
+			}),
+		),
+	)
+}
 
 export const layer: Layer.Layer<Service> = Layer.succeed(Service, Service.of({ open }))
 
@@ -214,7 +243,17 @@ export const fromWebSocket = (
 								kind: 'write',
 							},
 						),
-				}),
+				}).pipe(
+					Effect.tapError((error) =>
+						Effect.flatMap(Effect.serviceOption(LLMDiagnostics.Service), (optDiag) => {
+							const diag = Option.getOrElse(optDiag, () => noopDiagnostics)
+							return diag.error('codex.provider.websocket.write_failed', {
+								terminal: true,
+								...llmErrorMetadata(error),
+							})
+						}),
+					),
+				),
 			messages: Stream.fromQueue(messages),
 			close: cleanup.pipe(
 				Effect.andThen(
@@ -268,11 +307,18 @@ export const json = <Body, Message>(input: JsonInput<Body, Message>): JsonTransp
 	frames: (prepared, _request, runtime) => {
 		const webSocket = runtime.webSocket
 		if (!webSocket) {
-			return Stream.fail(
-				transportError('json', 'WebSocket JSON transport requires WebSocketExecutor.Service', {
-					url: prepared.url,
-					kind: 'websocket',
-				}),
+			const error = transportError('json', 'WebSocket JSON transport requires WebSocketExecutor.Service', {
+				url: prepared.url,
+				kind: 'websocket',
+			})
+			const diagnostics = runtime.diagnostics ?? noopDiagnostics
+			return Stream.unwrap(
+				diagnostics
+					.error('codex.provider.websocket.missing_executor', {
+						terminal: true,
+						...llmErrorMetadata(error),
+					})
+					.pipe(Effect.as(Stream.fail(error))),
 			)
 		}
 		const decoder = new TextDecoder()

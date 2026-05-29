@@ -12,7 +12,7 @@ export type {
 } from './client'
 export { LLMClient, Route } from './client'
 export type { Interface as LLMDiagnosticsShape, Service as LLMDiagnosticsService } from './diagnostics'
-export { LLMDiagnostics } from './diagnostics'
+export { LLMDiagnostics, llmErrorMetadata, noopDiagnostics } from './diagnostics'
 export type { Endpoint as EndpointFn, EndpointInput } from './endpoint'
 export { Endpoint } from './endpoint'
 export * from './executor'

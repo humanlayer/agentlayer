@@ -1,5 +1,6 @@
 // @ts-nocheck — vendored from opencode, tested upstream under different tsconfig
 import { Context, Effect, Layer } from 'effect'
+import { LLMError as LLMErrorClass } from '../schema'
 
 /**
  * Generic, implementation-agnostic diagnostics service for the LLM route
@@ -39,6 +40,36 @@ export const noopLayer: Layer.Layer<Service> = Layer.succeed(
 		error: () => Effect.void,
 	}),
 )
+
+// Serialize the vendored `LLMError` reason taxonomy into a flat metadata bag
+// for diagnostics records. Carries the typed reason tag rather than flattening
+// everything into a single string. Never includes prompt text, deltas, tokens,
+// auth headers, or full bodies.
+export const llmErrorMetadata = (error: unknown): Record<string, unknown> => {
+	if (!(error instanceof LLMErrorClass)) {
+		return { reasonTag: 'unknown', retryable: false }
+	}
+	const reason = error.reason
+	return {
+		module: error.module,
+		method: error.method,
+		retryable: error.retryable,
+		reasonTag: reason?._tag,
+		status: reason && 'status' in reason ? reason.status : undefined,
+		retryAfterMs: error.retryAfterMs,
+		transportKind: reason && 'kind' in reason ? reason.kind : undefined,
+	}
+}
+
+// Fallback diagnostics used when no `LLMDiagnostics` sink is installed in the
+// runtime. Every method is a successful, side-effect-free effect so emitting a
+// diagnostic never changes stream control flow.
+export const noopDiagnostics: Interface = {
+	debug: () => Effect.void,
+	info: () => Effect.void,
+	warning: () => Effect.void,
+	error: () => Effect.void,
+}
 
 export const LLMDiagnostics = {
 	Service,
