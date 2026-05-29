@@ -7,6 +7,7 @@ import type { AgentConfig, PostToolUseHook, SubAgentConfig, Tool } from '@humanl
 import { saneDefaultOutputTruncationHooks } from '@humanlayer/agentlayer-filesystem/hooks'
 import { createMemoryAuthStore } from '@humanlayer/agentlayer-provider-auth'
 import * as providerAuth from '@humanlayer/agentlayer-provider-auth'
+import * as codexProvider from '@humanlayer/agentlayer-provider-openai-codex'
 import { buildProviderOptions, createCodelayerAgent, createCodelayerProviderOptionsFactory } from '../src/agent'
 import { createCodelayerAgent as rootCreateCodelayerAgent, createCodelayerCommand, DEFAULT_MODELS as rootDefaultModels, resolveExaApiKey, resolveModel } from '../src/index'
 import { createCodingSubagentTool } from '../src/coding-subagent-tool'
@@ -158,6 +159,24 @@ describe('provider resolution', () => {
 		expect(codexModel).toBeDefined()
 		expect(copilotModel).toBeDefined()
 		expect(providerAuth.ensureFileAuthStore).toHaveBeenCalledTimes(2)
+	})
+
+	test('forwards codex diagnostics context into the Codex provider factory', async () => {
+		const sseSpy = spyOn(codexProvider, 'createCodexSseVendorProvider')
+		const codexDiagnostics = {
+			annotations: { sessionId: 'session-xyz', model: 'gpt-5.5', provider: 'codex' },
+			onEvent: () => {},
+		}
+
+		const model = await resolveModel('codex', 'gpt-5.5', { codexDiagnostics })
+
+		expect(model).toBeDefined()
+		expect(sseSpy).toHaveBeenCalledWith(
+			expect.objectContaining({
+				diagnostics: codexDiagnostics,
+				sessionId: 'session-xyz',
+			}),
+		)
 	})
 })
 

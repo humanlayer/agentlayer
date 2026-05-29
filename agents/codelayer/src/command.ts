@@ -4,6 +4,7 @@ import { createSkillToolFromRepoDirs } from '@humanlayer/agentlayer-filesystem/t
 import { createCodelayerAgent } from './agent'
 import type { CodelayerProviderOptionOverrides } from './agent'
 import { DEFAULT_MODELS, type ProviderType, resolveExaApiKey, resolveModel } from './providers'
+import { createCliCodexDiagnostics } from './util/codex-diagnostics'
 import { runInteractive } from './util/interactive'
 
 export interface CodelayerCliOptions {
@@ -162,7 +163,13 @@ Provider options:
 			})
 			const provider = opts.provider as ProviderType
 			const modelId = opts.model ?? DEFAULT_MODELS[provider]
-			const model = await resolveModel(provider, modelId)
+			const model = await resolveModel(
+				provider,
+				modelId,
+				provider === 'codex'
+					? { codexDiagnostics: createCliCodexDiagnostics({ model: modelId, verbose: opts.verbose }) }
+					: undefined,
+			)
 			const providerOptionOverrides = applyCliThinkingOverride({
 				provider,
 				modelId,

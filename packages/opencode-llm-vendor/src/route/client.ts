@@ -24,6 +24,7 @@ import {
 import type { Tools } from '../tool'
 import * as ToolRuntime from '../tool-runtime'
 import { Auth, type Auth as AuthDef } from './auth'
+import { type Interface as DiagnosticsInterface, LLMDiagnostics } from './diagnostics'
 import { Endpoint, type EndpointPatch } from './endpoint'
 import { RequestExecutor } from './executor'
 import type { Framing } from './framing'
@@ -235,6 +236,38 @@ const streamError = (route: string, message: string, cause: Cause.Cause<unknown>
 	return ProviderShared.eventError(route, message, Cause.pretty(cause))
 }
 
+// Fallback diagnostics used when no `LLMDiagnostics` sink is installed in the
+// runtime. Every method is a successful, side-effect-free effect so emitting a
+// diagnostic never changes stream control flow.
+const noopDiagnostics: DiagnosticsInterface = {
+	debug: () => Effect.void,
+	info: () => Effect.void,
+	warning: () => Effect.void,
+	error: () => Effect.void,
+}
+
+const resolveDiagnostics = (runtime: TransportRuntime): DiagnosticsInterface => runtime.diagnostics ?? noopDiagnostics
+
+// Serialize the vendored `LLMError` reason taxonomy into a flat metadata bag
+// for diagnostics records. Carries the typed reason tag rather than flattening
+// everything into a single string. Never includes prompt text, deltas, tokens,
+// auth headers, or full bodies.
+export const llmErrorMetadata = (error: unknown): Record<string, unknown> => {
+	if (!(error instanceof LLMErrorClass)) {
+		return { reasonTag: 'unknown', retryable: false }
+	}
+	const reason = error.reason
+	return {
+		module: error.module,
+		method: error.method,
+		retryable: error.retryable,
+		reasonTag: reason?._tag,
+		status: reason && 'status' in reason ? reason.status : undefined,
+		retryAfterMs: error.retryAfterMs,
+		transportKind: reason && 'kind' in reason ? reason.kind : undefined,
+	}
+}
+
 const FIRST_EVENT_TIMEOUT_KIND = 'ProtocolFirstEventTimeout'
 const EVENT_IDLE_TIMEOUT_KIND = 'ProtocolEventIdleTimeout'
 const DEFAULT_FIRST_EVENT_RETRY_BASE_DELAY_MS = 1_000
@@ -395,9 +428,19 @@ function makeFromTransport<Body, Prepared, Frame, Event, State>(
 						protocol.stream.step,
 						protocol.stream.onHalt ? { onHalt: protocol.stream.onHalt } : undefined,
 					),
-					Stream.catchCause((cause) =>
-						Stream.fail(streamError(route, `Failed to read ${route} stream`, cause)),
-					),
+					Stream.catchCause((cause) => {
+						const error = streamError(route, `Failed to read ${route} stream`, cause)
+						const diagnostics = resolveDiagnostics(runtime)
+						return Stream.unwrap(
+							diagnostics
+								.error('codex.provider.stream.failed', {
+									route,
+									terminal: true,
+									...llmErrorMetadata(error),
+								})
+								.pipe(Effect.as(Stream.fail(error))),
+						)
+					}),
 				)
 			},
 		} satisfies Route<Body, Prepared>
@@ -552,6 +595,10 @@ export const layer: Layer.Layer<Service, never, RequestExecutor.Service> = Layer
 			streamRequestWith({
 				http: yield* RequestExecutor.Service,
 				webSocket: Option.getOrUndefined(yield* Effect.serviceOption(WebSocketExecutor.Service)),
+				// Resolved optionally (precedent: `WebSocketExecutor` above) so the
+				// public requirement type of `layer` stays `RequestExecutor.Service`
+				// only. Falls back to a no-op sink at the call sites when absent.
+				diagnostics: Option.getOrUndefined(yield* Effect.serviceOption(LLMDiagnostics.Service)),
 			}),
 		)
 		return Service.of({ prepare: prepareWith as Interface['prepare'], stream, generate: generateWith(stream) })

@@ -58,5 +58,14 @@ export {
 	CODEX_PROVIDER,
 	CODEX_PROVIDER_ID,
 } from './shared/constants'
+// --- Diagnostics ---
+export { type CodexDiagnosticsLayerOptions, makeCodexDiagnosticsLayer } from './shared/diagnostics'
 export { normalizeCodexServiceTier } from './shared/service-tier'
-export type { CodexProviderOptions, CodexRequestOptions } from './shared/types'
+export type {
+	CodexDiagnosticRecord,
+	CodexDiagnosticSeverity,
+	CodexDiagnosticsContext,
+	CodexDiagnosticTransport,
+	CodexProviderOptions,
+	CodexRequestOptions,
+} from './shared/types'

@@ -10,4 +10,4 @@ export {
 } from './agent'
 export { type CodelayerCliOptions, createCodelayerCommand, parseProviderOptionOverrides } from './command'
 export { createCodingSubagentTool, type CreateCodingSubagentToolOptions } from './coding-subagent-tool'
-export { DEFAULT_MODELS, type ProviderType, resolveExaApiKey, resolveModel } from './providers'
+export { DEFAULT_MODELS, type ProviderType, type ResolveModelContext, resolveExaApiKey, resolveModel } from './providers'
