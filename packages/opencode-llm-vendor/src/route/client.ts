@@ -354,9 +354,11 @@ const withMaxStreamDuration = <A>(
 ): Stream.Stream<A, LLMError> => {
 	const maxDurationMs = positiveNumber(timeoutMs)
 	if (!maxDurationMs) return stream
-	const timer: Stream.Stream<never, LLMError> = Stream.unwrap(
-		Effect.sleep(durationMs(maxDurationMs)).pipe(
-			Effect.flatMap(() => {
+	let startTime = 0
+	return stream.pipe(
+		Stream.mapEffect((element) => {
+			if (startTime === 0) startTime = Date.now()
+			if (Date.now() - startTime > maxDurationMs) {
 				const error = new LLMErrorClass({
 					module: 'LLMClient',
 					method: 'stream',
@@ -372,11 +374,11 @@ const withMaxStreamDuration = <A>(
 						timeoutMs: maxDurationMs,
 						...llmErrorMetadata(error),
 					})
-					.pipe(Effect.as(Stream.fail(error)))
-			}),
-		),
+					.pipe(Effect.flatMap(() => Effect.fail(error)))
+			}
+			return Effect.succeed(element)
+		}),
 	)
-	return Stream.merge(stream, timer)
 }
 
 const firstEventRetryDelay = (options: StreamOptions, attempt: number) => {
