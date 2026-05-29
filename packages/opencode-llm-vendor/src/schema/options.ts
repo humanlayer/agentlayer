@@ -77,6 +77,8 @@ export class StreamOptions extends Schema.Class<StreamOptions>('LLM.StreamOption
 	firstEventRetryBaseDelayMs: Schema.optional(Schema.Number),
 	firstEventRetryMaxDelayMs: Schema.optional(Schema.Number),
 	eventIdleTimeoutMs: Schema.optional(Schema.Number),
+	headerTimeoutMs: Schema.optional(Schema.Number),
+	maxStreamDurationMs: Schema.optional(Schema.Number),
 }) {}
 
 export namespace StreamOptions {
@@ -97,6 +99,8 @@ export const mergeStreamOptions = (...items: ReadonlyArray<StreamOptions | undef
 				firstEventRetryBaseDelayMs: item.firstEventRetryBaseDelayMs,
 				firstEventRetryMaxDelayMs: item.firstEventRetryMaxDelayMs,
 				eventIdleTimeoutMs: item.eventIdleTimeoutMs,
+				headerTimeoutMs: item.headerTimeoutMs,
+				maxStreamDurationMs: item.maxStreamDurationMs,
 			}).filter((entry): entry is [string, number] => entry[1] !== undefined),
 		),
 	)

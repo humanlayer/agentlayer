@@ -29,6 +29,8 @@ import {
 	CODEX_FIRST_EVENT_RETRY_MAX_DELAY_MS,
 	CODEX_FIRST_EVENT_TIMEOUT_MS,
 	CODEX_FIRST_EVENT_TIMEOUT_RETRIES,
+	CODEX_HEADER_TIMEOUT_MS,
+	CODEX_MAX_STREAM_DURATION_MS,
 } from './constants'
 import { strictifySchema } from './schema'
 import { normalizeCodexServiceTier } from './service-tier'
@@ -72,6 +74,8 @@ export function buildCodexModel(modelId: string, auth: Auth, baseURL: string, ro
 			firstEventRetryBaseDelayMs: CODEX_FIRST_EVENT_RETRY_BASE_DELAY_MS,
 			firstEventRetryMaxDelayMs: CODEX_FIRST_EVENT_RETRY_MAX_DELAY_MS,
 			eventIdleTimeoutMs: CODEX_EVENT_IDLE_TIMEOUT_MS,
+			headerTimeoutMs: CODEX_HEADER_TIMEOUT_MS,
+			maxStreamDurationMs: CODEX_MAX_STREAM_DURATION_MS,
 		},
 	})
 

@@ -257,6 +257,7 @@ const resolveDiagnostics = (runtime: TransportRuntime): DiagnosticsInterface => 
 
 const FIRST_EVENT_TIMEOUT_KIND = 'ProtocolFirstEventTimeout'
 const EVENT_IDLE_TIMEOUT_KIND = 'ProtocolEventIdleTimeout'
+const MAX_STREAM_DURATION_KIND = 'MaxStreamDuration'
 const DEFAULT_FIRST_EVENT_RETRY_BASE_DELAY_MS = 1_000
 const DEFAULT_FIRST_EVENT_RETRY_MAX_DELAY_MS = 10_000
 
@@ -343,6 +344,39 @@ const withProtocolEventTimeouts = <A>(
 			)
 		}),
 	)
+}
+
+const withMaxStreamDuration = <A>(
+	stream: Stream.Stream<A, LLMError>,
+	route: string,
+	timeoutMs: number | undefined,
+	diagnostics: DiagnosticsInterface = noopDiagnostics,
+): Stream.Stream<A, LLMError> => {
+	const maxDurationMs = positiveNumber(timeoutMs)
+	if (!maxDurationMs) return stream
+	const timer: Stream.Stream<never, LLMError> = Stream.unwrap(
+		Effect.sleep(durationMs(maxDurationMs)).pipe(
+			Effect.flatMap(() => {
+				const error = new LLMErrorClass({
+					module: 'LLMClient',
+					method: 'stream',
+					reason: new TransportReason({
+						message: `Stream exceeded maximum duration of ${maxDurationMs}ms for ${route}`,
+						kind: MAX_STREAM_DURATION_KIND,
+					}),
+				})
+				return diagnostics
+					.error('codex.provider.timeout.max_stream_duration', {
+						route,
+						terminal: true,
+						timeoutMs: maxDurationMs,
+						...llmErrorMetadata(error),
+					})
+					.pipe(Effect.as(Stream.fail(error)))
+			}),
+		),
+	)
+	return Stream.merge(stream, timer)
 }
 
 const firstEventRetryDelay = (options: StreamOptions, attempt: number) => {
@@ -488,7 +522,8 @@ function makeFromTransport<Body, Prepared, Frame, Event, State>(
 						protocol.stream.terminal ? Stream.takeUntil(protocol.stream.terminal) : (stream) => stream,
 					)
 				const events = withProtocolEventTimeouts(decodedEvents, route, request, diagnostics)
-				return events.pipe(
+				const bounded = withMaxStreamDuration(events, route, request.stream?.maxStreamDurationMs, diagnostics)
+				return bounded.pipe(
 					Stream.mapAccumEffect(
 						() => protocol.stream.initial(request),
 						protocol.stream.step,
