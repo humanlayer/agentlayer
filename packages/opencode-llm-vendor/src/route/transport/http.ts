@@ -4,10 +4,18 @@ import * as ProviderShared from '../../protocols/shared'
 import type { LLMRequest } from '../../schema'
 import { LLMError, mergeJsonRecords, TransportReason } from '../../schema'
 import { Auth } from '../auth'
-import { isTransportError } from '../diagnostics'
+import {
+	type Interface as DiagnosticsInterface,
+	isTransportError,
+	llmErrorMetadata,
+	noopDiagnostics,
+} from '../diagnostics'
 import { render as renderEndpoint } from '../endpoint'
 import { Framing, type Framing as FramingDef } from '../framing'
 import type { Transport, TransportPrepareInput } from './index'
+
+const HEADER_TIMEOUT_KIND = 'HeaderTimeout'
+const SLOW_HEADER_THRESHOLD_MS = 5_000
 
 export type JsonRequestInput<Body> = TransportPrepareInput<Body>
 
@@ -97,22 +105,67 @@ export const httpJson = <Body, Frame>(input: HttpJsonInput<Body, Frame>): HttpJs
 				framing: input.framing,
 			})),
 		),
-	frames: (prepared, request, runtime) =>
-		Stream.unwrap(
-			runtime.http
-				.execute(prepared.request)
-				.pipe(
-					Effect.map((response) =>
-						prepared.framing.frame(
-							response.stream.pipe(
-								Stream.mapError((error) =>
-									streamReadError(`${request.model.provider}/${request.model.route.id}`, error),
-								),
-							),
-						),
+	frames: (prepared, request, runtime) => {
+		const route = `${request.model.provider}/${request.model.route.id}`
+		const headerTimeoutMs =
+			typeof request.stream?.headerTimeoutMs === 'number' && request.stream.headerTimeoutMs > 0
+				? request.stream.headerTimeoutMs
+				: undefined
+		const diagnostics: DiagnosticsInterface = runtime.diagnostics ?? noopDiagnostics
+
+		const executeEffect = Effect.gen(function* () {
+			const start = Date.now()
+			const response = yield* runtime.http.execute(prepared.request)
+			const elapsed = Date.now() - start
+			if (elapsed > SLOW_HEADER_THRESHOLD_MS) {
+				yield* diagnostics.warning('codex.provider.http.slow_headers', {
+					elapsedMs: elapsed,
+					thresholdMs: SLOW_HEADER_THRESHOLD_MS,
+					status: response.status,
+					route,
+					operation: 'HttpTransport.frames',
+				})
+			}
+			return response
+		})
+
+		const withTimeout = headerTimeoutMs
+			? executeEffect.pipe(
+					Effect.timeoutOrElse({
+						duration: `${Math.round(headerTimeoutMs)} millis`,
+						orElse: () => {
+							const error = new LLMError({
+								module: 'HttpTransport',
+								method: 'frames',
+								reason: new TransportReason({
+									message: `Response headers not received within ${headerTimeoutMs}ms for ${route}`,
+									kind: HEADER_TIMEOUT_KIND,
+								}),
+							})
+							return diagnostics
+								.error('codex.provider.http.header_timeout', {
+									terminal: false,
+									timeoutMs: headerTimeoutMs,
+									route,
+									operation: 'HttpTransport.frames',
+									...llmErrorMetadata(error),
+								})
+								.pipe(Effect.flatMap(() => Effect.fail(error)))
+						},
+					}),
+				)
+			: executeEffect
+
+		return Stream.unwrap(
+			withTimeout.pipe(
+				Effect.map((response) =>
+					prepared.framing.frame(
+						response.stream.pipe(Stream.mapError((error) => streamReadError(route, error))),
 					),
 				),
-		),
+			),
+		)
+	},
 })
 
 export const sseJson = {

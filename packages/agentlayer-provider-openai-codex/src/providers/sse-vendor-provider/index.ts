@@ -187,7 +187,22 @@ function createSseCodexModel(
 			//    so we cast to AnyLLMEvent for our mapping function.
 			const llmStream = Stream.flatMap(
 				LLMClient.stream(request) as Stream.Stream<AnyLLMEvent, unknown>,
-				(event) => Stream.fromIterable(llmEventToStreamParts(event)),
+				(event) => {
+					if (event.type === 'provider-error') {
+						providerOptions.diagnostics?.onEvent({
+							event: 'codex.provider.protocol.provider_error',
+							severity: 'error',
+							transport: 'sse',
+							annotations: providerOptions.diagnostics.annotations,
+							metadata: {
+								terminal: true,
+								message: event.message as string,
+								code: event.code as string | undefined,
+							},
+						})
+					}
+					return Stream.fromIterable(llmEventToStreamParts(event))
+				},
 			)
 
 			// 5. Provide LLMClient layers so the stream's service requirements are satisfied
