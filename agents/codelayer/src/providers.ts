@@ -23,6 +23,7 @@ export type ProviderType = 'anthropic' | 'openai' | 'codex' | 'copilot' | 'firep
  */
 export interface ResolveModelContext {
 	codexDiagnostics?: CodexDiagnosticsContext
+	codexProviderMode?: CodexProviderMode
 }
 
 const FIREWORKS_MODEL_ID = 'accounts/fireworks/routers/kimi-k2p6-turbo'
@@ -85,7 +86,9 @@ export async function resolveModel(
 		}
 		case 'codex': {
 			const authStore = await ensureFileAuthStore()
-			const codexMode = (process.env.CODEX_PROVIDER ?? 'aisdk_responses') as CodexProviderMode
+			const codexMode = context?.codexProviderMode
+				?? (process.env.CODEX_PROVIDER as CodexProviderMode | undefined)
+				?? 'aisdk_responses'
 			const codexOpts = {
 				authStore,
 				version: CODEX_DEFAULT_VERSION,
