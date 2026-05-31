@@ -257,6 +257,7 @@ const resolveDiagnostics = (runtime: TransportRuntime): DiagnosticsInterface => 
 
 const FIRST_EVENT_TIMEOUT_KIND = 'ProtocolFirstEventTimeout'
 const EVENT_IDLE_TIMEOUT_KIND = 'ProtocolEventIdleTimeout'
+const PRODUCTIVE_FIRST_EVENT_TIMEOUT_KIND = 'ProductiveFirstEventTimeout'
 const MAX_STREAM_DURATION_KIND = 'MaxStreamDuration'
 const DEFAULT_FIRST_EVENT_RETRY_BASE_DELAY_MS = 1_000
 const DEFAULT_FIRST_EVENT_RETRY_MAX_DELAY_MS = 10_000
@@ -269,6 +270,142 @@ const nonNegativeInteger = (value: number | undefined) =>
 
 const durationMs = (value: number) => `${Math.round(value)} millis`
 
+const percentile = (values: ReadonlyArray<number>, quantile: number) => {
+	if (values.length === 0) return undefined
+	const sorted = [...values].sort((a, b) => a - b)
+	const index = Math.min(sorted.length - 1, Math.max(0, Math.ceil(sorted.length * quantile) - 1))
+	return sorted[index]
+}
+
+const summarizeTimings = (values: ReadonlyArray<number>) => ({
+	count: values.length,
+	p50: percentile(values, 0.5),
+	p90: percentile(values, 0.9),
+	p99: percentile(values, 0.99),
+	max: values.length > 0 ? Math.max(...values) : undefined,
+})
+
+const streamOutputCount = (output: unknown) => (Array.isArray(output) ? output.length : output === undefined ? 0 : 1)
+
+const outputTypes = (output: unknown) => {
+	const items = Array.isArray(output) ? output : output === undefined ? [] : [output]
+	return items.map((item) => (ProviderShared.isRecord(item) && typeof item.type === 'string' ? item.type : 'unknown'))
+}
+
+const increment = (record: Record<string, number>, key: string, amount = 1) => {
+	record[key] = (record[key] ?? 0) + amount
+}
+
+const createStreamMetrics = (route: string, request: LLMRequest) => {
+	const startedAt = Date.now()
+	let firstProtocolEventAt = 0
+	let lastProtocolEventAt = 0
+	let emitted = false
+	let protocolEventCount = 0
+	let llmEventCount = 0
+	let productiveProtocolEventCount = 0
+	let zeroOutputProtocolEventCount = 0
+	let firstLlmEventAt = 0
+	let lastLlmEventAt = 0
+	let currentProtocolEventAt = startedAt
+	let currentProtocolEventType = 'stream-start'
+	let currentZeroOutputStreakCount = 0
+	let _currentZeroOutputStreakStartAt = startedAt
+	let currentZeroOutputStreakEventCounts: Record<string, number> = {}
+	let maxUnproductiveGapMs = 0
+	let maxZeroOutputStreakProtocolEventCount = 0
+	let maxZeroOutputStreakEventCounts: Record<string, number> = {}
+	const protocolEventGapsMs: number[] = []
+	const llmEventGapsMs: number[] = []
+	const eventTypeCounts: Record<string, number> = {}
+	const llmEventTypeCounts: Record<string, number> = {}
+
+	return {
+		recordProtocolEvent: (event: unknown) => {
+			const now = Date.now()
+			if (firstProtocolEventAt === 0) firstProtocolEventAt = now
+			if (lastProtocolEventAt !== 0) protocolEventGapsMs.push(now - lastProtocolEventAt)
+			lastProtocolEventAt = now
+			protocolEventCount += 1
+			const type = ProviderShared.isRecord(event) && typeof event.type === 'string' ? event.type : 'unknown'
+			currentProtocolEventAt = now
+			currentProtocolEventType = type
+			increment(eventTypeCounts, type)
+		},
+		recordOutput: (output: unknown) => {
+			const count = streamOutputCount(output)
+			const hadLlmEvent = firstLlmEventAt !== 0
+			llmEventCount += count
+			if (count === 0) {
+				zeroOutputProtocolEventCount += 1
+				if (currentZeroOutputStreakCount === 0) _currentZeroOutputStreakStartAt = lastLlmEventAt || startedAt
+				currentZeroOutputStreakCount += 1
+				increment(currentZeroOutputStreakEventCounts, currentProtocolEventType)
+				return {
+					count,
+					hadLlmEvent,
+					unproductiveGapMs: currentProtocolEventAt - (lastLlmEventAt || startedAt),
+					protocolEventType: currentProtocolEventType,
+				}
+			}
+
+			productiveProtocolEventCount += 1
+			if (firstLlmEventAt === 0) firstLlmEventAt = currentProtocolEventAt
+			if (lastLlmEventAt !== 0) llmEventGapsMs.push(currentProtocolEventAt - lastLlmEventAt)
+
+			const unproductiveGapMs = currentProtocolEventAt - (lastLlmEventAt || startedAt)
+			if (unproductiveGapMs > maxUnproductiveGapMs) {
+				maxUnproductiveGapMs = unproductiveGapMs
+				maxZeroOutputStreakProtocolEventCount = currentZeroOutputStreakCount
+				maxZeroOutputStreakEventCounts = { ...currentZeroOutputStreakEventCounts }
+			}
+
+			lastLlmEventAt = currentProtocolEventAt
+			currentZeroOutputStreakCount = 0
+			currentZeroOutputStreakEventCounts = {}
+			for (const type of outputTypes(output)) increment(llmEventTypeCounts, type)
+			return {
+				count,
+				hadLlmEvent,
+				unproductiveGapMs,
+				protocolEventType: currentProtocolEventType,
+			}
+		},
+		emit: (diagnostics: DiagnosticsInterface, finishKind: string, extra: Record<string, unknown> = {}) => {
+			if (emitted) return Effect.void
+			emitted = true
+			const now = Date.now()
+			const openUnproductiveGapMs = now - (lastLlmEventAt || startedAt)
+			const finalMaxUnproductiveGapMs = Math.max(maxUnproductiveGapMs, openUnproductiveGapMs)
+			return diagnostics.info('codex.provider.stream.metrics', {
+				route,
+				requestId: request.id,
+				model: request.model.id,
+				finishKind,
+				durationMs: now - startedAt,
+				firstProtocolEventElapsedMs: firstProtocolEventAt === 0 ? undefined : firstProtocolEventAt - startedAt,
+				lastProtocolEventElapsedMs: lastProtocolEventAt === 0 ? undefined : lastProtocolEventAt - startedAt,
+				firstLlmEventElapsedMs: firstLlmEventAt === 0 ? undefined : firstLlmEventAt - startedAt,
+				lastLlmEventElapsedMs: lastLlmEventAt === 0 ? undefined : lastLlmEventAt - startedAt,
+				protocolEventCount,
+				llmEventCount,
+				productiveProtocolEventCount,
+				zeroOutputProtocolEventCount,
+				protocolEventGapMs: summarizeTimings(protocolEventGapsMs),
+				llmEventGapMs: summarizeTimings(llmEventGapsMs),
+				maxUnproductiveGapMs: finalMaxUnproductiveGapMs,
+				maxZeroOutputStreakProtocolEventCount,
+				maxZeroOutputStreakEventCounts,
+				openZeroOutputStreakProtocolEventCount: currentZeroOutputStreakCount,
+				openUnproductiveGapMs,
+				eventTypeCounts,
+				llmEventTypeCounts,
+				...extra,
+			})
+		},
+	}
+}
+
 const protocolEventTimeoutError = (route: string, kind: string, timeoutMs: number) =>
 	new LLMErrorClass({
 		module: 'LLMClient',
@@ -276,6 +413,16 @@ const protocolEventTimeoutError = (route: string, kind: string, timeoutMs: numbe
 		reason: new TransportReason({
 			message: `No provider protocol event received for ${timeoutMs}ms while streaming ${route}`,
 			kind,
+		}),
+	})
+
+const productiveFirstEventTimeoutError = (route: string, timeoutMs: number, elapsedMs: number) =>
+	new LLMErrorClass({
+		module: 'LLMClient',
+		method: 'stream',
+		reason: new TransportReason({
+			message: `No productive LLM event received for ${elapsedMs}ms while streaming ${route}`,
+			kind: PRODUCTIVE_FIRST_EVENT_TIMEOUT_KIND,
 		}),
 	})
 
@@ -517,30 +664,91 @@ function makeFromTransport<Body, Prepared, Frame, Event, State>(
 			streamPrepared: (prepared: Prepared, request: LLMRequest, runtime: TransportRuntime) => {
 				const route = `${request.model.provider}/${request.model.route.id}`
 				const diagnostics = resolveDiagnostics(runtime)
-				const decodedEvents = routeInput.transport
-					.frames(prepared, request, runtime)
-					.pipe(
-						Stream.mapEffect(decodeEvent(route)),
-						protocol.stream.terminal ? Stream.takeUntil(protocol.stream.terminal) : (stream) => stream,
-					)
+				const metrics = createStreamMetrics(route, request)
+				const productiveFirstEventTimeoutMs = positiveNumber(request.stream?.productiveFirstEventTimeoutMs)
+				const productiveEventIdleWarningMs = positiveNumber(request.stream?.productiveEventIdleWarningMs)
+				const decodedEvents = routeInput.transport.frames(prepared, request, runtime).pipe(
+					Stream.mapEffect(decodeEvent(route)),
+					Stream.mapEffect((event) => {
+						metrics.recordProtocolEvent(event)
+						return Effect.succeed(event)
+					}),
+					protocol.stream.terminal ? Stream.takeUntil(protocol.stream.terminal) : (stream) => stream,
+				)
 				const events = withProtocolEventTimeouts(decodedEvents, route, request, diagnostics)
 				const bounded = withMaxStreamDuration(events, route, request.stream?.maxStreamDurationMs, diagnostics)
 				return bounded.pipe(
 					Stream.mapAccumEffect(
 						() => protocol.stream.initial(request),
-						protocol.stream.step,
+						(state, event) =>
+							protocol.stream.step(state, event).pipe(
+								Effect.tap(([_, output]) => {
+									const outputMetrics = metrics.recordOutput(output)
+									const checks = Effect.gen(function* () {
+										if (
+											productiveFirstEventTimeoutMs &&
+											!outputMetrics.hadLlmEvent &&
+											outputMetrics.unproductiveGapMs > productiveFirstEventTimeoutMs
+										) {
+											const error = productiveFirstEventTimeoutError(
+												route,
+												productiveFirstEventTimeoutMs,
+												outputMetrics.unproductiveGapMs,
+											)
+											yield* diagnostics.error('codex.provider.timeout.productive_first_event', {
+												route,
+												terminal: true,
+												timeoutMs: productiveFirstEventTimeoutMs,
+												elapsedMs: outputMetrics.unproductiveGapMs,
+												protocolEventType: outputMetrics.protocolEventType,
+												...llmErrorMetadata(error),
+											})
+											return yield* Effect.fail(error)
+										}
+
+										if (
+											productiveEventIdleWarningMs &&
+											outputMetrics.hadLlmEvent &&
+											outputMetrics.unproductiveGapMs > productiveEventIdleWarningMs
+										) {
+											yield* diagnostics.warning(
+												'codex.provider.timeout.productive_event_idle_warning',
+												{
+													route,
+													terminal: false,
+													thresholdMs: productiveEventIdleWarningMs,
+													elapsedMs: outputMetrics.unproductiveGapMs,
+													protocolEventType: outputMetrics.protocolEventType,
+												},
+											)
+										}
+
+										if (protocol.stream.terminal?.(event))
+											yield* metrics.emit(diagnostics, 'completed')
+									})
+									return checks
+								}),
+							),
 						protocol.stream.onHalt ? { onHalt: protocol.stream.onHalt } : undefined,
 					),
 					Stream.catchCause((cause) => {
 						const error = streamError(route, `Failed to read ${route} stream`, cause)
 						return Stream.unwrap(
-							diagnostics
-								.error('codex.provider.stream.failed', {
-									route,
-									terminal: true,
+							metrics
+								.emit(diagnostics, 'failed', {
 									causePretty: Cause.pretty(cause),
 									...llmErrorMetadata(error),
 								})
+								.pipe(
+									Effect.flatMap(() =>
+										diagnostics.error('codex.provider.stream.failed', {
+											route,
+											terminal: true,
+											causePretty: Cause.pretty(cause),
+											...llmErrorMetadata(error),
+										}),
+									),
+								)
 								.pipe(Effect.as(Stream.fail(error))),
 						)
 					}),

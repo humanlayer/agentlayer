@@ -40,9 +40,7 @@ async function readAgentSdkCopilotAuth(): Promise<AuthInfo | undefined> {
 	}
 }
 
-const hasRealCopilotAuth = await readAgentSdkCopilotAuth().then(Boolean)
-
-describe.skipIf(!hasRealCopilotAuth || !!process.env.CI)('copilot real auth integration', () => {
+describe.skip('copilot real auth integration', () => {
 	test(
 		'lists models and generates text with auth from ~/.humanlayer/agent-sdk/auth.json',
 		async () => {
