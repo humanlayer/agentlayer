@@ -31,6 +31,8 @@ import {
 	CODEX_FIRST_EVENT_TIMEOUT_RETRIES,
 	CODEX_HEADER_TIMEOUT_MS,
 	CODEX_MAX_STREAM_DURATION_MS,
+	CODEX_PRODUCTIVE_EVENT_IDLE_WARNING_MS,
+	CODEX_PRODUCTIVE_FIRST_EVENT_TIMEOUT_MS,
 } from './constants'
 import { strictifySchema } from './schema'
 import { normalizeCodexServiceTier } from './service-tier'
@@ -74,6 +76,8 @@ export function buildCodexModel(modelId: string, auth: Auth, baseURL: string, ro
 			firstEventRetryBaseDelayMs: CODEX_FIRST_EVENT_RETRY_BASE_DELAY_MS,
 			firstEventRetryMaxDelayMs: CODEX_FIRST_EVENT_RETRY_MAX_DELAY_MS,
 			eventIdleTimeoutMs: CODEX_EVENT_IDLE_TIMEOUT_MS,
+			productiveFirstEventTimeoutMs: CODEX_PRODUCTIVE_FIRST_EVENT_TIMEOUT_MS,
+			productiveEventIdleWarningMs: CODEX_PRODUCTIVE_EVENT_IDLE_WARNING_MS,
 			headerTimeoutMs: CODEX_HEADER_TIMEOUT_MS,
 			maxStreamDurationMs: CODEX_MAX_STREAM_DURATION_MS,
 		},
@@ -375,6 +379,7 @@ export function convertCallOptionsToLLMRequest(
 	})
 
 	return new LLMRequest({
+		id: crypto.randomUUID(),
 		model,
 		system: [], // system messages go via instructions, not input items
 		messages,

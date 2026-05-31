@@ -117,6 +117,13 @@ export const httpJson = <Body, Frame>(input: HttpJsonInput<Body, Frame>): HttpJs
 			const start = Date.now()
 			const response = yield* runtime.http.execute(prepared.request)
 			const elapsed = Date.now() - start
+			yield* diagnostics.info('codex.provider.http.headers_received', {
+				requestId: request.id,
+				elapsedMs: elapsed,
+				status: response.status,
+				route,
+				operation: 'HttpTransport.frames',
+			})
 			if (elapsed > SLOW_HEADER_THRESHOLD_MS) {
 				yield* diagnostics.warning('codex.provider.http.slow_headers', {
 					elapsedMs: elapsed,
