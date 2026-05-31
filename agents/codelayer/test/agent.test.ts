@@ -18,6 +18,7 @@ let authStore = createMemoryAuthStore()
 
 const originalAnthropicApiKey = process.env.ANTHROPIC_API_KEY
 const originalFireworksApiKey = process.env.FIREWORKS_API_KEY
+const originalCodexProvider = process.env.CODEX_PROVIDER
 
 beforeEach(() => {
 	authStore = createMemoryAuthStore()
@@ -25,6 +26,7 @@ beforeEach(() => {
 	spyOn(providerAuth, 'ensureFileAuthStore').mockImplementation(async () => authStore)
 	delete process.env.ANTHROPIC_API_KEY
 	delete process.env.FIREWORKS_API_KEY
+	delete process.env.CODEX_PROVIDER
 })
 
 afterEach(async () => {
@@ -33,6 +35,8 @@ afterEach(async () => {
 	else process.env.ANTHROPIC_API_KEY = originalAnthropicApiKey
 	if (originalFireworksApiKey === undefined) delete process.env.FIREWORKS_API_KEY
 	else process.env.FIREWORKS_API_KEY = originalFireworksApiKey
+	if (originalCodexProvider === undefined) delete process.env.CODEX_PROVIDER
+	else process.env.CODEX_PROVIDER = originalCodexProvider
 })
 
 function createMockModel(modelId: string, provider = 'mock'): LanguageModel {
@@ -161,8 +165,17 @@ describe('provider resolution', () => {
 		expect(providerAuth.ensureFileAuthStore).toHaveBeenCalledTimes(2)
 	})
 
-	test('forwards codex diagnostics context into the Codex provider factory', async () => {
-		const providerSpy = spyOn(codexProvider, 'createCodexResponsesProvider')
+	test('defaults codex model resolution to the SSE provider', async () => {
+		const providerSpy = spyOn(codexProvider, 'createCodexSseVendorProvider')
+
+		const model = await resolveModel('codex', 'gpt-5.5')
+
+		expect(model).toBeDefined()
+		expect(providerSpy).toHaveBeenCalled()
+	})
+
+	test('forwards codex diagnostics context into the Codex SSE provider factory', async () => {
+		const providerSpy = spyOn(codexProvider, 'createCodexSseVendorProvider')
 		const codexDiagnostics = {
 			annotations: { sessionId: 'session-xyz', model: 'gpt-5.5', provider: 'codex' },
 			onEvent: () => {},
@@ -177,6 +190,25 @@ describe('provider resolution', () => {
 				sessionId: 'session-xyz',
 			}),
 		)
+	})
+
+	test('respects explicit codex provider mode from caller context', async () => {
+		const providerSpy = spyOn(codexProvider, 'createCodexResponsesProvider')
+
+		const model = await resolveModel('codex', 'gpt-5.5', { codexProviderMode: 'aisdk_responses' })
+
+		expect(model).toBeDefined()
+		expect(providerSpy).toHaveBeenCalled()
+	})
+
+	test('respects CODEX_PROVIDER when caller context does not set a mode', async () => {
+		process.env.CODEX_PROVIDER = 'websockets'
+		const providerSpy = spyOn(codexProvider, 'createCodexEffectProvider')
+
+		const model = await resolveModel('codex', 'gpt-5.5')
+
+		expect(model).toBeDefined()
+		expect(providerSpy).toHaveBeenCalled()
 	})
 })
 
