@@ -15,6 +15,9 @@ import {
 	LOW_ANTHROPIC_BUDGET,
 	subagentThinkingOverrides,
 } from '../src/agent'
+import * as agentModule from '../src/agent'
+import * as providersModule from '../src/providers'
+import * as skillToolModule from '@humanlayer/agentlayer-filesystem/tools'
 import { createCodelayerAgent as rootCreateCodelayerAgent, createCodelayerCommand, DEFAULT_MODELS as rootDefaultModels, resolveExaApiKey, resolveModel } from '../src/index'
 import { createCodingSubagentTool } from '../src/coding-subagent-tool'
 import { applyCliThinkingOverride, parseProviderOptionOverrides } from '../src/command'
@@ -864,6 +867,75 @@ describe('subagentThinkingOverrides', () => {
 		expect(subOptions.anthropic).toMatchObject({
 			thinking: { type: 'enabled', budgetTokens: 2048 },
 		})
+	})
+})
+
+describe('--subagent-thinking CLI knob', () => {
+	// Capture the options passed to createCodelayerAgent. The mocked agent returns
+	// immediately and process.exit throws a caught sentinel so the action settles
+	// deterministically. Every spy handle is restored in a finally so it can never
+	// leak the createCodelayerAgent mock into other suites under CI ordering.
+	const STOP_AT_EXIT = new Error('__stop_at_exit__')
+
+	async function captureCliAgentOptions(argv: string[], model: LanguageModel): Promise<Record<string, unknown> | undefined> {
+		let captured: Record<string, unknown> | undefined
+		const spies = [
+			spyOn(providersModule, 'resolveModel').mockResolvedValue(model),
+			spyOn(providersModule, 'resolveExaApiKey').mockReturnValue(undefined),
+			spyOn(skillToolModule, 'createSkillToolFromRepoDirs').mockResolvedValue(undefined as any),
+			spyOn(process, 'exit').mockImplementation(((() => {
+				throw STOP_AT_EXIT
+			}) as unknown) as never),
+			spyOn(agentModule, 'createCodelayerAgent').mockImplementation(async (options: any) => {
+				captured = options
+				const run = (async function* () {})() as AsyncGenerator<never> & { result: Promise<any> }
+				run.result = Promise.resolve({ finishReason: 'stop', state: { messages: [] } })
+				return { run: () => run } as any
+			}),
+		]
+		try {
+			await createCodelayerCommand().parseAsync(argv)
+		} catch (error) {
+			if (error !== STOP_AT_EXIT) throw error
+		} finally {
+			for (const spy of spies) spy.mockRestore()
+		}
+		return captured
+	}
+
+	test('registers the --subagent-thinking option defaulting to low', () => {
+		const command = createCodelayerCommand()
+		const option = command.options.find((opt) => opt.long === '--subagent-thinking')
+
+		expect(option).toBeDefined()
+		expect(option?.defaultValue).toBe('low')
+	})
+
+	test('threads the default low subagent thinking into createCodelayerAgent', async () => {
+		const captured = await captureCliAgentOptions(
+			['node', 'codelayer', '--provider', 'codex', '--prompt', 'hi'],
+			createMockModel('gpt-5.5'),
+		)
+
+		expect(captured).toMatchObject({ subagentThinking: 'low' })
+	})
+
+	test('threads an explicit valid subagent thinking value into createCodelayerAgent', async () => {
+		const captured = await captureCliAgentOptions(
+			['node', 'codelayer', '--provider', 'codex', '--subagent-thinking', 'high', '--prompt', 'hi'],
+			createMockModel('gpt-5.5'),
+		)
+
+		expect(captured).toMatchObject({ subagentThinking: 'high' })
+	})
+
+	test('rejects a subagent thinking value outside the per-model allow-list', async () => {
+		await expect(
+			captureCliAgentOptions(
+				['node', 'codelayer', '--provider', 'codex', '--subagent-thinking', 'extreme', '--prompt', 'hi'],
+				createMockModel('gpt-5.5'),
+			),
+		).rejects.toThrow('Unsupported --thinking value "extreme"')
 	})
 })
 
