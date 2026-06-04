@@ -8,7 +8,13 @@ import { saneDefaultOutputTruncationHooks } from '@humanlayer/agentlayer-filesys
 import { createMemoryAuthStore } from '@humanlayer/agentlayer-provider-auth'
 import * as providerAuth from '@humanlayer/agentlayer-provider-auth'
 import * as codexProvider from '@humanlayer/agentlayer-provider-openai-codex'
-import { buildProviderOptions, createCodelayerAgent, createCodelayerProviderOptionsFactory } from '../src/agent'
+import {
+	buildProviderOptions,
+	createCodelayerAgent,
+	createCodelayerProviderOptionsFactory,
+	LOW_ANTHROPIC_BUDGET,
+	subagentThinkingOverrides,
+} from '../src/agent'
 import { createCodelayerAgent as rootCreateCodelayerAgent, createCodelayerCommand, DEFAULT_MODELS as rootDefaultModels, resolveExaApiKey, resolveModel } from '../src/index'
 import { createCodingSubagentTool } from '../src/coding-subagent-tool'
 import { applyCliThinkingOverride, parseProviderOptionOverrides } from '../src/command'
@@ -738,6 +744,126 @@ describe('createCodelayerAgent', () => {
 		const system = getSystemEntries(agent).join('\n')
 
 		expect(system).not.toContain('# Environment')
+	})
+})
+
+describe('subagentThinkingOverrides', () => {
+	test('throttles opus 4.5 via a reduced thinking budget', () => {
+		const model = createMockModel('claude-opus-4-5')
+
+		const overrides = subagentThinkingOverrides(model, {}, 'low')
+
+		expect(overrides.anthropic?.thinking).toBe('enabled')
+		expect(overrides.anthropic?.budgetTokens).toBe(2048)
+		expect(LOW_ANTHROPIC_BUDGET).toBe(2048)
+	})
+
+	test('throttles adaptive opus 4.8 via effort', () => {
+		const model = createMockModel('claude-opus-4-8')
+
+		const overrides = subagentThinkingOverrides(model, {}, 'low')
+
+		expect(overrides.anthropic?.effort).toBe('low')
+		expect(overrides.anthropic?.thinking).toBeUndefined()
+	})
+
+	test('throttles codex gpt-5.5 via reasoning effort', () => {
+		const model = createMockModel('gpt-5.5')
+
+		const overrides = subagentThinkingOverrides(model, {}, 'low')
+
+		expect(overrides.codex?.reasoningEffort).toBe('low')
+	})
+
+	test('routes haiku through the adaptive effort branch (no 4.5 budget branch)', () => {
+		const model = createMockModel('claude-haiku-4-5')
+
+		// claude-haiku-4-5 matches the 4-5 substring; it uses extended thinking too.
+		const haiku45 = subagentThinkingOverrides(model, {}, 'low')
+		expect(haiku45.anthropic?.thinking).toBe('enabled')
+		expect(haiku45.anthropic?.budgetTokens).toBe(2048)
+
+		// a haiku model with no family-specific default falls into the effort branch.
+		const plainHaiku = createMockModel('claude-haiku')
+		const overrides = subagentThinkingOverrides(plainHaiku, {}, 'low')
+		expect(overrides.anthropic?.effort).toBe('low')
+		expect(overrides.anthropic?.thinking).toBeUndefined()
+		expect(buildProviderOptions(plainHaiku, overrides).anthropic).toMatchObject({
+			effort: 'low',
+		})
+	})
+
+	test('throttles codex gpt-5.4-mini via reasoning effort (model-swap follow-on target)', () => {
+		const model = createMockModel('gpt-5.4-mini')
+
+		const overrides = subagentThinkingOverrides(model, {}, 'low')
+
+		expect(overrides.codex?.reasoningEffort).toBe('low')
+	})
+
+	test('respects an explicit parent anthropic thinking off', () => {
+		const model = createMockModel('claude-opus-4-5')
+
+		const overrides = subagentThinkingOverrides(model, { anthropic: { thinking: 'off' } }, 'low')
+
+		expect(overrides.anthropic?.thinking).toBe('off')
+		expect(overrides.anthropic?.budgetTokens).toBeUndefined()
+	})
+
+	test('does not raise a parent codex effort already at or below the level', () => {
+		const model = createMockModel('gpt-5.5')
+
+		const kept = subagentThinkingOverrides(model, { codex: { reasoningEffort: 'low' } }, 'medium')
+		expect(kept.codex?.reasoningEffort).toBe('low')
+
+		const raised = subagentThinkingOverrides(model, { codex: { reasoningEffort: 'high' } }, 'low')
+		expect(raised.codex?.reasoningEffort).toBe('low')
+	})
+
+	test('emits a reduced anthropic block through buildProviderOptions for opus 4.5', () => {
+		const model = createMockModel('claude-opus-4-5')
+
+		const result = buildProviderOptions(model, subagentThinkingOverrides(model, {}, 'low'))
+
+		expect(result.anthropic).toEqual({
+			thinking: { type: 'enabled', budgetTokens: 2048 },
+			cacheControl: { type: 'ephemeral' },
+		})
+	})
+
+	test('emits a reduced openai block through buildProviderOptions for codex', () => {
+		const model = createMockModel('gpt-5.5')
+
+		const result = buildProviderOptions(model, subagentThinkingOverrides(model, {}, 'low'))
+
+		expect(result.openai.reasoningEffort).toBe('low')
+	})
+
+	test('throttles the sub-agent factory while the top-level agent keeps configured thinking', async () => {
+		const agent = await createCodelayerAgent({
+			model: createMockModel('claude-opus-4-5'),
+			cwd: '/tmp',
+		})
+		const config = getAgentConfig(agent)
+
+		// Top-level agent keeps the configured (default) thinking budget.
+		const topOptions = (config.providerOptions as unknown as (ctx: { runId: string }) => Record<string, any>)({
+			runId: 'parent',
+		})
+		expect(topOptions.anthropic).toMatchObject({
+			thinking: { type: 'enabled', budgetTokens: 10000 },
+		})
+
+		// The sub-agent factory is throttled to the reduced budget.
+		const subagentTool = config.tools?.agent
+		const subagent = getSubagents(subagentTool).find((candidate) => candidate.name === 'general-purpose')
+		const subProviderOptions = getAgentConfig(subagent?.agent ?? {}).providerOptions as unknown as (ctx: {
+			runId: string
+		}) => Record<string, any>
+		const subOptions = subProviderOptions({ runId: 'subagent' })
+		expect(subOptions.anthropic).toMatchObject({
+			thinking: { type: 'enabled', budgetTokens: 2048 },
+		})
 	})
 })
 
