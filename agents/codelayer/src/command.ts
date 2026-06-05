@@ -12,6 +12,7 @@ export interface CodelayerCliOptions {
 	model?: string
 	prompt?: string
 	thinking?: string
+	subagentThinking?: string
 	rlm?: boolean
 	rpi?: boolean
 	tars?: boolean
@@ -136,6 +137,7 @@ Auth:
 Provider options:
   --thinking medium
   --thinking high
+  --subagent-thinking low
   --provider-option reasoningEffort=high
   --provider-option reasoningSummary=detailed
   --provider-option fastMode=true
@@ -148,6 +150,7 @@ Provider options:
 		.option('-p, --provider <provider>', 'Provider: anthropic, openai, codex, copilot, firepass', 'anthropic')
 		.option('-m, --model <model>', 'Model ID (defaults per provider)')
 		.option('--thinking <value>', 'Reasoning/thinking effort for supported providers (default: medium)')
+		.option('--subagent-thinking <value>', 'Reasoning/thinking effort for delegated sub-agents (default: low)', 'low')
 		.option('--rlm', 'Run in RLM mode with subagent orchestration')
 		.option('--rpi', 'Enable RPI-style specialist subagents')
 		.option('--tars', 'Add the TARS persona prompt to the agent')
@@ -176,6 +179,8 @@ Provider options:
 				thinking: opts.thinking,
 				overrides: parseProviderOptionOverrides(opts.providerOption),
 			})
+			const subagentThinking = opts.subagentThinking ?? 'low'
+			assertThinkingValue({ provider, modelId, thinking: subagentThinking })
 			const exaApiKey = resolveExaApiKey()
 			const skillTool = await createSkillToolFromRepoDirs({ cwd: process.cwd(), allowMissing: true })
 			const agent = await createCodelayerAgent({
@@ -187,6 +192,7 @@ Provider options:
 				exaApiKey,
 				skillTool,
 				providerOptionOverrides,
+				subagentThinking,
 			})
 
 			console.log(`codelayer - provider: ${provider}, model: ${modelId}${opts.rlm ? ' (RLM mode)' : ''}${opts.rpi ? ' +rpi' : ''}${opts.tars ? ' +tars' : ''}`)
