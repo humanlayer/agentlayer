@@ -29,6 +29,17 @@ export interface JsonRequestParts<Body = unknown> {
 export interface HttpPrepared<Frame> {
 	readonly request: HttpClientRequest.HttpClientRequest
 	readonly framing: FramingDef<Frame>
+	readonly telemetry: HttpTransportTelemetry
+}
+
+export type HttpTransportTelemetry = {
+	requestStartTimeMs?: number
+	elapsedMs?: number
+	status?: number
+	openaiRequestId?: string
+	cloudflareRayId?: string
+	chatgptAccountId?: string
+	headersArrived: boolean
 }
 
 const normalizedHeaders = (headers: Headers.Headers) =>
@@ -108,6 +119,7 @@ export const httpJson = <Body, Frame>(input: HttpJsonInput<Body, Frame>): HttpJs
 			Effect.map((parts) => ({
 				request: ProviderShared.jsonPost({ url: parts.url, body: parts.bodyText, headers: parts.headers }),
 				framing: input.framing,
+				telemetry: { headersArrived: false },
 			})),
 		),
 	frames: (prepared, request, runtime) => {
@@ -118,6 +130,8 @@ export const httpJson = <Body, Frame>(input: HttpJsonInput<Body, Frame>): HttpJs
 				: undefined
 		const diagnostics: DiagnosticsInterface = runtime.diagnostics ?? noopDiagnostics
 		const requestStartTimeMs = Date.now()
+		prepared.telemetry.requestStartTimeMs = requestStartTimeMs
+		prepared.telemetry.headersArrived = false
 
 		const executeEffect = Effect.gen(function* () {
 			const response = yield* runtime.http.execute(prepared.request)
@@ -130,6 +144,10 @@ export const httpJson = <Body, Frame>(input: HttpJsonInput<Body, Frame>): HttpJs
 				cloudflareRayId: headers['cf-ray'],
 				chatgptAccountId: chatgptAccountId(prepared.request.headers),
 			}
+			Object.assign(prepared.telemetry, correlationMetadata, {
+				elapsedMs: elapsed,
+				status: response.status,
+			})
 			yield* diagnostics.info('codex.provider.http.headers_received', {
 				requestId: request.id,
 				...correlationMetadata,
