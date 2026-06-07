@@ -29,7 +29,23 @@ export interface JsonRequestParts<Body = unknown> {
 export interface HttpPrepared<Frame> {
 	readonly request: HttpClientRequest.HttpClientRequest
 	readonly framing: FramingDef<Frame>
+	readonly telemetry: HttpTransportTelemetry
 }
+
+export type HttpTransportTelemetry = {
+	requestStartTimeMs?: number
+	elapsedMs?: number
+	status?: number
+	openaiRequestId?: string
+	cloudflareRayId?: string
+	chatgptAccountId?: string
+	headersArrived: boolean
+}
+
+const normalizedHeaders = (headers: Headers.Headers) =>
+	Object.fromEntries(Object.entries(headers).map(([key, value]) => [key.toLowerCase(), String(value)]))
+
+const chatgptAccountId = (headers: Headers.Headers) => normalizedHeaders(headers)['chatgpt-account-id']
 
 const applyQuery = (url: string, query: Record<string, string> | undefined) => {
 	if (!query) return url
@@ -103,6 +119,7 @@ export const httpJson = <Body, Frame>(input: HttpJsonInput<Body, Frame>): HttpJs
 			Effect.map((parts) => ({
 				request: ProviderShared.jsonPost({ url: parts.url, body: parts.bodyText, headers: parts.headers }),
 				framing: input.framing,
+				telemetry: { headersArrived: false },
 			})),
 		),
 	frames: (prepared, request, runtime) => {
@@ -112,13 +129,28 @@ export const httpJson = <Body, Frame>(input: HttpJsonInput<Body, Frame>): HttpJs
 				? request.stream.headerTimeoutMs
 				: undefined
 		const diagnostics: DiagnosticsInterface = runtime.diagnostics ?? noopDiagnostics
+		const requestStartTimeMs = Date.now()
+		prepared.telemetry.requestStartTimeMs = requestStartTimeMs
+		prepared.telemetry.headersArrived = false
 
 		const executeEffect = Effect.gen(function* () {
-			const start = Date.now()
 			const response = yield* runtime.http.execute(prepared.request)
-			const elapsed = Date.now() - start
+			const elapsed = Date.now() - requestStartTimeMs
+			const headers = normalizedHeaders(response.headers)
+			const correlationMetadata = {
+				requestStartTimeMs,
+				headersArrived: true,
+				openaiRequestId: headers['x-request-id'],
+				cloudflareRayId: headers['cf-ray'],
+				chatgptAccountId: chatgptAccountId(prepared.request.headers),
+			}
+			Object.assign(prepared.telemetry, correlationMetadata, {
+				elapsedMs: elapsed,
+				status: response.status,
+			})
 			yield* diagnostics.info('codex.provider.http.headers_received', {
 				requestId: request.id,
+				...correlationMetadata,
 				elapsedMs: elapsed,
 				status: response.status,
 				route,
@@ -126,6 +158,8 @@ export const httpJson = <Body, Frame>(input: HttpJsonInput<Body, Frame>): HttpJs
 			})
 			if (elapsed > SLOW_HEADER_THRESHOLD_MS) {
 				yield* diagnostics.warning('codex.provider.http.slow_headers', {
+					requestId: request.id,
+					...correlationMetadata,
 					elapsedMs: elapsed,
 					thresholdMs: SLOW_HEADER_THRESHOLD_MS,
 					status: response.status,
@@ -152,6 +186,9 @@ export const httpJson = <Body, Frame>(input: HttpJsonInput<Body, Frame>): HttpJs
 							return diagnostics
 								.error('codex.provider.http.header_timeout', {
 									terminal: false,
+									requestId: request.id,
+									requestStartTimeMs,
+									headersArrived: false,
 									timeoutMs: headerTimeoutMs,
 									route,
 									operation: 'HttpTransport.frames',

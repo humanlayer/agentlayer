@@ -296,7 +296,18 @@ const increment = (record: Record<string, number>, key: string, amount = 1) => {
 	record[key] = (record[key] ?? 0) + amount
 }
 
-const createStreamMetrics = (route: string, request: LLMRequest) => {
+const transportTelemetrySnapshot = (prepared: unknown): (() => Record<string, unknown>) | undefined => {
+	if (!ProviderShared.isRecord(prepared)) return undefined
+	const telemetry = prepared.telemetry
+	if (!ProviderShared.isRecord(telemetry)) return undefined
+	return () => Object.fromEntries(Object.entries(telemetry).filter(([, value]) => value !== undefined))
+}
+
+const createStreamMetrics = (
+	route: string,
+	request: LLMRequest,
+	transportTelemetry?: () => Record<string, unknown>,
+) => {
 	const startedAt = Date.now()
 	let firstProtocolEventAt = 0
 	let lastProtocolEventAt = 0
@@ -377,9 +388,11 @@ const createStreamMetrics = (route: string, request: LLMRequest) => {
 			const now = Date.now()
 			const openUnproductiveGapMs = now - (lastLlmEventAt || startedAt)
 			const finalMaxUnproductiveGapMs = Math.max(maxUnproductiveGapMs, openUnproductiveGapMs)
+			const telemetry = transportTelemetry?.() ?? {}
 			return diagnostics.info('codex.provider.stream.metrics', {
 				route,
 				requestId: request.id,
+				...telemetry,
 				model: request.model.id,
 				finishKind,
 				durationMs: now - startedAt,
@@ -442,6 +455,7 @@ const withEventIdleTimeout = <A>(
 	route: string,
 	timeoutMs: number | undefined,
 	diagnostics: DiagnosticsInterface = noopDiagnostics,
+	transportTelemetry?: () => Record<string, unknown>,
 ) => {
 	const idleTimeoutMs = positiveNumber(timeoutMs)
 	if (!idleTimeoutMs) return stream
@@ -454,6 +468,7 @@ const withEventIdleTimeout = <A>(
 					diagnostics
 						.error('codex.provider.timeout.event_idle', {
 							route,
+							...(transportTelemetry?.() ?? {}),
 							terminal: true,
 							timeoutMs: idleTimeoutMs,
 							...llmErrorMetadata(error),
@@ -470,10 +485,11 @@ const withProtocolEventTimeouts = <A>(
 	route: string,
 	request: LLMRequest,
 	diagnostics: DiagnosticsInterface = noopDiagnostics,
+	transportTelemetry?: () => Record<string, unknown>,
 ): Stream.Stream<A, LLMError> => {
 	const firstTimeoutMs = positiveNumber(request.stream?.firstEventTimeoutMs)
 	const idleTimeoutMs = positiveNumber(request.stream?.eventIdleTimeoutMs)
-	if (!firstTimeoutMs) return withEventIdleTimeout(stream, route, idleTimeoutMs, diagnostics)
+	if (!firstTimeoutMs) return withEventIdleTimeout(stream, route, idleTimeoutMs, diagnostics, transportTelemetry)
 
 	return Stream.unwrap(
 		Effect.gen(function* () {
@@ -487,7 +503,7 @@ const withProtocolEventTimeouts = <A>(
 			if (Option.isNone(first)) return Stream.empty
 			return Stream.concat(
 				Stream.make(first.value),
-				withEventIdleTimeout(rest, route, idleTimeoutMs, diagnostics),
+				withEventIdleTimeout(rest, route, idleTimeoutMs, diagnostics, transportTelemetry),
 			)
 		}),
 	)
@@ -498,6 +514,7 @@ const withMaxStreamDuration = <A>(
 	route: string,
 	timeoutMs: number | undefined,
 	diagnostics: DiagnosticsInterface = noopDiagnostics,
+	transportTelemetry?: () => Record<string, unknown>,
 ): Stream.Stream<A, LLMError> => {
 	const maxDurationMs = positiveNumber(timeoutMs)
 	if (!maxDurationMs) return stream
@@ -517,6 +534,7 @@ const withMaxStreamDuration = <A>(
 				return diagnostics
 					.error('codex.provider.timeout.max_stream_duration', {
 						route,
+						...(transportTelemetry?.() ?? {}),
 						terminal: true,
 						timeoutMs: maxDurationMs,
 						...llmErrorMetadata(error),
@@ -664,7 +682,8 @@ function makeFromTransport<Body, Prepared, Frame, Event, State>(
 			streamPrepared: (prepared: Prepared, request: LLMRequest, runtime: TransportRuntime) => {
 				const route = `${request.model.provider}/${request.model.route.id}`
 				const diagnostics = resolveDiagnostics(runtime)
-				const metrics = createStreamMetrics(route, request)
+				const transportTelemetry = transportTelemetrySnapshot(prepared)
+				const metrics = createStreamMetrics(route, request, transportTelemetry)
 				const productiveFirstEventTimeoutMs = positiveNumber(request.stream?.productiveFirstEventTimeoutMs)
 				const productiveEventIdleWarningMs = positiveNumber(request.stream?.productiveEventIdleWarningMs)
 				const decodedEvents = routeInput.transport.frames(prepared, request, runtime).pipe(
@@ -675,8 +694,14 @@ function makeFromTransport<Body, Prepared, Frame, Event, State>(
 					}),
 					protocol.stream.terminal ? Stream.takeUntil(protocol.stream.terminal) : (stream) => stream,
 				)
-				const events = withProtocolEventTimeouts(decodedEvents, route, request, diagnostics)
-				const bounded = withMaxStreamDuration(events, route, request.stream?.maxStreamDurationMs, diagnostics)
+				const events = withProtocolEventTimeouts(decodedEvents, route, request, diagnostics, transportTelemetry)
+				const bounded = withMaxStreamDuration(
+					events,
+					route,
+					request.stream?.maxStreamDurationMs,
+					diagnostics,
+					transportTelemetry,
+				)
 				return bounded.pipe(
 					Stream.mapAccumEffect(
 						() => protocol.stream.initial(request),
@@ -697,6 +722,7 @@ function makeFromTransport<Body, Prepared, Frame, Event, State>(
 											)
 											yield* diagnostics.error('codex.provider.timeout.productive_first_event', {
 												route,
+												...(transportTelemetry?.() ?? {}),
 												terminal: true,
 												timeoutMs: productiveFirstEventTimeoutMs,
 												elapsedMs: outputMetrics.unproductiveGapMs,
@@ -715,6 +741,7 @@ function makeFromTransport<Body, Prepared, Frame, Event, State>(
 												'codex.provider.timeout.productive_event_idle_warning',
 												{
 													route,
+													...(transportTelemetry?.() ?? {}),
 													terminal: false,
 													thresholdMs: productiveEventIdleWarningMs,
 													elapsedMs: outputMetrics.unproductiveGapMs,
@@ -743,6 +770,7 @@ function makeFromTransport<Body, Prepared, Frame, Event, State>(
 									Effect.flatMap(() =>
 										diagnostics.error('codex.provider.stream.failed', {
 											route,
+											...(transportTelemetry?.() ?? {}),
 											terminal: true,
 											causePretty: Cause.pretty(cause),
 											...llmErrorMetadata(error),
