@@ -95,6 +95,10 @@ const requestId = (headers: Record<string, string>) => {
 	)
 }
 
+const openaiRequestId = (headers: Record<string, string>) => headers['x-request-id']
+
+const cloudflareRayId = (headers: Record<string, string>) => headers['cf-ray']
+
 const retryableStatus = (status: number) => status === 429 || status === 503 || status === 504 || status === 529
 
 const retryAfterMs = (headers: Record<string, string>) => {
@@ -276,6 +280,7 @@ const statusError =
 		request: HttpClientRequest.HttpClientRequest,
 		redactedNames: ReadonlyArray<string | RegExp>,
 		diagnostics: DiagnosticsInterface = noopDiagnostics,
+		requestStartTimeMs: number,
 	) =>
 	(response: HttpClientResponse.HttpClientResponse) =>
 		Effect.gen(function* () {
@@ -294,6 +299,7 @@ const statusError =
 				})
 			}
 			const headers = normalizedHeaders(response.headers)
+			const providerRequestId = requestId(headers)
 			const retryAfter = retryAfterMs(headers)
 			const rateLimit = rateLimitDetails(headers, retryAfter)
 			const details = responseBody(body, request)
@@ -310,13 +316,18 @@ const statusError =
 						response,
 						redactedNames,
 						body: details,
-						requestId: requestId(headers),
+						requestId: providerRequestId,
 						rateLimit,
 					}),
 				}),
 			})
 			yield* diagnostics.warning('codex.provider.http.status_error', {
+				requestId: providerRequestId,
+				requestStartTimeMs,
+				headersArrived: true,
 				status: response.status,
+				openaiRequestId: openaiRequestId(headers),
+				cloudflareRayId: cloudflareRayId(headers),
 				operation: 'RequestExecutor.execute',
 				...llmErrorMetadata(error),
 			})
@@ -425,6 +436,7 @@ export const layer: Layer.Layer<Service, never, HttpClient.HttpClient> = Layer.e
 		)
 		const executeOnce = (request: HttpClientRequest.HttpClientRequest) =>
 			Effect.gen(function* () {
+				const requestStartTimeMs = Date.now()
 				const redactedNames = yield* Headers.CurrentRedactedNames
 				return yield* http.execute(request).pipe(
 					// Map HTTP client errors (connection failures, timeouts) to LLMError
@@ -432,12 +444,14 @@ export const layer: Layer.Layer<Service, never, HttpClient.HttpClient> = Layer.e
 					// Emit diagnostic for HTTP/transport client errors before retry
 					Effect.tapError((error) =>
 						diagnostics.warning('codex.provider.http.transport_error', {
+							requestStartTimeMs,
+							headersArrived: false,
 							operation: 'RequestExecutor.execute',
 							...llmErrorMetadata(error),
 						}),
 					),
 					// Map non-2xx HTTP responses to LLMError (statusError emits its own diagnostic)
-					Effect.flatMap(statusError(request, redactedNames, diagnostics)),
+					Effect.flatMap(statusError(request, redactedNames, diagnostics, requestStartTimeMs)),
 				)
 			})
 		return Service.of({

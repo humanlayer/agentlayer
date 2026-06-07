@@ -31,6 +31,11 @@ export interface HttpPrepared<Frame> {
 	readonly framing: FramingDef<Frame>
 }
 
+const normalizedHeaders = (headers: Headers.Headers) =>
+	Object.fromEntries(Object.entries(headers).map(([key, value]) => [key.toLowerCase(), String(value)]))
+
+const chatgptAccountId = (headers: Headers.Headers) => normalizedHeaders(headers)['chatgpt-account-id']
+
 const applyQuery = (url: string, query: Record<string, string> | undefined) => {
 	if (!query) return url
 	const next = new URL(url)
@@ -112,13 +117,22 @@ export const httpJson = <Body, Frame>(input: HttpJsonInput<Body, Frame>): HttpJs
 				? request.stream.headerTimeoutMs
 				: undefined
 		const diagnostics: DiagnosticsInterface = runtime.diagnostics ?? noopDiagnostics
+		const requestStartTimeMs = Date.now()
 
 		const executeEffect = Effect.gen(function* () {
-			const start = Date.now()
 			const response = yield* runtime.http.execute(prepared.request)
-			const elapsed = Date.now() - start
+			const elapsed = Date.now() - requestStartTimeMs
+			const headers = normalizedHeaders(response.headers)
+			const correlationMetadata = {
+				requestStartTimeMs,
+				headersArrived: true,
+				openaiRequestId: headers['x-request-id'],
+				cloudflareRayId: headers['cf-ray'],
+				chatgptAccountId: chatgptAccountId(prepared.request.headers),
+			}
 			yield* diagnostics.info('codex.provider.http.headers_received', {
 				requestId: request.id,
+				...correlationMetadata,
 				elapsedMs: elapsed,
 				status: response.status,
 				route,
@@ -126,6 +140,8 @@ export const httpJson = <Body, Frame>(input: HttpJsonInput<Body, Frame>): HttpJs
 			})
 			if (elapsed > SLOW_HEADER_THRESHOLD_MS) {
 				yield* diagnostics.warning('codex.provider.http.slow_headers', {
+					requestId: request.id,
+					...correlationMetadata,
 					elapsedMs: elapsed,
 					thresholdMs: SLOW_HEADER_THRESHOLD_MS,
 					status: response.status,
@@ -152,6 +168,9 @@ export const httpJson = <Body, Frame>(input: HttpJsonInput<Body, Frame>): HttpJs
 							return diagnostics
 								.error('codex.provider.http.header_timeout', {
 									terminal: false,
+									requestId: request.id,
+									requestStartTimeMs,
+									headersArrived: false,
 									timeoutMs: headerTimeoutMs,
 									route,
 									operation: 'HttpTransport.frames',
