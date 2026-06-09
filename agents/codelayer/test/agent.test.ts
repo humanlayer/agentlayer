@@ -464,6 +464,32 @@ describe('createCodelayerAgent', () => {
 		})
 	})
 
+	test('uses summarized adaptive thinking for FABLE 5 by default', () => {
+		const model = createMockModel('claude-fable-5')
+
+		expect(buildProviderOptions(model).anthropic).toEqual({
+			thinking: { type: 'adaptive', display: 'summarized' },
+			effort: 'medium',
+			cacheControl: { type: 'ephemeral' },
+		})
+	})
+
+	test('supports effort up to max for FABLE 5', () => {
+		const model = createMockModel('claude-fable-5')
+		const overrides = applyCliThinkingOverride({
+			provider: 'anthropic',
+			modelId: 'claude-fable-5',
+			thinking: 'max',
+			overrides: {},
+		})
+
+		expect(buildProviderOptions(model, overrides).anthropic).toEqual({
+			thinking: { type: 'adaptive', display: 'summarized' },
+			effort: 'max',
+			cacheControl: { type: 'ephemeral' },
+		})
+	})
+
 	test('rejects invalid known model thinking combinations', () => {
 		expect(() =>
 			applyCliThinkingOverride({
