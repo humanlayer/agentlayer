@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import { readFile, stat } from 'node:fs/promises'
 import type { PostToolUseHook, PreToolUseHook } from '@humanlayer/agentlayer-core'
-import { createPostToolUseHook, createPreToolUseHook } from '@humanlayer/agentlayer-core'
+import { createPostToolUseHook, createPreToolUseHook, sanitizeTextForModelState } from '@humanlayer/agentlayer-core'
 import { ApplyPatchTool, EditTool, ReadTool, WriteTool } from '@humanlayer/agentlayer-core/interfaces'
 import { type PatchOperation, parsePatch } from '@humanlayer/agentlayer-core/utils'
 import { expandPath } from '../utils/expand-path'
@@ -137,7 +137,7 @@ async function readRegularFile(resolvedPath: string): Promise<string | undefined
 		return undefined
 	}
 
-	return await readFile(resolvedPath, 'utf8')
+	return sanitizeTextForModelState(await readFile(resolvedPath, 'utf8'))
 }
 
 function extractFilePath(input: Record<string, unknown>): string | undefined {
@@ -219,6 +219,14 @@ async function computeFileSnapshot(resolvedPath: string): Promise<{ hash: string
 	return {
 		hash: hashContent(text),
 		totalLines: getTotalLines(text),
+	}
+}
+
+function getSnapshotForReadOutput(output: string): { hash: string; totalLines: number } {
+	const sanitized = sanitizeTextForModelState(output)
+	return {
+		hash: hashContent(sanitized),
+		totalLines: getTotalLines(sanitized),
 	}
 }
 
@@ -483,10 +491,7 @@ export function createFileStateTrackingHook(opts?: FileStateHookOptions): PostTo
 			const resolvedPath = resolveTrackedPath(readPath, opts?.cwd)
 			const snapshot =
 				typeof ctx.rawOutput === 'string'
-					? {
-							hash: hashContent(ctx.rawOutput),
-							totalLines: getTotalLines(ctx.rawOutput),
-						}
+					? getSnapshotForReadOutput(ctx.rawOutput)
 					: await computeFileSnapshot(resolvedPath)
 			if (!snapshot) {
 				return ctx.done()
