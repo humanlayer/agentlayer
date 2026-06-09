@@ -14,7 +14,13 @@ function sanitizeValue(value: unknown): unknown {
 	}
 
 	if (Array.isArray(value)) {
-		return value.map(sanitizeValue)
+		let changed = false
+		const sanitized = value.map((nested) => {
+			const next = sanitizeValue(nested)
+			changed ||= next !== nested
+			return next
+		})
+		return changed ? sanitized : value
 	}
 
 	if (value instanceof Uint8Array || value instanceof ArrayBuffer) {
@@ -22,7 +28,13 @@ function sanitizeValue(value: unknown): unknown {
 	}
 
 	if (typeof value === 'object' && value !== null) {
-		return Object.fromEntries(Object.entries(value).map(([key, nested]) => [key, sanitizeValue(nested)]))
+		let changed = false
+		const sanitizedEntries = Object.entries(value).map(([key, nested]) => {
+			const next = sanitizeValue(nested)
+			changed ||= next !== nested
+			return [key, next]
+		})
+		return changed ? Object.fromEntries(sanitizedEntries) : value
 	}
 
 	return value
