@@ -416,6 +416,23 @@ const createStreamMetrics = (
 				...extra,
 			})
 		},
+		snapshot: () => {
+			const now = Date.now()
+			const openUnproductiveGapMs = now - (lastLlmEventAt || startedAt)
+			return {
+				durationMs: now - startedAt,
+				protocolEventCount,
+				llmEventCount,
+				productiveProtocolEventCount,
+				zeroOutputProtocolEventCount,
+				firstLlmEventElapsedMs: firstLlmEventAt === 0 ? undefined : firstLlmEventAt - startedAt,
+				lastLlmEventElapsedMs: lastLlmEventAt === 0 ? undefined : lastLlmEventAt - startedAt,
+				maxUnproductiveGapMs: Math.max(maxUnproductiveGapMs, openUnproductiveGapMs),
+				openUnproductiveGapMs,
+				openZeroOutputStreakProtocolEventCount: currentZeroOutputStreakCount,
+				maxZeroOutputStreakProtocolEventCount,
+			}
+		},
 	}
 }
 
@@ -515,6 +532,7 @@ const withMaxStreamDuration = <A>(
 	timeoutMs: number | undefined,
 	diagnostics: DiagnosticsInterface = noopDiagnostics,
 	transportTelemetry?: () => Record<string, unknown>,
+	metricsSnapshot?: () => Record<string, unknown>,
 ): Stream.Stream<A, LLMError> => {
 	const maxDurationMs = positiveNumber(timeoutMs)
 	if (!maxDurationMs) return stream
@@ -535,6 +553,7 @@ const withMaxStreamDuration = <A>(
 					.error('codex.provider.timeout.max_stream_duration', {
 						route,
 						...(transportTelemetry?.() ?? {}),
+						...(metricsSnapshot?.() ?? {}),
 						terminal: true,
 						timeoutMs: maxDurationMs,
 						...llmErrorMetadata(error),
@@ -701,6 +720,7 @@ function makeFromTransport<Body, Prepared, Frame, Event, State>(
 					request.stream?.maxStreamDurationMs,
 					diagnostics,
 					transportTelemetry,
+					metrics.snapshot,
 				)
 				return bounded.pipe(
 					Stream.mapAccumEffect(
