@@ -168,14 +168,16 @@ export async function executeToolCall(tc: ToolCallRef, ctx: ExecuteToolCallConte
 		// Check if the tool returned a StopResult via ctx.stop()
 		else if (raw !== null && typeof raw === 'object' && (raw as HookStopResult).type === 'stop') {
 			const stopResult = raw as HookStopResult
-			const stopOutput = stopResult.output ?? stopResult.reason ?? 'Tool requested stop'
+			const stopResultOutput =
+				stopResult.output === undefined ? undefined : sanitizeToolOutputForModelState(stopResult.output)
+			const stopOutput = stopResultOutput ?? sanitizeTextForModelState(stopResult.reason ?? 'Tool requested stop')
 			output = stopOutput
 			rawOutput = stopResult
 			stopRequestedOptions = {
 				include: stopResult.include,
-				output: stopResult.output,
+				output: stopResultOutput,
 				dropParallel: stopResult.dropParallel,
-				reason: stopResult.reason,
+				reason: stopResult.reason ? sanitizeTextForModelState(stopResult.reason) : undefined,
 			}
 		} else {
 			rawOutput = raw

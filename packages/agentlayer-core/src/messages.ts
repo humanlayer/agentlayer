@@ -7,6 +7,7 @@ import type {
 	UserModelMessage,
 } from 'ai'
 import type { RunResult } from './agent'
+import { sanitizeTextForModelState, sanitizeToolOutputForModelState } from './sanitize-text'
 
 export type AgentLayerToolOutput = string | ToolResultPart['output']
 
@@ -75,7 +76,9 @@ export function buildToolResultMessage(
 	output: AgentLayerToolOutput,
 	isError: boolean,
 ): ModelMessage {
-	const resolvedOutput = typeof output === 'string' ? { type: 'text' as const, value: output } : output
+	const sanitizedOutput = sanitizeToolOutputForModelState(output)
+	const resolvedOutput =
+		typeof sanitizedOutput === 'string' ? { type: 'text' as const, value: sanitizedOutput } : sanitizedOutput
 
 	return {
 		role: 'tool',
@@ -111,6 +114,7 @@ export function toolResultMessage(
 	output: string,
 	isError?: boolean,
 ): ToolModelMessage {
+	const sanitizedOutput = sanitizeTextForModelState(output)
 	return {
 		role: 'tool',
 		content: [
@@ -118,7 +122,7 @@ export function toolResultMessage(
 				type: 'tool-result',
 				toolCallId,
 				toolName,
-				output: { type: 'text', value: output },
+				output: { type: 'text', value: sanitizedOutput },
 				...(isError ? { isError: true } : {}),
 			},
 		],
