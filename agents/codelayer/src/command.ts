@@ -81,7 +81,7 @@ function assertThinkingValue(args: { provider: ProviderType; modelId: string; th
 
 	if (args.provider !== 'anthropic') return
 
-	if (modelId.includes('fable-5') || modelId.includes('fable5')) {
+	if (modelId.includes('fable-5')) {
 		supported(['low', 'medium', 'high', 'xhigh', 'max'])
 	} else if (modelId.includes('opus') && (modelId.includes('4-8') || modelId.includes('4.8'))) {
 		supported(['low', 'medium', 'high', 'xhigh', 'max'])

@@ -109,7 +109,7 @@ export interface CodelayerProviderOptions extends Record<string, Record<string, 
 function resolveAnthropicThinking(model: LanguageModel, effort?: string): Record<string, unknown> {
 	const modelId = ((model as { modelId?: string }).modelId ?? '').toLowerCase()
 	const resolvedEffort = effort ?? 'medium'
-	if (modelId.includes('fable-5') || modelId.includes('fable5')) {
+	if (modelId.includes('fable-5')) {
 		return {
 			thinking: { type: 'adaptive', display: 'summarized' },
 			effort: resolvedEffort,
