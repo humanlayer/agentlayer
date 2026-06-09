@@ -1,7 +1,8 @@
 import { describe, expect, test } from 'bun:test'
+import { Agent, startState } from '@humanlayer/agentlayer-core'
 import { YjsFilesystem } from '@humanlayer/yjs-fs'
 import { createYjsFsReadTool } from '../src/tools'
-import { makeToolContext } from './mocks'
+import { assistantText, assistantWithToolCall, getToolResults, makeToolContext, mockModel, userMessage } from './mocks'
 
 function serializeRaw<TInput, TOutput>(
 	tool: { serialize?: (raw: TOutput, input: TInput) => unknown },
@@ -16,6 +17,24 @@ function serializeRaw<TInput, TOutput>(
 }
 
 describe('createYjsFsReadTool', () => {
+	test('agent state stores sanitized content from a text file with invalid persisted characters', async () => {
+		const fs = new YjsFilesystem()
+		fs.createFile('/bad.txt', 'before\0middle\uD800after')
+
+		const agent = new Agent({
+			model: mockModel([assistantWithToolCall('read', { file_path: '/bad.txt' }), assistantText('Done.')]),
+			tools: { read: createYjsFsReadTool(fs) },
+		})
+
+		const result = await agent.run({ state: startState([userMessage('read the bad file')]) }).result
+		const toolResults = getToolResults(result.state.messages, { toolName: 'read' })
+
+		expect(toolResults).toHaveLength(1)
+		expect(toolResults[0]!.output.value).toContain('before\uFFFDmiddle\uFFFDafter')
+		expect(toolResults[0]!.output.value).not.toContain('\0')
+		expect(toolResults[0]!.output.value.isWellFormed()).toBe(true)
+	})
+
 	test('reads file content from YjsFilesystem', async () => {
 		const fs = new YjsFilesystem()
 		fs.createFile('/test.ts', 'const x = 1\nconst y = 2')
