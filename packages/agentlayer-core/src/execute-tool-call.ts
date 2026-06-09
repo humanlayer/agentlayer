@@ -3,6 +3,7 @@ import type { AgentRun } from './agent-run'
 import type { SubAgentPauseResult, SubAgentResult, SubAgentRunHandle, Tool, ToolContext } from './define-tool'
 import type { HookStopResult, StopOptions } from './hooks'
 import { type AgentLayerToolOutput, buildToolResultMessage, isToolResultOutput } from './messages'
+import { sanitizeTextForModelState, sanitizeToolOutputForModelState } from './sanitize-text'
 import type { AgentState } from './state'
 
 export interface ToolCallRef {
@@ -178,10 +179,10 @@ export async function executeToolCall(tc: ToolCallRef, ctx: ExecuteToolCallConte
 			}
 		} else {
 			rawOutput = raw
-			output = serializeOutput(tool, raw as any, tc.input)
+			output = sanitizeToolOutputForModelState(serializeOutput(tool, raw as any, tc.input))
 		}
 	} catch (err) {
-		output = `Tool execution failed: ${err instanceof Error ? err.message : String(err)}`
+		output = sanitizeTextForModelState(`Tool execution failed: ${err instanceof Error ? err.message : String(err)}`)
 		rawOutput = err
 		isError = true
 	}

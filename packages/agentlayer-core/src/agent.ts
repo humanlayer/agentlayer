@@ -21,6 +21,7 @@ import {
 } from './hooks'
 import { type AgentLayerToolOutput, buildToolResultMessage } from './messages'
 import { type ModelKey, ModelProvider } from './models'
+import { sanitizeToolOutputForModelState } from './sanitize-text'
 import type { AgentState, ApprovalDecision, ApprovalHistoryEntry } from './state'
 import type { Step, StepToolResult, StopResult, StopTiming, StopWhen } from './stop-conditions'
 import { shouldStop } from './stop-conditions'
@@ -1195,15 +1196,11 @@ export class Agent<TTools extends Record<string, Tool<any, any>> = Record<string
 		hookStateUpdates = [...hookStateUpdates, ...hookChainResult.stateUpdates]
 
 		if (hookChainResult.result.mutatedResult !== undefined) {
+			const mutatedResult = sanitizeToolOutputForModelState(hookChainResult.result.mutatedResult)
 			execResult = {
 				...execResult,
-				output: hookChainResult.result.mutatedResult,
-				message: buildToolResultMessage(
-					tc.toolCallId,
-					tc.toolName,
-					hookChainResult.result.mutatedResult,
-					false,
-				),
+				output: mutatedResult,
+				message: buildToolResultMessage(tc.toolCallId, tc.toolName, mutatedResult, false),
 			}
 		}
 
