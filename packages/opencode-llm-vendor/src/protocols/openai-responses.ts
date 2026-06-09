@@ -39,7 +39,6 @@ const OpenAIResponsesInputImage = Schema.Struct({
 	image_url: Schema.String,
 })
 const OpenAIResponsesInputContent = Schema.Union([OpenAIResponsesInputText, OpenAIResponsesInputImage])
-type OpenAIResponsesInputContent = Schema.Schema.Type<typeof OpenAIResponsesInputContent>
 
 const OpenAIResponsesOutputText = Schema.Struct({
 	type: Schema.tag('output_text'),
@@ -132,7 +131,7 @@ const OpenAIResponsesCoreFields = {
 	reasoning: Schema.optional(
 		Schema.Struct({
 			effort: Schema.optional(OpenAIOptions.OpenAIReasoningEffort),
-			summary: Schema.optional(Schema.Literal('auto')),
+			summary: Schema.optional(Schema.String),
 		}),
 	),
 	text: Schema.optional(

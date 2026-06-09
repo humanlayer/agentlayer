@@ -7,12 +7,15 @@
 		"./protocols/openai-responses": "./src/protocols/openai-responses.ts",
 		"./route": "./src/route/index.ts",
 		"./route/client": "./src/route/client.ts",
+		"./route/diagnostics": "./src/route/diagnostics.ts",
 		"./route/executor": "./src/route/executor.ts",
 		"./route/auth": "./src/route/auth.ts",
 		"./route/transport": "./src/route/transport/index.ts",
 		"./route/transport/http": "./src/route/transport/http.ts",
 		"./route/transport/websocket": "./src/route/transport/websocket.ts",
-		"./schema": "./src/schema/index.ts"
+		"./schema": "./src/schema/index.ts",
+		"./tool": "./src/tool.ts",
+		"./tool-runtime": "./src/tool-runtime.ts"
 	},
 	"dependencies": {
 		"effect": "4.0.0-beta.66"

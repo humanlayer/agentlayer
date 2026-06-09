@@ -40,6 +40,7 @@ export interface CodelayerAgentOptions {
 	additionalTools?: Record<string, Tool<any, any>>
 	subagentTool?: Tool<any, any>
 	providerOptionOverrides?: CodelayerProviderOptionOverrides
+	subagentThinking?: string
 	environment?: CodelayerEnvironmentOptions
 }
 
@@ -108,6 +109,12 @@ export interface CodelayerProviderOptions extends Record<string, Record<string, 
 function resolveAnthropicThinking(model: LanguageModel, effort?: string): Record<string, unknown> {
 	const modelId = ((model as { modelId?: string }).modelId ?? '').toLowerCase()
 	const resolvedEffort = effort ?? 'medium'
+	if (modelId.includes('opus') && (modelId.includes('4-8') || modelId.includes('4.8'))) {
+		return {
+			thinking: { type: 'adaptive', display: 'summarized' },
+			effort: resolvedEffort,
+		}
+	}
 	if (modelId.includes('opus') && (modelId.includes('4-7') || modelId.includes('4.7'))) {
 		return {
 			thinking: { type: 'adaptive', display: 'summarized' },
@@ -226,6 +233,72 @@ export function createCodelayerProviderOptionsFactory(
 	return () => buildProviderOptions(model, withRunScopedPromptCacheKey(overrides))
 }
 
+export const LOW_ANTHROPIC_BUDGET = 2048
+
+const EFFORT_RANK: Record<string, number> = {
+	low: 0,
+	medium: 1,
+	high: 2,
+	xhigh: 3,
+}
+
+/**
+ * Derive a throttled override set for sub-agents from the parent's model + base
+ * overrides + a thinking level (default `low`). Branches by model family using
+ * the same lowercased-`modelId` idiom as {@link resolveAnthropicThinking}:
+ *
+ * - codex / firepass / copilot → `reasoningEffort = level`
+ * - anthropic `4-5`/`4.5` (extended thinking, no adaptive support) →
+ *   `{ thinking: 'enabled', budgetTokens: LOW_ANTHROPIC_BUDGET }`
+ * - anthropic adaptive (`4.6`+/`4.7`/`4.8`, and any other model) →
+ *   `effort = level`
+ *
+ * Guards (respect an explicitly-throttled parent — sub-agents never think
+ * harder than the parent): if `base.anthropic.thinking === 'off'` it stays off,
+ * and if `base.codex.reasoningEffort` already ranks at/below `level` the
+ * parent's value is preserved rather than raised.
+ */
+export function subagentThinkingOverrides(
+	model: LanguageModel,
+	base: CodelayerProviderOptionOverrides = {},
+	level: string = 'low',
+): CodelayerProviderOptionOverrides {
+	const modelId = ((model as { modelId?: string }).modelId ?? '').toLowerCase()
+
+	// codex / firepass: reasoningEffort is a clean, uniform knob. Respect a
+	// parent already throttled at or below `level` (rank low<medium<high<xhigh);
+	// an unrecognized custom effort string falls through to applying `level`.
+	const baseCodexEffort = base.codex?.reasoningEffort
+	const baseRank = baseCodexEffort !== undefined ? EFFORT_RANK[baseCodexEffort] : undefined
+	const levelRank = EFFORT_RANK[level]
+	const keepParentCodex =
+		baseRank !== undefined && levelRank !== undefined && baseRank <= levelRank
+	const codex = {
+		...(base.codex ?? {}),
+		reasoningEffort: keepParentCodex ? baseCodexEffort : (level as ReasoningEffort),
+	}
+
+	// anthropic: `effort` only applies to ADAPTIVE thinking (Opus 4.6+). Opus 4.5
+	// uses extended thinking (type: 'enabled' + budgetTokens) and does NOT support
+	// adaptive thinking, so on 4.5 we throttle via budgetTokens. Respect an
+	// explicit parent `thinking: 'off'`.
+	let anthropic = { ...(base.anthropic ?? {}) }
+	if (anthropic.thinking === 'off') {
+		// leave it off
+	} else if (modelId.includes('4-5') || modelId.includes('4.5')) {
+		anthropic = { ...anthropic, thinking: 'enabled', budgetTokens: LOW_ANTHROPIC_BUDGET }
+	} else {
+		anthropic = { ...anthropic, effort: level }
+	}
+
+	const copilot = {
+		...(base.copilot ?? {}),
+		reasoningEffort: level as ReasoningEffort,
+	}
+
+	return { ...base, anthropic, codex, copilot }
+}
+
 function mergeHooks(base: ReturnType<typeof createAgentFilesystemHooks>, hooks?: AgentConfig['hooks']): AgentConfig['hooks'] {
 	const fileStatePostHooks = base.postToolUse.filter((hook) => !saneDefaultOutputTruncationHooks.includes(hook))
 
@@ -253,10 +326,15 @@ export async function createCodelayerAgent(opts: CodelayerAgentOptions): Promise
 		additionalTools = {},
 		subagentTool,
 		providerOptionOverrides,
+		subagentThinking = 'low',
 		environment,
 	} = opts
 	const modelFamily = detectModelFamily(model)
 	const providerOptions = createCodelayerProviderOptionsFactory(model, providerOptionOverrides)
+	const subagentProviderOptions = createCodelayerProviderOptionsFactory(
+		model,
+		subagentThinkingOverrides(model, providerOptionOverrides, subagentThinking),
+	)
 	const personaPromptAdditions = [
 		...(tars ? [tarsPersona(35)] : []),
 		...systemPromptAdditions,
@@ -276,7 +354,7 @@ export async function createCodelayerAgent(opts: CodelayerAgentOptions): Promise
 			skillTool,
 			additionalTools,
 			hooks,
-			providerOptions,
+			providerOptions: subagentProviderOptions,
 			systemPromptAdditions: personaPromptAdditions,
 		}))
 

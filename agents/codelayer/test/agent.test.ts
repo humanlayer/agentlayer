@@ -7,7 +7,17 @@ import type { AgentConfig, PostToolUseHook, SubAgentConfig, Tool } from '@humanl
 import { saneDefaultOutputTruncationHooks } from '@humanlayer/agentlayer-filesystem/hooks'
 import { createMemoryAuthStore } from '@humanlayer/agentlayer-provider-auth'
 import * as providerAuth from '@humanlayer/agentlayer-provider-auth'
-import { buildProviderOptions, createCodelayerAgent, createCodelayerProviderOptionsFactory } from '../src/agent'
+import * as codexProvider from '@humanlayer/agentlayer-provider-openai-codex'
+import {
+	buildProviderOptions,
+	createCodelayerAgent,
+	createCodelayerProviderOptionsFactory,
+	LOW_ANTHROPIC_BUDGET,
+	subagentThinkingOverrides,
+} from '../src/agent'
+import * as agentModule from '../src/agent'
+import * as providersModule from '../src/providers'
+import * as skillToolModule from '@humanlayer/agentlayer-filesystem/tools'
 import { createCodelayerAgent as rootCreateCodelayerAgent, createCodelayerCommand, DEFAULT_MODELS as rootDefaultModels, resolveExaApiKey, resolveModel } from '../src/index'
 import { createCodingSubagentTool } from '../src/coding-subagent-tool'
 import { applyCliThinkingOverride, parseProviderOptionOverrides } from '../src/command'
@@ -17,6 +27,7 @@ let authStore = createMemoryAuthStore()
 
 const originalAnthropicApiKey = process.env.ANTHROPIC_API_KEY
 const originalFireworksApiKey = process.env.FIREWORKS_API_KEY
+const originalCodexProvider = process.env.CODEX_PROVIDER
 
 beforeEach(() => {
 	authStore = createMemoryAuthStore()
@@ -24,6 +35,7 @@ beforeEach(() => {
 	spyOn(providerAuth, 'ensureFileAuthStore').mockImplementation(async () => authStore)
 	delete process.env.ANTHROPIC_API_KEY
 	delete process.env.FIREWORKS_API_KEY
+	delete process.env.CODEX_PROVIDER
 })
 
 afterEach(async () => {
@@ -32,6 +44,8 @@ afterEach(async () => {
 	else process.env.ANTHROPIC_API_KEY = originalAnthropicApiKey
 	if (originalFireworksApiKey === undefined) delete process.env.FIREWORKS_API_KEY
 	else process.env.FIREWORKS_API_KEY = originalFireworksApiKey
+	if (originalCodexProvider === undefined) delete process.env.CODEX_PROVIDER
+	else process.env.CODEX_PROVIDER = originalCodexProvider
 })
 
 function createMockModel(modelId: string, provider = 'mock'): LanguageModel {
@@ -158,6 +172,52 @@ describe('provider resolution', () => {
 		expect(codexModel).toBeDefined()
 		expect(copilotModel).toBeDefined()
 		expect(providerAuth.ensureFileAuthStore).toHaveBeenCalledTimes(2)
+	})
+
+	test('defaults codex model resolution to the SSE provider', async () => {
+		const providerSpy = spyOn(codexProvider, 'createCodexSseVendorProvider')
+
+		const model = await resolveModel('codex', 'gpt-5.5')
+
+		expect(model).toBeDefined()
+		expect(providerSpy).toHaveBeenCalled()
+	})
+
+	test('forwards codex diagnostics context into the Codex SSE provider factory', async () => {
+		const providerSpy = spyOn(codexProvider, 'createCodexSseVendorProvider')
+		const codexDiagnostics = {
+			annotations: { sessionId: 'session-xyz', model: 'gpt-5.5', provider: 'codex' },
+			onEvent: () => {},
+		}
+
+		const model = await resolveModel('codex', 'gpt-5.5', { codexDiagnostics })
+
+		expect(model).toBeDefined()
+		expect(providerSpy).toHaveBeenCalledWith(
+			expect.objectContaining({
+				diagnostics: codexDiagnostics,
+				sessionId: 'session-xyz',
+			}),
+		)
+	})
+
+	test('respects explicit codex provider mode from caller context', async () => {
+		const providerSpy = spyOn(codexProvider, 'createCodexResponsesProvider')
+
+		const model = await resolveModel('codex', 'gpt-5.5', { codexProviderMode: 'aisdk_responses' })
+
+		expect(model).toBeDefined()
+		expect(providerSpy).toHaveBeenCalled()
+	})
+
+	test('respects CODEX_PROVIDER when caller context does not set a mode', async () => {
+		process.env.CODEX_PROVIDER = 'websockets'
+		const providerSpy = spyOn(codexProvider, 'createCodexEffectProvider')
+
+		const model = await resolveModel('codex', 'gpt-5.5')
+
+		expect(model).toBeDefined()
+		expect(providerSpy).toHaveBeenCalled()
 	})
 })
 
@@ -361,6 +421,49 @@ describe('createCodelayerAgent', () => {
 		})
 	})
 
+	test('uses summarized adaptive thinking for opus 4.8 by default without changing provider defaults', () => {
+		const model = createMockModel('claude-opus-4-8')
+
+		expect(DEFAULT_MODELS.anthropic).toBe('claude-opus-4-5')
+		expect(buildProviderOptions(model).anthropic).toEqual({
+			thinking: { type: 'adaptive', display: 'summarized' },
+			effort: 'medium',
+			cacheControl: { type: 'ephemeral' },
+		})
+	})
+
+	test('uses summarized adaptive thinking with explicit xhigh CLI effort for opus 4.8', () => {
+		const model = createMockModel('claude-opus-4-8')
+		const overrides = applyCliThinkingOverride({
+			provider: 'anthropic',
+			modelId: 'claude-opus-4-8',
+			thinking: 'xhigh',
+			overrides: {},
+		})
+
+		expect(buildProviderOptions(model, overrides).anthropic).toEqual({
+			thinking: { type: 'adaptive', display: 'summarized' },
+			effort: 'xhigh',
+			cacheControl: { type: 'ephemeral' },
+		})
+	})
+
+	test('supports dot-form opus 4.8 CLI thinking validation', () => {
+		const model = createMockModel('claude-opus-4.8')
+		const overrides = applyCliThinkingOverride({
+			provider: 'anthropic',
+			modelId: 'claude-opus-4.8',
+			thinking: 'max',
+			overrides: {},
+		})
+
+		expect(buildProviderOptions(model, overrides).anthropic).toEqual({
+			thinking: { type: 'adaptive', display: 'summarized' },
+			effort: 'max',
+			cacheControl: { type: 'ephemeral' },
+		})
+	})
+
 	test('rejects invalid known model thinking combinations', () => {
 		expect(() =>
 			applyCliThinkingOverride({
@@ -379,6 +482,15 @@ describe('createCodelayerAgent', () => {
 				overrides: {},
 			}),
 		).toThrow('Unsupported --thinking value "xhigh"')
+
+		expect(() =>
+			applyCliThinkingOverride({
+				provider: 'anthropic',
+				modelId: 'claude-opus-4-8',
+				thinking: 'extreme',
+				overrides: {},
+			}),
+		).toThrow('Unsupported --thinking value "extreme"')
 	})
 
 	test('preserves explicit provider-option reasoning values over CLI defaults', () => {
@@ -635,6 +747,195 @@ describe('createCodelayerAgent', () => {
 		const system = getSystemEntries(agent).join('\n')
 
 		expect(system).not.toContain('# Environment')
+	})
+})
+
+describe('subagentThinkingOverrides', () => {
+	test('throttles opus 4.5 via a reduced thinking budget', () => {
+		const model = createMockModel('claude-opus-4-5')
+
+		const overrides = subagentThinkingOverrides(model, {}, 'low')
+
+		expect(overrides.anthropic?.thinking).toBe('enabled')
+		expect(overrides.anthropic?.budgetTokens).toBe(2048)
+		expect(LOW_ANTHROPIC_BUDGET).toBe(2048)
+	})
+
+	test('throttles adaptive opus 4.8 via effort', () => {
+		const model = createMockModel('claude-opus-4-8')
+
+		const overrides = subagentThinkingOverrides(model, {}, 'low')
+
+		expect(overrides.anthropic?.effort).toBe('low')
+		expect(overrides.anthropic?.thinking).toBeUndefined()
+	})
+
+	test('throttles codex gpt-5.5 via reasoning effort', () => {
+		const model = createMockModel('gpt-5.5')
+
+		const overrides = subagentThinkingOverrides(model, {}, 'low')
+
+		expect(overrides.codex?.reasoningEffort).toBe('low')
+	})
+
+	test('routes haiku through the adaptive effort branch (no 4.5 budget branch)', () => {
+		const model = createMockModel('claude-haiku-4-5')
+
+		// claude-haiku-4-5 matches the 4-5 substring; it uses extended thinking too.
+		const haiku45 = subagentThinkingOverrides(model, {}, 'low')
+		expect(haiku45.anthropic?.thinking).toBe('enabled')
+		expect(haiku45.anthropic?.budgetTokens).toBe(2048)
+
+		// a haiku model with no family-specific default falls into the effort branch.
+		const plainHaiku = createMockModel('claude-haiku')
+		const overrides = subagentThinkingOverrides(plainHaiku, {}, 'low')
+		expect(overrides.anthropic?.effort).toBe('low')
+		expect(overrides.anthropic?.thinking).toBeUndefined()
+		expect(buildProviderOptions(plainHaiku, overrides).anthropic).toMatchObject({
+			effort: 'low',
+		})
+	})
+
+	test('throttles codex gpt-5.4-mini via reasoning effort (model-swap follow-on target)', () => {
+		const model = createMockModel('gpt-5.4-mini')
+
+		const overrides = subagentThinkingOverrides(model, {}, 'low')
+
+		expect(overrides.codex?.reasoningEffort).toBe('low')
+	})
+
+	test('respects an explicit parent anthropic thinking off', () => {
+		const model = createMockModel('claude-opus-4-5')
+
+		const overrides = subagentThinkingOverrides(model, { anthropic: { thinking: 'off' } }, 'low')
+
+		expect(overrides.anthropic?.thinking).toBe('off')
+		expect(overrides.anthropic?.budgetTokens).toBeUndefined()
+	})
+
+	test('does not raise a parent codex effort already at or below the level', () => {
+		const model = createMockModel('gpt-5.5')
+
+		const kept = subagentThinkingOverrides(model, { codex: { reasoningEffort: 'low' } }, 'medium')
+		expect(kept.codex?.reasoningEffort).toBe('low')
+
+		const raised = subagentThinkingOverrides(model, { codex: { reasoningEffort: 'high' } }, 'low')
+		expect(raised.codex?.reasoningEffort).toBe('low')
+	})
+
+	test('emits a reduced anthropic block through buildProviderOptions for opus 4.5', () => {
+		const model = createMockModel('claude-opus-4-5')
+
+		const result = buildProviderOptions(model, subagentThinkingOverrides(model, {}, 'low'))
+
+		expect(result.anthropic).toEqual({
+			thinking: { type: 'enabled', budgetTokens: 2048 },
+			cacheControl: { type: 'ephemeral' },
+		})
+	})
+
+	test('emits a reduced openai block through buildProviderOptions for codex', () => {
+		const model = createMockModel('gpt-5.5')
+
+		const result = buildProviderOptions(model, subagentThinkingOverrides(model, {}, 'low'))
+
+		expect(result.openai.reasoningEffort).toBe('low')
+	})
+
+	test('throttles the sub-agent factory while the top-level agent keeps configured thinking', async () => {
+		const agent = await createCodelayerAgent({
+			model: createMockModel('claude-opus-4-5'),
+			cwd: '/tmp',
+		})
+		const config = getAgentConfig(agent)
+
+		// Top-level agent keeps the configured (default) thinking budget.
+		const topOptions = (config.providerOptions as unknown as (ctx: { runId: string }) => Record<string, any>)({
+			runId: 'parent',
+		})
+		expect(topOptions.anthropic).toMatchObject({
+			thinking: { type: 'enabled', budgetTokens: 10000 },
+		})
+
+		// The sub-agent factory is throttled to the reduced budget.
+		const subagentTool = config.tools?.agent
+		const subagent = getSubagents(subagentTool).find((candidate) => candidate.name === 'general-purpose')
+		const subProviderOptions = getAgentConfig(subagent?.agent ?? {}).providerOptions as unknown as (ctx: {
+			runId: string
+		}) => Record<string, any>
+		const subOptions = subProviderOptions({ runId: 'subagent' })
+		expect(subOptions.anthropic).toMatchObject({
+			thinking: { type: 'enabled', budgetTokens: 2048 },
+		})
+	})
+})
+
+describe('--subagent-thinking CLI knob', () => {
+	// Capture the options passed to createCodelayerAgent. The mocked agent returns
+	// immediately and process.exit throws a caught sentinel so the action settles
+	// deterministically. Every spy handle is restored in a finally so it can never
+	// leak the createCodelayerAgent mock into other suites under CI ordering.
+	const STOP_AT_EXIT = new Error('__stop_at_exit__')
+
+	async function captureCliAgentOptions(argv: string[], model: LanguageModel): Promise<Record<string, unknown> | undefined> {
+		let captured: Record<string, unknown> | undefined
+		const spies = [
+			spyOn(providersModule, 'resolveModel').mockResolvedValue(model),
+			spyOn(providersModule, 'resolveExaApiKey').mockReturnValue(undefined),
+			spyOn(skillToolModule, 'createSkillToolFromRepoDirs').mockResolvedValue(undefined as any),
+			spyOn(process, 'exit').mockImplementation(((() => {
+				throw STOP_AT_EXIT
+			}) as unknown) as never),
+			spyOn(agentModule, 'createCodelayerAgent').mockImplementation(async (options: any) => {
+				captured = options
+				const run = (async function* () {})() as AsyncGenerator<never> & { result: Promise<any> }
+				run.result = Promise.resolve({ finishReason: 'stop', state: { messages: [] } })
+				return { run: () => run } as any
+			}),
+		]
+		try {
+			await createCodelayerCommand().parseAsync(argv)
+		} catch (error) {
+			if (error !== STOP_AT_EXIT) throw error
+		} finally {
+			for (const spy of spies) spy.mockRestore()
+		}
+		return captured
+	}
+
+	test('registers the --subagent-thinking option defaulting to low', () => {
+		const command = createCodelayerCommand()
+		const option = command.options.find((opt) => opt.long === '--subagent-thinking')
+
+		expect(option).toBeDefined()
+		expect(option?.defaultValue).toBe('low')
+	})
+
+	test('threads the default low subagent thinking into createCodelayerAgent', async () => {
+		const captured = await captureCliAgentOptions(
+			['node', 'codelayer', '--provider', 'codex', '--prompt', 'hi'],
+			createMockModel('gpt-5.5'),
+		)
+
+		expect(captured).toMatchObject({ subagentThinking: 'low' })
+	})
+
+	test('threads an explicit valid subagent thinking value into createCodelayerAgent', async () => {
+		const captured = await captureCliAgentOptions(
+			['node', 'codelayer', '--provider', 'codex', '--subagent-thinking', 'high', '--prompt', 'hi'],
+			createMockModel('gpt-5.5'),
+		)
+
+		expect(captured).toMatchObject({ subagentThinking: 'high' })
+	})
+
+	test('rejects a subagent thinking value outside the per-model allow-list', async () => {
+		await expect(
+			captureCliAgentOptions(
+				['node', 'codelayer', '--provider', 'codex', '--subagent-thinking', 'extreme', '--prompt', 'hi'],
+				createMockModel('gpt-5.5'),
+			),
+		).rejects.toThrow('Unsupported --thinking value "extreme"')
 	})
 })
 

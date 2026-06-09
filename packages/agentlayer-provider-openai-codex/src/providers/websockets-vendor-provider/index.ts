@@ -6,11 +6,13 @@ import {
 	type LanguageModelV3Usage,
 	NoSuchModelError,
 	type ProviderV3,
+	type SharedV3ProviderMetadata,
 } from '@ai-sdk/provider'
 import { createFileAuthStore } from '@humanlayer/agentlayer-provider-auth'
 import { webSocketRoute } from '@humanlayer/opencode-llm-vendor/protocols/openai-responses'
 import { Auth } from '@humanlayer/opencode-llm-vendor/route/auth'
 import { LLMClient } from '@humanlayer/opencode-llm-vendor/route/client'
+import { LLMDiagnostics } from '@humanlayer/opencode-llm-vendor/route/diagnostics'
 import { RequestExecutor } from '@humanlayer/opencode-llm-vendor/route/executor'
 import { WebSocketExecutor } from '@humanlayer/opencode-llm-vendor/route/transport/websocket'
 import { Layer, Stream } from 'effect'
@@ -18,8 +20,9 @@ import { convertCallOptionsToLLMRequest } from '../../shared/adapter'
 import { buildCodexUserAgent, resolveCodexAuth } from '../../shared/auth'
 import { effectStreamToReadableStream } from '../../shared/bridge'
 import { CODEX_API_ENDPOINT, CODEX_DEFAULT_VERSION } from '../../shared/constants'
+import { makeCodexDiagnosticsLayer } from '../../shared/diagnostics'
 import { type AnyLLMEvent, emptyUsage, llmEventToStreamParts } from '../../shared/events'
-import type { CodexProviderOptions } from '../../shared/types'
+import type { CodexDiagnosticsContext, CodexProviderOptions } from '../../shared/types'
 
 // Debug logging gated behind DEBUG_CODEX_WS=1
 const DEBUG = process.env.DEBUG_CODEX_WS === '1'
@@ -48,6 +51,14 @@ const llmClientLayer = LLMClient.layer.pipe(
 	Layer.provide(WebSocketExecutor.layer),
 )
 
+// Resolve the diagnostics layer satisfied alongside `llmClientLayer`. When the
+// host supplies a diagnostics context the provider installs the concrete sink;
+// otherwise it falls back to the vendor noop so the optional service is always
+// satisfiable before `bridge.ts` runs the stream.
+function diagnosticsLayerFor(diagnostics: CodexDiagnosticsContext | undefined) {
+	return diagnostics ? makeCodexDiagnosticsLayer(diagnostics, { transport: 'websockets' }) : LLMDiagnostics.noopLayer
+}
+
 // ---------------------------------------------------------------------------
 // LanguageModelV3 implementation
 // ---------------------------------------------------------------------------
@@ -61,6 +72,7 @@ function createEffectCodexModel(
 		fastMode?: boolean
 		serviceTier?: string
 		baseURL: string
+		diagnostics?: CodexDiagnosticsContext
 		_testLayers?: Layer.Layer<any>
 	},
 ): LanguageModelV3 {
@@ -84,9 +96,30 @@ function createEffectCodexModel(
 			let usage: LanguageModelV3Usage = emptyUsage
 			let finishReason: LanguageModelV3FinishReason = { unified: 'other', raw: undefined }
 			let text = ''
+			const reasoningBlocks = new Map<string, { text: string; providerMetadata?: SharedV3ProviderMetadata }>()
 
 			for (const part of parts) {
 				if (part.type === 'text-delta') text += part.delta
+				if (part.type === 'reasoning-start') {
+					reasoningBlocks.set(part.id, { text: '', providerMetadata: part.providerMetadata })
+				}
+				if (part.type === 'reasoning-delta') {
+					const block = reasoningBlocks.get(part.id) ?? { text: '', providerMetadata: part.providerMetadata }
+					block.text += part.delta
+					if (part.providerMetadata) block.providerMetadata = part.providerMetadata
+					reasoningBlocks.set(part.id, block)
+				}
+				if (part.type === 'reasoning-end') {
+					const block = reasoningBlocks.get(part.id)
+					if (block?.text) {
+						content.push({
+							type: 'reasoning',
+							text: block.text,
+							providerMetadata: part.providerMetadata ?? block.providerMetadata,
+						})
+						reasoningBlocks.delete(part.id)
+					}
+				}
 				if (part.type === 'tool-call') {
 					content.push({
 						type: 'tool-call',
@@ -98,6 +131,11 @@ function createEffectCodexModel(
 				if (part.type === 'finish') {
 					usage = part.usage
 					finishReason = part.finishReason
+				}
+			}
+			for (const block of reasoningBlocks.values()) {
+				if (block.text) {
+					content.push({ type: 'reasoning', text: block.text, providerMetadata: block.providerMetadata })
 				}
 			}
 
@@ -126,7 +164,7 @@ function createEffectCodexModel(
 				'User-Agent': buildCodexUserAgent(providerOptions.version),
 			}
 			if (providerOptions.sessionId) {
-				customHeaders.session_id = providerOptions.sessionId
+				customHeaders['session-id'] = providerOptions.sessionId
 			}
 			if (accountId) {
 				customHeaders['ChatGPT-Account-Id'] = accountId
@@ -141,6 +179,7 @@ function createEffectCodexModel(
 				route: webSocketRoute,
 				fastMode: providerOptions.fastMode,
 				serviceTier: providerOptions.serviceTier,
+				sessionId: providerOptions.sessionId,
 			})
 
 			// 4. Build the streaming Effect pipeline:
@@ -149,11 +188,29 @@ function createEffectCodexModel(
 			//    so we cast to AnyLLMEvent for our mapping function.
 			const llmStream = Stream.flatMap(
 				LLMClient.stream(request) as Stream.Stream<AnyLLMEvent, unknown>,
-				(event) => Stream.fromIterable(llmEventToStreamParts(event)),
+				(event) => {
+					if (event.type === 'provider-error') {
+						providerOptions.diagnostics?.onEvent({
+							event: 'codex.provider.protocol.provider_error',
+							severity: 'error',
+							transport: 'websockets',
+							annotations: providerOptions.diagnostics.annotations,
+							metadata: {
+								terminal: true,
+								message: event.message as string,
+								code: event.code as string | undefined,
+							},
+						})
+					}
+					return Stream.fromIterable(llmEventToStreamParts(event))
+				},
 			)
 
-			// 5. Provide LLMClient layers so the stream's service requirements are satisfied
-			const layers = providerOptions._testLayers ?? llmClientLayer
+			// 5. Provide LLMClient layers so the stream's service requirements are satisfied.
+			//    The diagnostics layer is piped on so the optional service is
+			//    satisfied before `bridge.ts` runs the stream.
+			const baseLayers = providerOptions._testLayers ?? llmClientLayer
+			const layers = Layer.provideMerge(baseLayers, diagnosticsLayerFor(providerOptions.diagnostics))
 			const providedStream = Stream.provide(llmStream, layers) as Stream.Stream<
 				LanguageModelV3StreamPart,
 				unknown
@@ -207,6 +264,7 @@ export function createCodexEffectProvider(options: CodexEffectProviderOptions = 
 				fastMode: options.fastMode,
 				serviceTier: options.serviceTier ?? undefined,
 				baseURL: CODEX_API_ENDPOINT.replace(/\/responses$/, ''),
+				diagnostics: options.diagnostics,
 				_testLayers: options._testLayers,
 			})
 		},

@@ -1,5 +1,6 @@
 // @ts-nocheck — vendored from opencode, tested upstream under different tsconfig
 import { Cause, Context, Effect, Layer, Random } from 'effect'
+import * as Option from 'effect/Option'
 import {
 	FetchHttpClient,
 	Headers,
@@ -23,6 +24,12 @@ import {
 	TransportReason,
 	UnknownProviderReason,
 } from '../schema'
+import {
+	type Interface as DiagnosticsInterface,
+	LLMDiagnostics,
+	llmErrorMetadata,
+	noopDiagnostics,
+} from './diagnostics'
 
 export interface Interface {
 	readonly execute: (
@@ -87,6 +94,10 @@ const requestId = (headers: Record<string, string>) => {
 		headers['cf-ray']
 	)
 }
+
+const openaiRequestId = (headers: Record<string, string>) => headers['x-request-id']
+
+const cloudflareRayId = (headers: Record<string, string>) => headers['cf-ray']
 
 const retryableStatus = (status: number) => status === 429 || status === 503 || status === 504 || status === 529
 
@@ -265,16 +276,34 @@ const statusReason = (input: {
 }
 
 const statusError =
-	(request: HttpClientRequest.HttpClientRequest, redactedNames: ReadonlyArray<string | RegExp>) =>
+	(
+		request: HttpClientRequest.HttpClientRequest,
+		redactedNames: ReadonlyArray<string | RegExp>,
+		diagnostics: DiagnosticsInterface = noopDiagnostics,
+		requestStartTimeMs: number,
+	) =>
 	(response: HttpClientResponse.HttpClientResponse) =>
 		Effect.gen(function* () {
 			if (response.status < 400) return response
-			const body = yield* response.text.pipe(Effect.catch(() => Effect.void))
+			let bodyReadFailed = false
+			const body = yield* response.text.pipe(
+				Effect.catch(() => {
+					bodyReadFailed = true
+					return Effect.void
+				}),
+			)
+			if (bodyReadFailed) {
+				yield* diagnostics.warning('codex.provider.http.body_read_failed', {
+					status: response.status,
+					operation: 'RequestExecutor.execute',
+				})
+			}
 			const headers = normalizedHeaders(response.headers)
+			const providerRequestId = requestId(headers)
 			const retryAfter = retryAfterMs(headers)
 			const rateLimit = rateLimitDetails(headers, retryAfter)
 			const details = responseBody(body, request)
-			return yield* new LLMError({
+			const error = new LLMError({
 				module: 'RequestExecutor',
 				method: 'execute',
 				reason: statusReason({
@@ -287,11 +316,22 @@ const statusError =
 						response,
 						redactedNames,
 						body: details,
-						requestId: requestId(headers),
+						requestId: providerRequestId,
 						rateLimit,
 					}),
 				}),
 			})
+			yield* diagnostics.warning('codex.provider.http.status_error', {
+				requestId: providerRequestId,
+				requestStartTimeMs,
+				headersArrived: true,
+				status: response.status,
+				openaiRequestId: openaiRequestId(headers),
+				cloudflareRayId: cloudflareRayId(headers),
+				operation: 'RequestExecutor.execute',
+				...llmErrorMetadata(error),
+			})
+			return yield* error
 		})
 
 const toHttpError = (redactedNames: ReadonlyArray<string | RegExp>) => (error: unknown) => {
@@ -344,33 +384,78 @@ const retryDelay = (error: LLMError, attempt: number) => {
 
 const retryStatusFailures = <A, R>(
 	effect: Effect.Effect<A, LLMError, R>,
+	diagnostics: DiagnosticsInterface = noopDiagnostics,
 	retries = MAX_RETRIES,
 	attempt = 0,
 ): Effect.Effect<A, LLMError, R> =>
 	Effect.catchTag(effect, 'LLM.Error', (error): Effect.Effect<A, LLMError, R> => {
-		if (!error.retryable || retries <= 0) return Effect.fail(error)
-		return retryDelay(error, attempt).pipe(
-			Effect.flatMap((delay) => Effect.sleep(delay)),
-			Effect.flatMap(() => retryStatusFailures(effect, retries - 1, attempt + 1)),
-		)
+		if (!error.retryable || retries <= 0) {
+			// Terminal: retry budget exhausted or non-retryable error
+			if (error.retryable && retries <= 0) {
+				return diagnostics
+					.error('codex.provider.retry.http_status.exhausted', {
+						terminal: true,
+						attempt: attempt + 1,
+						operation: 'RequestExecutor.execute',
+						...llmErrorMetadata(error),
+					})
+					.pipe(Effect.flatMap(() => Effect.fail(error)))
+			}
+			return Effect.fail(error)
+		}
+		return diagnostics
+			.warning('codex.provider.retry.http_status', {
+				terminal: false,
+				attempt: attempt + 1,
+				operation: 'RequestExecutor.execute',
+				...llmErrorMetadata(error),
+			})
+			.pipe(
+				Effect.flatMap(() => retryDelay(error, attempt)),
+				Effect.flatMap((delay) =>
+					diagnostics
+						.info('codex.provider.retry.http_status.scheduled', {
+							attempt: attempt + 1,
+							delayMs: delay,
+							operation: 'RequestExecutor.execute',
+						})
+						.pipe(Effect.as(delay)),
+				),
+				Effect.flatMap((delay) => Effect.sleep(delay)),
+				Effect.flatMap(() => retryStatusFailures(effect, diagnostics, retries - 1, attempt + 1)),
+			)
 	})
 
 export const layer: Layer.Layer<Service, never, HttpClient.HttpClient> = Layer.effect(
 	Service,
 	Effect.gen(function* () {
 		const http = yield* HttpClient.HttpClient
+		const diagnostics: DiagnosticsInterface = Option.getOrElse(
+			yield* Effect.serviceOption(LLMDiagnostics.Service),
+			() => noopDiagnostics,
+		)
 		const executeOnce = (request: HttpClientRequest.HttpClientRequest) =>
 			Effect.gen(function* () {
+				const requestStartTimeMs = Date.now()
 				const redactedNames = yield* Headers.CurrentRedactedNames
-				return yield* http
-					.execute(request)
-					.pipe(
-						Effect.mapError(toHttpError(redactedNames)),
-						Effect.flatMap(statusError(request, redactedNames)),
-					)
+				return yield* http.execute(request).pipe(
+					// Map HTTP client errors (connection failures, timeouts) to LLMError
+					Effect.mapError(toHttpError(redactedNames)),
+					// Emit diagnostic for HTTP/transport client errors before retry
+					Effect.tapError((error) =>
+						diagnostics.warning('codex.provider.http.transport_error', {
+							requestStartTimeMs,
+							headersArrived: false,
+							operation: 'RequestExecutor.execute',
+							...llmErrorMetadata(error),
+						}),
+					),
+					// Map non-2xx HTTP responses to LLMError (statusError emits its own diagnostic)
+					Effect.flatMap(statusError(request, redactedNames, diagnostics, requestStartTimeMs)),
+				)
 			})
 		return Service.of({
-			execute: (request) => retryStatusFailures(executeOnce(request)),
+			execute: (request) => retryStatusFailures(executeOnce(request), diagnostics),
 		})
 	}),
 )

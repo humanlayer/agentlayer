@@ -7,12 +7,24 @@ import {
 	createCodexSseVendorProvider,
 	createCodexEffectProvider,
 	createCodexResponsesProvider,
+	type CodexDiagnosticsContext,
 	CODEX_DEFAULT_VERSION,
 } from '@humanlayer/agentlayer-provider-openai-codex'
 
 export type CodexProviderMode = 'sse' | 'aisdk_responses' | 'websockets'
 
 export type ProviderType = 'anthropic' | 'openai' | 'codex' | 'copilot' | 'firepass'
+
+/**
+ * Opaque, host-supplied context threaded through model resolution. CodeLayer
+ * forwards `codexDiagnostics` into the Codex provider factory unchanged; it does
+ * not understand the sink internals (Sentry, files, loggers). Non-Codex
+ * providers ignore it.
+ */
+export interface ResolveModelContext {
+	codexDiagnostics?: CodexDiagnosticsContext
+	codexProviderMode?: CodexProviderMode
+}
 
 const FIREWORKS_MODEL_ID = 'accounts/fireworks/routers/kimi-k2p6-turbo'
 
@@ -51,7 +63,11 @@ export function resolveExaApiKey(): string | undefined {
 	return process.env.EXA_API_KEY
 }
 
-export async function resolveModel(provider: ProviderType, modelId: string): Promise<LanguageModel> {
+export async function resolveModel(
+	provider: ProviderType,
+	modelId: string,
+	context?: ResolveModelContext,
+): Promise<LanguageModel> {
 	switch (provider) {
 		case 'anthropic': {
 			const anthropic = createAnthropic({ apiKey: await resolveApiKey('ANTHROPIC_API_KEY', 'anthropic') })
@@ -70,8 +86,16 @@ export async function resolveModel(provider: ProviderType, modelId: string): Pro
 		}
 		case 'codex': {
 			const authStore = await ensureFileAuthStore()
-			const codexMode = (process.env.CODEX_PROVIDER ?? 'sse') as CodexProviderMode
-			const codexOpts = { authStore, version: CODEX_DEFAULT_VERSION, fastMode: true }
+			const codexMode = context?.codexProviderMode
+				?? (process.env.CODEX_PROVIDER as CodexProviderMode | undefined)
+				?? 'sse'
+			const codexOpts = {
+				authStore,
+				version: CODEX_DEFAULT_VERSION,
+				fastMode: true,
+				sessionId: context?.codexDiagnostics?.annotations.sessionId as string | undefined,
+				diagnostics: context?.codexDiagnostics,
+			}
 			console.error(`[codex-provider] using ${codexMode} transport for model ${modelId}`)
 			switch (codexMode) {
 				case 'aisdk_responses':
