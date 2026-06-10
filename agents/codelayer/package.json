@@ -45,7 +45,7 @@
 	},
 	"dependencies": {
 		"@ai-sdk/anthropic": "catalog:",
-		"@ai-sdk/openai": "^3.0.48",
+		"@ai-sdk/openai": "catalog:",
 		"@humanlayer/agentlayer-core": "workspace:*",
 		"@humanlayer/agentlayer-filesystem": "workspace:*",
 		"@humanlayer/agentlayer-provider-auth": "workspace:*",
