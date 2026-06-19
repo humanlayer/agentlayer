@@ -37,9 +37,12 @@ interface RepoInstructionsFile {
 /**
  * Keeps the built-in priority-group ordering, but removes built-in file names
  * that the caller did not request.
+ *
+ * Example: ['CLAUDE.local.md'] becomes [[], ['CLAUDE.local.md'], []].
+ * Example: ['AGENTS.md', 'CLAUDE.md'] becomes [['AGENTS.md'], ['CLAUDE.md'], []].
  */
-function filterBuiltInPriorityGroupsToRequestedFileNames(candidateFileNames: string[]): string[][] {
-	const requestedFileNames = new Set(candidateFileNames)
+function filterBuiltInPriorityGroupsToRequestedFileNames(requestedInstructionFileNames: string[]): string[][] {
+	const requestedFileNames = new Set(requestedInstructionFileNames)
 
 	return REPO_INSTRUCTION_PRIORITY_GROUPS.map((group) =>
 		group.filter((fileName) => requestedFileNames.has(fileName)),
@@ -49,18 +52,21 @@ function filterBuiltInPriorityGroupsToRequestedFileNames(candidateFileNames: str
 /**
  * Turns caller-provided custom file names into single-file priority groups
  * after the built-in AGENTS/CLAUDE/CONTEXT groups.
+ *
+ * Example: ['README.md'] becomes [['README.md']].
+ * Example: ['AGENTS.md', 'TEAM.md'] ignores AGENTS.md and becomes [['TEAM.md']].
  */
-function wrapCustomFileNamesInPriorityGroups(candidateFileNames: string[]): string[][] {
+function wrapCustomFileNamesInPriorityGroups(requestedInstructionFileNames: string[]): string[][] {
 	const builtInCandidates = new Set(REPO_INSTRUCTION_PRIORITY_GROUPS.flat())
 
-	return candidateFileNames
+	return requestedInstructionFileNames
 		.filter((fileName) => !builtInCandidates.has(fileName))
 		.map((fileName) => [fileName])
 }
 
-function instructionPriorityGroupsFor(candidateFileNames: string[]): string[][] {
-	const requestedBuiltInGroups = filterBuiltInPriorityGroupsToRequestedFileNames(candidateFileNames)
-	const customCandidateGroups = wrapCustomFileNamesInPriorityGroups(candidateFileNames)
+function instructionPriorityGroupsFor(requestedInstructionFileNames: string[]): string[][] {
+	const requestedBuiltInGroups = filterBuiltInPriorityGroupsToRequestedFileNames(requestedInstructionFileNames)
+	const customCandidateGroups = wrapCustomFileNamesInPriorityGroups(requestedInstructionFileNames)
 
 	return [...requestedBuiltInGroups, ...customCandidateGroups].filter((group) => group.length > 0)
 }
@@ -168,15 +174,15 @@ export async function repoInstructionsPrompt(
 		return createRepoInstructionsPrompt({ path: filePath, contents })
 	}
 
-	const candidateFileNames = opts.candidates ?? DEFAULT_REPO_INSTRUCTION_CANDIDATES
-	const priorityGroups = instructionPriorityGroupsFor(candidateFileNames)
+	const requestedInstructionFileNames = opts.candidates ?? DEFAULT_REPO_INSTRUCTION_CANDIDATES
+	const priorityGroups = instructionPriorityGroupsFor(requestedInstructionFileNames)
 	const found = await findRepoInstructions(bash, opts.cwd, priorityGroups, opts._skipRepoRootFallback ?? false)
 
 	if (!found) {
 		if (opts.allowMissing) return undefined
 		const repoRoot = await getRepoRoot(bash, opts.cwd)
 		const searched = repoRoot ? [`${opts.cwd} (cwd)`, `${repoRoot} (repo root)`] : [opts.cwd]
-		throw new Error(`No repo instructions found. Searched for ${candidateFileNames.join(', ')} in: ${searched.join(', ')}`)
+		throw new Error(`No repo instructions found. Searched for ${requestedInstructionFileNames.join(', ')} in: ${searched.join(', ')}`)
 	}
 
 	return createRepoInstructionsPrompt(found)
