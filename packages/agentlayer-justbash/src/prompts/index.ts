@@ -34,15 +34,25 @@ interface RepoInstructionsFile {
 	contents: string
 }
 
-function instructionPriorityGroupsFor(candidateFileNames: string[]): string[][] {
+function requestedBuiltInPriorityGroups(candidateFileNames: string[]): string[][] {
 	const requestedFileNames = new Set(candidateFileNames)
-	const builtInCandidates = new Set(REPO_INSTRUCTION_PRIORITY_GROUPS.flat())
-	const requestedBuiltInGroups = REPO_INSTRUCTION_PRIORITY_GROUPS.map((group) =>
+
+	return REPO_INSTRUCTION_PRIORITY_GROUPS.map((group) =>
 		group.filter((fileName) => requestedFileNames.has(fileName)),
 	)
-	const customCandidateGroups = candidateFileNames
+}
+
+function customCandidatesAsPriorityGroups(candidateFileNames: string[]): string[][] {
+	const builtInCandidates = new Set(REPO_INSTRUCTION_PRIORITY_GROUPS.flat())
+
+	return candidateFileNames
 		.filter((fileName) => !builtInCandidates.has(fileName))
 		.map((fileName) => [fileName])
+}
+
+function instructionPriorityGroupsFor(candidateFileNames: string[]): string[][] {
+	const requestedBuiltInGroups = requestedBuiltInPriorityGroups(candidateFileNames)
+	const customCandidateGroups = customCandidatesAsPriorityGroups(candidateFileNames)
 
 	return [...requestedBuiltInGroups, ...customCandidateGroups].filter((group) => group.length > 0)
 }
