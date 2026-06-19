@@ -38,33 +38,28 @@ export {
 	tarsPersona,
 } from '@humanlayer/agentlayer-core/prompts'
 
-const DEFAULT_REPO_INSTRUCTION_CANDIDATES = [
-	'AGENTS.md',
-	'AGENTS.local.md',
-	'CLAUDE.md',
-	'CLAUDE.local.md',
-	'CONTEXT.md',
+const REPO_INSTRUCTION_FAMILIES: string[][] = [
+	['AGENTS.md', 'AGENTS.local.md'],
+	['CLAUDE.md', 'CLAUDE.local.md'],
+	['CONTEXT.md'],
 ]
+
+const DEFAULT_REPO_INSTRUCTION_CANDIDATES = REPO_INSTRUCTION_FAMILIES.flat()
 
 interface RepoInstructionsFile {
 	path: string
 	contents: string
 }
 
-function groupRepoInstructionCandidates(candidates: string[]): string[][] {
-	const agentsCandidates: string[] = candidates.filter(
-		(candidate) => candidate === 'AGENTS.md' || candidate === 'AGENTS.local.md',
+function instructionFamiliesFor(candidates: string[]): string[][] {
+	const requested = new Set(candidates)
+	const known = new Set(REPO_INSTRUCTION_FAMILIES.flat())
+	const preferredFamilies = REPO_INSTRUCTION_FAMILIES.map((family) =>
+		family.filter((candidate) => requested.has(candidate)),
 	)
-	const claudeCandidates: string[] = candidates.filter(
-		(candidate) => candidate === 'CLAUDE.md' || candidate === 'CLAUDE.local.md',
-	)
-	const otherCandidates = candidates.filter(
-		(candidate) => !agentsCandidates.includes(candidate) && !claudeCandidates.includes(candidate),
-	)
+	const customFamilies = candidates.filter((candidate) => !known.has(candidate)).map((candidate) => [candidate])
 
-	return [agentsCandidates, claudeCandidates, ...otherCandidates.map((candidate) => [candidate])].filter(
-		(group) => group.length > 0,
-	)
+	return [...preferredFamilies, ...customFamilies].filter((family) => family.length > 0)
 }
 
 async function getRepoRoot(cwd: string): Promise<string | undefined> {
@@ -76,10 +71,10 @@ async function getRepoRoot(cwd: string): Promise<string | undefined> {
 	}
 }
 
-async function existingCandidates(cwd: string, candidateGroup: string[]): Promise<RepoInstructionsFile[]> {
+async function readInstructionFiles(cwd: string, family: string[]): Promise<RepoInstructionsFile[]> {
 	const files: RepoInstructionsFile[] = []
 
-	for (const candidate of candidateGroup) {
+	for (const candidate of family) {
 		const candidatePath = resolve(cwd, candidate)
 		try {
 			await access(candidatePath, constants.F_OK)
@@ -91,6 +86,13 @@ async function existingCandidates(cwd: string, candidateGroup: string[]): Promis
 	}
 
 	return files
+}
+
+async function firstInstructionFamily(cwd: string, families: string[][]): Promise<RepoInstructionsFile | undefined> {
+	for (const family of families) {
+		const instructions = combineRepoInstructionFiles(await readInstructionFiles(cwd, family))
+		if (instructions) return instructions
+	}
 }
 
 function combineRepoInstructionFiles(files: RepoInstructionsFile[]): RepoInstructionsFile | undefined {
@@ -105,27 +107,16 @@ function combineRepoInstructionFiles(files: RepoInstructionsFile[]): RepoInstruc
 
 async function findRepoInstructions(
 	startCwd: string,
-	candidateGroups: string[][],
+	families: string[][],
 	skipRepoRootFallback: boolean,
 ): Promise<RepoInstructionsFile | undefined> {
-	for (const candidateGroup of candidateGroups) {
-		const cwdFiles = await existingCandidates(startCwd, candidateGroup)
-		const cwdInstructions = combineRepoInstructionFiles(cwdFiles)
-		if (cwdInstructions) {
-			return cwdInstructions
-		}
-	}
+	const cwdInstructions = await firstInstructionFamily(startCwd, families)
+	if (cwdInstructions) return cwdInstructions
 
 	if (!skipRepoRootFallback) {
 		const repoRoot = await getRepoRoot(startCwd)
 		if (repoRoot && repoRoot !== startCwd) {
-			for (const candidateGroup of candidateGroups) {
-				const rootFiles = await existingCandidates(repoRoot, candidateGroup)
-				const rootInstructions = combineRepoInstructionFiles(rootFiles)
-				if (rootInstructions) {
-					return rootInstructions
-				}
-			}
+			return firstInstructionFamily(repoRoot, families)
 		}
 	}
 
@@ -169,8 +160,8 @@ export async function repoInstructionsPrompt(opts: RepoInstructionsPromptOptions
 	}
 
 	const candidates = opts.candidates ?? DEFAULT_REPO_INSTRUCTION_CANDIDATES
-	const candidateGroups = groupRepoInstructionCandidates(candidates)
-	const found = await findRepoInstructions(opts.cwd, candidateGroups, opts._skipRepoRootFallback ?? false)
+	const families = instructionFamiliesFor(candidates)
+	const found = await findRepoInstructions(opts.cwd, families, opts._skipRepoRootFallback ?? false)
 
 	if (!found) {
 		if (opts.allowMissing) return undefined
