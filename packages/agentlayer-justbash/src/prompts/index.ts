@@ -34,7 +34,11 @@ interface RepoInstructionsFile {
 	contents: string
 }
 
-function requestedBuiltInPriorityGroups(candidateFileNames: string[]): string[][] {
+/**
+ * Keeps the built-in priority-group ordering, but removes built-in file names
+ * that the caller did not request.
+ */
+function filterBuiltInPriorityGroupsToRequestedFileNames(candidateFileNames: string[]): string[][] {
 	const requestedFileNames = new Set(candidateFileNames)
 
 	return REPO_INSTRUCTION_PRIORITY_GROUPS.map((group) =>
@@ -42,7 +46,11 @@ function requestedBuiltInPriorityGroups(candidateFileNames: string[]): string[][
 	)
 }
 
-function customCandidatesAsPriorityGroups(candidateFileNames: string[]): string[][] {
+/**
+ * Turns caller-provided custom file names into single-file priority groups
+ * after the built-in AGENTS/CLAUDE/CONTEXT groups.
+ */
+function wrapCustomFileNamesInPriorityGroups(candidateFileNames: string[]): string[][] {
 	const builtInCandidates = new Set(REPO_INSTRUCTION_PRIORITY_GROUPS.flat())
 
 	return candidateFileNames
@@ -51,8 +59,8 @@ function customCandidatesAsPriorityGroups(candidateFileNames: string[]): string[
 }
 
 function instructionPriorityGroupsFor(candidateFileNames: string[]): string[][] {
-	const requestedBuiltInGroups = requestedBuiltInPriorityGroups(candidateFileNames)
-	const customCandidateGroups = customCandidatesAsPriorityGroups(candidateFileNames)
+	const requestedBuiltInGroups = filterBuiltInPriorityGroupsToRequestedFileNames(candidateFileNames)
+	const customCandidateGroups = wrapCustomFileNamesInPriorityGroups(candidateFileNames)
 
 	return [...requestedBuiltInGroups, ...customCandidateGroups].filter((group) => group.length > 0)
 }
