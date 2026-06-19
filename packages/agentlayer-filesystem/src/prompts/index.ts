@@ -73,7 +73,7 @@ function filterBuiltInPriorityGroupsToRequestedFileNames(requestedInstructionFil
  * after the built-in AGENTS/CLAUDE/CONTEXT groups.
  *
  * Example: ['README.md'] becomes [['README.md']].
- * Example: ['AGENTS.md', 'TEAM.md'] ignores AGENTS.md and becomes [['TEAM.md']].
+ * Example: ['AGENTS.md', 'PROJECT.md'] ignores AGENTS.md and becomes [['PROJECT.md']].
  */
 function wrapCustomFileNamesInPriorityGroups(requestedInstructionFileNames: string[]): string[][] {
 	const builtInCandidates = new Set(REPO_INSTRUCTION_PRIORITY_GROUPS.flat())
