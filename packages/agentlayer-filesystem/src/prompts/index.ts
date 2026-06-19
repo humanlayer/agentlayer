@@ -39,16 +39,32 @@ export {
 } from '@humanlayer/agentlayer-core/prompts'
 
 const DEFAULT_REPO_INSTRUCTION_CANDIDATES = [
-	'CLAUDE.md',
-	'CLAUDE.local.md',
 	'AGENTS.md',
 	'AGENTS.local.md',
+	'CLAUDE.md',
+	'CLAUDE.local.md',
 	'CONTEXT.md',
 ]
 
 interface RepoInstructionsFile {
 	path: string
 	contents: string
+}
+
+function groupRepoInstructionCandidates(candidates: string[]): string[][] {
+	const agentsCandidates: string[] = candidates.filter(
+		(candidate) => candidate === 'AGENTS.md' || candidate === 'AGENTS.local.md',
+	)
+	const claudeCandidates: string[] = candidates.filter(
+		(candidate) => candidate === 'CLAUDE.md' || candidate === 'CLAUDE.local.md',
+	)
+	const otherCandidates = candidates.filter(
+		(candidate) => !agentsCandidates.includes(candidate) && !claudeCandidates.includes(candidate),
+	)
+
+	return [agentsCandidates, claudeCandidates, ...otherCandidates.map((candidate) => [candidate])].filter(
+		(group) => group.length > 0,
+	)
 }
 
 async function getRepoRoot(cwd: string): Promise<string | undefined> {
@@ -60,10 +76,10 @@ async function getRepoRoot(cwd: string): Promise<string | undefined> {
 	}
 }
 
-async function existingCandidates(cwd: string, candidates: string[]): Promise<RepoInstructionsFile[]> {
+async function existingCandidates(cwd: string, candidateGroup: string[]): Promise<RepoInstructionsFile[]> {
 	const files: RepoInstructionsFile[] = []
 
-	for (const candidate of candidates) {
+	for (const candidate of candidateGroup) {
 		const candidatePath = resolve(cwd, candidate)
 		try {
 			await access(candidatePath, constants.F_OK)
@@ -89,22 +105,26 @@ function combineRepoInstructionFiles(files: RepoInstructionsFile[]): RepoInstruc
 
 async function findRepoInstructions(
 	startCwd: string,
-	candidates: string[],
+	candidateGroups: string[][],
 	skipRepoRootFallback: boolean,
 ): Promise<RepoInstructionsFile | undefined> {
-	const cwdFiles = await existingCandidates(startCwd, candidates)
-	const cwdInstructions = combineRepoInstructionFiles(cwdFiles)
-	if (cwdInstructions) {
-		return cwdInstructions
+	for (const candidateGroup of candidateGroups) {
+		const cwdFiles = await existingCandidates(startCwd, candidateGroup)
+		const cwdInstructions = combineRepoInstructionFiles(cwdFiles)
+		if (cwdInstructions) {
+			return cwdInstructions
+		}
 	}
 
 	if (!skipRepoRootFallback) {
 		const repoRoot = await getRepoRoot(startCwd)
 		if (repoRoot && repoRoot !== startCwd) {
-			const rootFiles = await existingCandidates(repoRoot, candidates)
-			const rootInstructions = combineRepoInstructionFiles(rootFiles)
-			if (rootInstructions) {
-				return rootInstructions
+			for (const candidateGroup of candidateGroups) {
+				const rootFiles = await existingCandidates(repoRoot, candidateGroup)
+				const rootInstructions = combineRepoInstructionFiles(rootFiles)
+				if (rootInstructions) {
+					return rootInstructions
+				}
 			}
 		}
 	}
@@ -149,7 +169,8 @@ export async function repoInstructionsPrompt(opts: RepoInstructionsPromptOptions
 	}
 
 	const candidates = opts.candidates ?? DEFAULT_REPO_INSTRUCTION_CANDIDATES
-	const found = await findRepoInstructions(opts.cwd, candidates, opts._skipRepoRootFallback ?? false)
+	const candidateGroups = groupRepoInstructionCandidates(candidates)
+	const found = await findRepoInstructions(opts.cwd, candidateGroups, opts._skipRepoRootFallback ?? false)
 
 	if (!found) {
 		if (opts.allowMissing) return undefined

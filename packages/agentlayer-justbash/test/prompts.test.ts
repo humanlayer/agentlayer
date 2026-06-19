@@ -62,9 +62,19 @@ describe('justbash prompts', () => {
 		expect(prompt).toContain(filePath)
 	})
 
-	test('loads local repo instruction candidates alongside shared files', async () => {
+	test('loads the agents instruction family when both agents and claude files exist', async () => {
 		const cwd = '/repo'
 		const bash = createBashMock({
+			[`cat "${cwd}/AGENTS.md" 2>/dev/null`]: {
+				exitCode: 0,
+				stdout: 'Shared agent rules here.\n',
+				stderr: '',
+			},
+			[`cat "${cwd}/AGENTS.local.md" 2>/dev/null`]: {
+				exitCode: 0,
+				stdout: 'Local agent rules here.\n',
+				stderr: '',
+			},
 			[`cat "${cwd}/CLAUDE.md" 2>/dev/null`]: {
 				exitCode: 0,
 				stdout: 'Shared Claude rules here.\n',
@@ -75,19 +85,15 @@ describe('justbash prompts', () => {
 				stdout: 'Local Claude rules here.\n',
 				stderr: '',
 			},
-			[`cat "${cwd}/AGENTS.local.md" 2>/dev/null`]: {
-				exitCode: 0,
-				stdout: 'Local agent rules here.\n',
-				stderr: '',
-			},
 		})
 
 		const prompt = await repoInstructionsPrompt(bash, { cwd })
 
-		expect(prompt).toContain('Shared Claude rules here.')
-		expect(prompt).toContain('Local Claude rules here.')
+		expect(prompt).toContain('Shared agent rules here.')
 		expect(prompt).toContain('Local agent rules here.')
-		expect(prompt).toContain(`${cwd}/CLAUDE.local.md`)
+		expect(prompt).not.toContain('Shared Claude rules here.')
+		expect(prompt).not.toContain('Local Claude rules here.')
+		expect(prompt).toContain(`${cwd}/AGENTS.md`)
 		expect(prompt).toContain(`${cwd}/AGENTS.local.md`)
 	})
 
