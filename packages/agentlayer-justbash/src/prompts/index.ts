@@ -19,7 +19,18 @@ export {
 	tarsPersona,
 } from '@humanlayer/agentlayer-core/prompts'
 
-const DEFAULT_REPO_INSTRUCTION_CANDIDATES = ['CLAUDE.md', 'AGENTS.md', 'CONTEXT.md']
+const DEFAULT_REPO_INSTRUCTION_CANDIDATES = [
+	'CLAUDE.md',
+	'CLAUDE.local.md',
+	'AGENTS.md',
+	'AGENTS.local.md',
+	'CONTEXT.md',
+]
+
+interface RepoInstructionsFile {
+	path: string
+	contents: string
+}
 
 async function getRepoRoot(bash: Bash, cwd: string): Promise<string | undefined> {
 	const result = await bash.exec(`git -C "${cwd}" rev-parse --show-toplevel 2>/dev/null`)
@@ -34,14 +45,28 @@ async function readFileIfExists(bash: Bash, filePath: string): Promise<string | 
 	return result.stdout
 }
 
-async function firstExistingCandidate(bash: Bash, cwd: string, candidates: string[]): Promise<string | undefined> {
+async function existingCandidates(bash: Bash, cwd: string, candidates: string[]): Promise<RepoInstructionsFile[]> {
+	const files: RepoInstructionsFile[] = []
+
 	for (const candidate of candidates) {
 		const filePath = `${cwd}/${candidate}`
 		const contents = await readFileIfExists(bash, filePath)
-		if (contents !== undefined) return filePath
+		if (contents?.trim()) {
+			files.push({ path: filePath, contents })
+		}
 	}
 
-	return undefined
+	return files
+}
+
+function combineRepoInstructionFiles(files: RepoInstructionsFile[]): RepoInstructionsFile | undefined {
+	if (files.length === 0) return undefined
+	if (files.length === 1) return files[0]
+
+	return {
+		path: files.map((file) => file.path).join(', '),
+		contents: files.map((file) => [`## ${file.path}`, '', file.contents.trimEnd()].join('\n')).join('\n\n'),
+	}
 }
 
 async function findRepoInstructions(
@@ -49,24 +74,20 @@ async function findRepoInstructions(
 	startCwd: string,
 	candidates: string[],
 	skipRepoRootFallback: boolean,
-): Promise<{ path: string; contents: string } | undefined> {
-	const cwdPath = await firstExistingCandidate(bash, startCwd, candidates)
-	if (cwdPath) {
-		const contents = await readFileIfExists(bash, cwdPath)
-		if (contents?.trim()) {
-			return { path: cwdPath, contents }
-		}
+): Promise<RepoInstructionsFile | undefined> {
+	const cwdFiles = await existingCandidates(bash, startCwd, candidates)
+	const cwdInstructions = combineRepoInstructionFiles(cwdFiles)
+	if (cwdInstructions) {
+		return cwdInstructions
 	}
 
 	if (!skipRepoRootFallback) {
 		const repoRoot = await getRepoRoot(bash, startCwd)
 		if (repoRoot && repoRoot !== startCwd) {
-			const rootPath = await firstExistingCandidate(bash, repoRoot, candidates)
-			if (rootPath) {
-				const contents = await readFileIfExists(bash, rootPath)
-				if (contents?.trim()) {
-					return { path: rootPath, contents }
-				}
+			const rootFiles = await existingCandidates(bash, repoRoot, candidates)
+			const rootInstructions = combineRepoInstructionFiles(rootFiles)
+			if (rootInstructions) {
+				return rootInstructions
 			}
 		}
 	}

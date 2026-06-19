@@ -57,6 +57,8 @@ describe('createAgentSystemPrompt', () => {
 		try {
 			await initGitRepo(repoDir)
 			await writeFile(join(repoDir, 'CLAUDE.md'), 'Repository rules here.')
+			await writeFile(join(repoDir, 'CLAUDE.local.md'), 'Local Claude rules here.')
+			await writeFile(join(repoDir, 'AGENTS.local.md'), 'Local agent rules here.')
 			const nestedCwd = join(repoDir, 'apps', 'demo')
 			await mkdir(nestedCwd, { recursive: true })
 
@@ -69,6 +71,8 @@ describe('createAgentSystemPrompt', () => {
 
 			expect(prompt[0]).toBe(codexPrompt)
 			expect(prompt.join('\n\n')).toContain('Repository rules here.')
+			expect(prompt.join('\n\n')).toContain('Local Claude rules here.')
+			expect(prompt.join('\n\n')).toContain('Local agent rules here.')
 			expect(prompt.join('\n\n')).toContain(`Working directory: ${nestedCwd}`)
 			expect(prompt.join('\n\n')).toContain('Extra guidance')
 		} finally {

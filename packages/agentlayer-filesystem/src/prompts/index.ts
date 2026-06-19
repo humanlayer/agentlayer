@@ -38,7 +38,18 @@ export {
 	tarsPersona,
 } from '@humanlayer/agentlayer-core/prompts'
 
-const DEFAULT_REPO_INSTRUCTION_CANDIDATES = ['CLAUDE.md', 'AGENTS.md', 'CONTEXT.md']
+const DEFAULT_REPO_INSTRUCTION_CANDIDATES = [
+	'CLAUDE.md',
+	'CLAUDE.local.md',
+	'AGENTS.md',
+	'AGENTS.local.md',
+	'CONTEXT.md',
+]
+
+interface RepoInstructionsFile {
+	path: string
+	contents: string
+}
 
 async function getRepoRoot(cwd: string): Promise<string | undefined> {
 	try {
@@ -49,40 +60,51 @@ async function getRepoRoot(cwd: string): Promise<string | undefined> {
 	}
 }
 
-async function firstExistingCandidate(cwd: string, candidates: string[]): Promise<string | undefined> {
+async function existingCandidates(cwd: string, candidates: string[]): Promise<RepoInstructionsFile[]> {
+	const files: RepoInstructionsFile[] = []
+
 	for (const candidate of candidates) {
 		const candidatePath = resolve(cwd, candidate)
 		try {
 			await access(candidatePath, constants.F_OK)
-			return candidatePath
+			const contents = await readFile(candidatePath, 'utf8')
+			if (contents.trim()) {
+				files.push({ path: candidatePath, contents })
+			}
 		} catch {}
 	}
 
-	return undefined
+	return files
+}
+
+function combineRepoInstructionFiles(files: RepoInstructionsFile[]): RepoInstructionsFile | undefined {
+	if (files.length === 0) return undefined
+	if (files.length === 1) return files[0]
+
+	return {
+		path: files.map((file) => file.path).join(', '),
+		contents: files.map((file) => [`## ${file.path}`, '', file.contents.trimEnd()].join('\n')).join('\n\n'),
+	}
 }
 
 async function findRepoInstructions(
 	startCwd: string,
 	candidates: string[],
 	skipRepoRootFallback: boolean,
-): Promise<{ path: string; contents: string } | undefined> {
-	const cwdPath = await firstExistingCandidate(startCwd, candidates)
-	if (cwdPath) {
-		const contents = await readFile(cwdPath, 'utf8')
-		if (contents.trim()) {
-			return { path: cwdPath, contents }
-		}
+): Promise<RepoInstructionsFile | undefined> {
+	const cwdFiles = await existingCandidates(startCwd, candidates)
+	const cwdInstructions = combineRepoInstructionFiles(cwdFiles)
+	if (cwdInstructions) {
+		return cwdInstructions
 	}
 
 	if (!skipRepoRootFallback) {
 		const repoRoot = await getRepoRoot(startCwd)
 		if (repoRoot && repoRoot !== startCwd) {
-			const rootPath = await firstExistingCandidate(repoRoot, candidates)
-			if (rootPath) {
-				const contents = await readFile(rootPath, 'utf8')
-				if (contents.trim()) {
-					return { path: rootPath, contents }
-				}
+			const rootFiles = await existingCandidates(repoRoot, candidates)
+			const rootInstructions = combineRepoInstructionFiles(rootFiles)
+			if (rootInstructions) {
+				return rootInstructions
 			}
 		}
 	}

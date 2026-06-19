@@ -79,14 +79,14 @@ interface EnvironmentPromptOptions extends Omit<CoreEnvironmentPromptOptions, 'i
 
 ## repoInstructionsPrompt()
 
-Load repository instructions from CLAUDE.md, AGENTS.md, or similar files.
+Load repository instructions from CLAUDE.md, CLAUDE.local.md, AGENTS.md, AGENTS.local.md, or similar files.
 
 ```ts
 import { repoInstructionsPrompt } from '@humanlayer/agentlayer-justbash'
 
 const instructions = await repoInstructionsPrompt(bash, {
   cwd: '/workspace',
-  candidates: ['CLAUDE.md', 'AGENTS.md', 'CONTEXT.md'],
+  candidates: ['CLAUDE.md', 'CLAUDE.local.md', 'AGENTS.md', 'AGENTS.local.md', 'CONTEXT.md'],
   allowMissing: true
 })
 ```
