@@ -34,15 +34,15 @@ interface RepoInstructionsFile {
 	contents: string
 }
 
-function instructionPriorityGroupsFor(candidates: string[]): string[][] {
-	const requestedCandidates = new Set(candidates)
+function instructionPriorityGroupsFor(candidateFileNames: string[]): string[][] {
+	const requestedFileNames = new Set(candidateFileNames)
 	const builtInCandidates = new Set(REPO_INSTRUCTION_PRIORITY_GROUPS.flat())
 	const requestedBuiltInGroups = REPO_INSTRUCTION_PRIORITY_GROUPS.map((group) =>
-		group.filter((candidate) => requestedCandidates.has(candidate)),
+		group.filter((fileName) => requestedFileNames.has(fileName)),
 	)
-	const customCandidateGroups = candidates
-		.filter((candidate) => !builtInCandidates.has(candidate))
-		.map((candidate) => [candidate])
+	const customCandidateGroups = candidateFileNames
+		.filter((fileName) => !builtInCandidates.has(fileName))
+		.map((fileName) => [fileName])
 
 	return [...requestedBuiltInGroups, ...customCandidateGroups].filter((group) => group.length > 0)
 }
@@ -61,17 +61,17 @@ async function readFileIfExists(bash: Bash, filePath: string): Promise<string | 
 }
 
 async function readExistingInstructionFiles(bash: Bash, cwd: string, group: string[]): Promise<RepoInstructionsFile[]> {
-	const files: RepoInstructionsFile[] = []
+	const discoveredFiles: RepoInstructionsFile[] = []
 
-	for (const candidate of group) {
-		const filePath = `${cwd}/${candidate}`
+	for (const fileName of group) {
+		const filePath = `${cwd}/${fileName}`
 		const contents = await readFileIfExists(bash, filePath)
 		if (contents?.trim()) {
-			files.push({ path: filePath, contents })
+			discoveredFiles.push({ path: filePath, contents })
 		}
 	}
 
-	return files
+	return discoveredFiles
 }
 
 async function firstInstructionGroup(
@@ -150,15 +150,15 @@ export async function repoInstructionsPrompt(
 		return createRepoInstructionsPrompt({ path: filePath, contents })
 	}
 
-	const candidates = opts.candidates ?? DEFAULT_REPO_INSTRUCTION_CANDIDATES
-	const priorityGroups = instructionPriorityGroupsFor(candidates)
+	const candidateFileNames = opts.candidates ?? DEFAULT_REPO_INSTRUCTION_CANDIDATES
+	const priorityGroups = instructionPriorityGroupsFor(candidateFileNames)
 	const found = await findRepoInstructions(bash, opts.cwd, priorityGroups, opts._skipRepoRootFallback ?? false)
 
 	if (!found) {
 		if (opts.allowMissing) return undefined
 		const repoRoot = await getRepoRoot(bash, opts.cwd)
 		const searched = repoRoot ? [`${opts.cwd} (cwd)`, `${repoRoot} (repo root)`] : [opts.cwd]
-		throw new Error(`No repo instructions found. Searched for ${candidates.join(', ')} in: ${searched.join(', ')}`)
+		throw new Error(`No repo instructions found. Searched for ${candidateFileNames.join(', ')} in: ${searched.join(', ')}`)
 	}
 
 	return createRepoInstructionsPrompt(found)
