@@ -19,28 +19,32 @@ export {
 	tarsPersona,
 } from '@humanlayer/agentlayer-core/prompts'
 
-const REPO_INSTRUCTION_FAMILIES: string[][] = [
+// Each group is mutually exclusive with the groups after it: load all matching
+// files from the first group that exists, then stop (AGENTS beats CLAUDE).
+const REPO_INSTRUCTION_PRIORITY_GROUPS: string[][] = [
 	['AGENTS.md', 'AGENTS.local.md'],
 	['CLAUDE.md', 'CLAUDE.local.md'],
 	['CONTEXT.md'],
 ]
 
-const DEFAULT_REPO_INSTRUCTION_CANDIDATES = REPO_INSTRUCTION_FAMILIES.flat()
+const DEFAULT_REPO_INSTRUCTION_CANDIDATES = REPO_INSTRUCTION_PRIORITY_GROUPS.flat()
 
 interface RepoInstructionsFile {
 	path: string
 	contents: string
 }
 
-function instructionFamiliesFor(candidates: string[]): string[][] {
-	const requested = new Set(candidates)
-	const known = new Set(REPO_INSTRUCTION_FAMILIES.flat())
-	const preferredFamilies = REPO_INSTRUCTION_FAMILIES.map((family) =>
-		family.filter((candidate) => requested.has(candidate)),
+function instructionPriorityGroupsFor(candidates: string[]): string[][] {
+	const requestedCandidates = new Set(candidates)
+	const builtInCandidates = new Set(REPO_INSTRUCTION_PRIORITY_GROUPS.flat())
+	const requestedBuiltInGroups = REPO_INSTRUCTION_PRIORITY_GROUPS.map((group) =>
+		group.filter((candidate) => requestedCandidates.has(candidate)),
 	)
-	const customFamilies = candidates.filter((candidate) => !known.has(candidate)).map((candidate) => [candidate])
+	const customCandidateGroups = candidates
+		.filter((candidate) => !builtInCandidates.has(candidate))
+		.map((candidate) => [candidate])
 
-	return [...preferredFamilies, ...customFamilies].filter((family) => family.length > 0)
+	return [...requestedBuiltInGroups, ...customCandidateGroups].filter((group) => group.length > 0)
 }
 
 async function getRepoRoot(bash: Bash, cwd: string): Promise<string | undefined> {
@@ -56,10 +60,10 @@ async function readFileIfExists(bash: Bash, filePath: string): Promise<string | 
 	return result.stdout
 }
 
-async function readInstructionFiles(bash: Bash, cwd: string, family: string[]): Promise<RepoInstructionsFile[]> {
+async function readExistingInstructionFiles(bash: Bash, cwd: string, group: string[]): Promise<RepoInstructionsFile[]> {
 	const files: RepoInstructionsFile[] = []
 
-	for (const candidate of family) {
+	for (const candidate of group) {
 		const filePath = `${cwd}/${candidate}`
 		const contents = await readFileIfExists(bash, filePath)
 		if (contents?.trim()) {
@@ -70,13 +74,13 @@ async function readInstructionFiles(bash: Bash, cwd: string, family: string[]): 
 	return files
 }
 
-async function firstInstructionFamily(
+async function firstInstructionGroup(
 	bash: Bash,
 	cwd: string,
-	families: string[][],
+	priorityGroups: string[][],
 ): Promise<RepoInstructionsFile | undefined> {
-	for (const family of families) {
-		const instructions = combineRepoInstructionFiles(await readInstructionFiles(bash, cwd, family))
+	for (const group of priorityGroups) {
+		const instructions = combineRepoInstructionFiles(await readExistingInstructionFiles(bash, cwd, group))
 		if (instructions) return instructions
 	}
 }
@@ -94,16 +98,16 @@ function combineRepoInstructionFiles(files: RepoInstructionsFile[]): RepoInstruc
 async function findRepoInstructions(
 	bash: Bash,
 	startCwd: string,
-	families: string[][],
+	priorityGroups: string[][],
 	skipRepoRootFallback: boolean,
 ): Promise<RepoInstructionsFile | undefined> {
-	const cwdInstructions = await firstInstructionFamily(bash, startCwd, families)
+	const cwdInstructions = await firstInstructionGroup(bash, startCwd, priorityGroups)
 	if (cwdInstructions) return cwdInstructions
 
 	if (!skipRepoRootFallback) {
 		const repoRoot = await getRepoRoot(bash, startCwd)
 		if (repoRoot && repoRoot !== startCwd) {
-			return firstInstructionFamily(bash, repoRoot, families)
+			return firstInstructionGroup(bash, repoRoot, priorityGroups)
 		}
 	}
 
@@ -147,8 +151,8 @@ export async function repoInstructionsPrompt(
 	}
 
 	const candidates = opts.candidates ?? DEFAULT_REPO_INSTRUCTION_CANDIDATES
-	const families = instructionFamiliesFor(candidates)
-	const found = await findRepoInstructions(bash, opts.cwd, families, opts._skipRepoRootFallback ?? false)
+	const priorityGroups = instructionPriorityGroupsFor(candidates)
+	const found = await findRepoInstructions(bash, opts.cwd, priorityGroups, opts._skipRepoRootFallback ?? false)
 
 	if (!found) {
 		if (opts.allowMissing) return undefined
