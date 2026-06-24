@@ -233,7 +233,11 @@ export function createCodexResponsesProvider(options: CodexResponsesProviderOpti
 		specificationVersion: 'v3',
 
 		languageModel(modelId: string) {
-			return openai.responses(modelId)
+			const model = openai.responses(modelId)
+			return new Proxy(model, {
+				get: (target, prop, receiver) =>
+					prop === 'provider' ? 'codex.responses' : Reflect.get(target, prop, receiver),
+			})
 		},
 
 		embeddingModel(modelId: string) {

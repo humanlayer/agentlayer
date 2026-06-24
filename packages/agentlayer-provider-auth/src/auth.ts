@@ -197,6 +197,7 @@ export async function requireAuth(store: AuthStore, providerId: string, expected
 
 export function normalizeProviderId(providerId: string): string {
 	const normalized = providerId.trim().replace(/\/+$/, '')
+	if (normalized.startsWith('codex.')) return AUTH_PROVIDER_IDS.codex
 	return AUTH_PROVIDER_ALIASES[normalized] ?? normalized
 }
 

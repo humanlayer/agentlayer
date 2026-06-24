@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import type { ModelMessage } from 'ai'
 import { z } from 'zod'
 import { Agent, defineTool, startState } from '../src'
+import { PRIVATE_CODEX_API_CONTEXT_WINDOW_SIZE_LIMIT } from '../src/models'
 import { assistantText, assistantWithToolCall, mockModel, userMessage } from './mocks'
 
 const mockUsage = (input: number, output: number) => ({
@@ -74,6 +75,32 @@ describe('ToolContext.getContextWindowLimit', () => {
 
 		await agent.run({ state: startState([userMessage('go')]) }).result
 		expect(capturedLimit).toBe(200_000)
+	})
+
+	test('tool receives resolved Codex contextWindowLimit when not configured', async () => {
+		let capturedLimit: number | undefined
+
+		const probeTool = defineTool({
+			name: 'probe',
+			description: 'Capture context window limit',
+			input: z.object({}),
+			execute: async (_input, ctx) => {
+				capturedLimit = ctx.getContextWindowLimit()
+				return 'probed'
+			},
+		})
+
+		const agent = new Agent({
+			model: {
+				...mockModel([assistantWithToolCall('probe', {}), assistantText('Done.')]),
+				provider: 'codex-sse-vendor',
+				modelId: 'gpt-5.5',
+			},
+			tools: { probe: probeTool },
+		})
+
+		await agent.run({ state: startState([userMessage('go')]) }).result
+		expect(capturedLimit).toBe(PRIVATE_CODEX_API_CONTEXT_WINDOW_SIZE_LIMIT)
 	})
 
 	test('getContextWindowLimit returns undefined when not configured', async () => {
