@@ -33,6 +33,21 @@ export interface ModelLimits {
 
 export type ModelKey = `${string}/${string}`
 
+export const PRIVATE_CODEX_API_CONTEXT_WINDOW_SIZE_LIMIT = 258_400
+
+const PROVIDER_LIMIT_OVERRIDES: Record<string, Partial<ModelLimits>> = {
+	codex: { context: PRIVATE_CODEX_API_CONTEXT_WINDOW_SIZE_LIMIT },
+}
+
+function getProviderLimitOverride(modelKey: ModelKey): Partial<ModelLimits> | undefined {
+	const [rawProviderKey] = modelKey.split('/', 2)
+	const baseKey = rawProviderKey?.split('.')[0]
+	if (!baseKey) return undefined
+
+	if (baseKey.startsWith('codex')) return PROVIDER_LIMIT_OVERRIDES.codex
+	return PROVIDER_LIMIT_OVERRIDES[baseKey]
+}
+
 export class ModelProvider {
 	public static readonly API_URL = 'https://models.dev/api.json'
 	private modelsData: Record<string, ModelsDevProvider> | undefined
@@ -97,10 +112,11 @@ export class ModelProvider {
 	public getModelLimits(modelKey: ModelKey): ModelLimits | undefined {
 		const entry = this.getModelInfo(modelKey)
 		if (!entry?.limit?.context || !entry?.limit?.output) return undefined
+		const override = getProviderLimitOverride(modelKey)
 		return {
-			context: entry.limit.context,
-			output: entry.limit.output,
-			input: entry.limit.input,
+			context: override?.context ?? entry.limit.context,
+			output: override?.output ?? entry.limit.output,
+			input: override?.input ?? entry.limit.input,
 		}
 	}
 
