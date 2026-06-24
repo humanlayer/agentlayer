@@ -247,29 +247,26 @@ function renderTokenUsage(usage: TokenUsage, contextWindowTokens?: number, conte
 	const displayIds = models.map(([id]) => shortModelId(id))
 	const colW = Math.max(5, ...displayIds.map((id) => id.length)) + 2
 
-	// Build context window column if available
 	const hasContext = contextWindowTokens !== undefined
-	const contextHeader = hasContext ? ` ${'Context'.padStart(16)}` : ''
+	const contextText = hasContext ? formatContextWindow(contextWindowTokens, contextWindowLimit) : ''
+	const contextW = Math.max('Context'.length, contextText.length)
+	const contextHeader = hasContext ? `  ${'Context'.padStart(contextW)}` : ''
 	const header = `  ${'Model'.padEnd(colW)} ${'Input'.padStart(8)} ${'Cache↓'.padStart(8)} ${'Cache↑'.padStart(8)} ${'Output'.padStart(8)} ${'Cost'.padStart(8)}${contextHeader}`
 	process.stdout.write(`${color.dim(header)}\n`)
 
 	for (const [modelId, m] of models) {
 		const displayId = shortModelId(modelId)
 		const modelUsage = m as ModelTokenUsage
-		const contextCol = hasContext
-			? ` ${formatContextWindow(contextWindowTokens, contextWindowLimit).padStart(16)}`
-			: ''
+		const contextCol = hasContext ? `  ${contextText.padStart(contextW)}` : ''
 		const row = `  ${displayId.padEnd(colW)} ${fmt(modelUsage.inputTokens).padStart(8)} ${fmt(modelUsage.cacheReadTokens).padStart(8)} ${fmt(modelUsage.cacheWriteTokens).padStart(8)} ${fmt(modelUsage.outputTokens).padStart(8)} ${fmtCost(modelUsage.estimatedCostUsd).padStart(8)}${contextCol}`
 		process.stdout.write(`${row}\n`)
 	}
 
 	if (models.length > 1) {
-		const sep = `  ${'─'.repeat(colW + 44 + (hasContext ? 17 : 0))}`
+		const sep = `  ${'─'.repeat(colW + 44 + (hasContext ? contextW + 2 : 0))}`
 		process.stdout.write(`${color.dim(sep)}\n`)
 		const t = usage.totals
-		const contextCol = hasContext
-			? ` ${formatContextWindow(contextWindowTokens, contextWindowLimit).padStart(16)}`
-			: ''
+		const contextCol = hasContext ? `  ${contextText.padStart(contextW)}` : ''
 		const totalRow = `  ${'Total'.padEnd(colW)} ${fmt(t.inputTokens).padStart(8)} ${fmt(t.cacheReadTokens).padStart(8)} ${fmt(t.cacheWriteTokens).padStart(8)} ${fmt(t.outputTokens).padStart(8)} ${fmtCost(t.estimatedCostUsd).padStart(8)}${contextCol}`
 		process.stdout.write(`${totalRow}\n`)
 	}
