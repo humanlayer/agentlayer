@@ -361,6 +361,7 @@ export async function createCodelayerAgent(opts: CodelayerAgentOptions): Promise
 			additionalTools,
 			hooks,
 			providerOptions: subagentProviderOptions,
+			outlineImplementerProviderOptions: providerOptions,
 			systemPromptAdditions: personaPromptAdditions,
 		}))
 

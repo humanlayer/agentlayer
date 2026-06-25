@@ -58,6 +58,7 @@ export interface CreateCodingSubagentToolOptions
 	hooks?: AgentConfig['hooks']
 	stopWhen?: AgentConfig['stopWhen']
 	providerOptions?: AgentConfig['providerOptions']
+	outlineImplementerProviderOptions?: AgentConfig['providerOptions']
 }
 
 async function fetchExaCodeSearch(input: CodeSearchInput, apiKey: string, timeoutMs: number): Promise<string | null> {
@@ -284,7 +285,7 @@ export async function createCodingSubagentTool(opts: CreateCodingSubagentToolOpt
 		system: baseSystem,
 		hooks,
 		stopWhen,
-		providerOptions: opts.providerOptions,
+		providerOptions: opts.outlineImplementerProviderOptions ?? opts.providerOptions,
 	})
 
 	const webResearcherTools: Record<string, Tool<any, any>> = {
