@@ -894,6 +894,59 @@ describe('subagentThinkingOverrides', () => {
 			thinking: { type: 'enabled', budgetTokens: 2048 },
 		})
 	})
+
+	test('lets the outline implementer use parent codex effort while other sub-agents stay throttled', async () => {
+		const agent = await createCodelayerAgent({
+			model: createMockModel('gpt-5.5'),
+			cwd: '/tmp',
+			providerOptionOverrides: {
+				codex: {
+					reasoningEffort: 'high',
+					reasoningSummary: 'detailed',
+				},
+			},
+		})
+		const subagentTool = getAgentConfig(agent).tools?.agent
+		const subagents = getSubagents(subagentTool)
+		const generalPurpose = subagents.find((candidate) => candidate.name === 'general-purpose')
+		const outlineImplementer = subagents.find((candidate) => candidate.name === 'rpi:outline-implementer-agent')
+
+		const generalProviderOptions = getAgentConfig(generalPurpose?.agent ?? {}).providerOptions as unknown as (ctx: {
+			runId: string
+		}) => Record<string, any>
+		const outlineProviderOptions = getAgentConfig(outlineImplementer?.agent ?? {}).providerOptions as unknown as (ctx: {
+			runId: string
+		}) => Record<string, any>
+
+		expect(generalProviderOptions({ runId: 'general' }).openai.reasoningEffort).toBe('low')
+		expect(outlineProviderOptions({ runId: 'outline' }).openai.reasoningEffort).toBe('high')
+	})
+
+	test('lets the outline implementer use parent anthropic effort while other sub-agents stay throttled', async () => {
+		const agent = await createCodelayerAgent({
+			model: createMockModel('claude-opus-4-8'),
+			cwd: '/tmp',
+			providerOptionOverrides: {
+				anthropic: {
+					effort: 'max',
+				},
+			},
+		})
+		const subagentTool = getAgentConfig(agent).tools?.agent
+		const subagents = getSubagents(subagentTool)
+		const generalPurpose = subagents.find((candidate) => candidate.name === 'general-purpose')
+		const outlineImplementer = subagents.find((candidate) => candidate.name === 'rpi:outline-implementer-agent')
+
+		const generalProviderOptions = getAgentConfig(generalPurpose?.agent ?? {}).providerOptions as unknown as (ctx: {
+			runId: string
+		}) => Record<string, any>
+		const outlineProviderOptions = getAgentConfig(outlineImplementer?.agent ?? {}).providerOptions as unknown as (ctx: {
+			runId: string
+		}) => Record<string, any>
+
+		expect(generalProviderOptions({ runId: 'general' }).anthropic.effort).toBe('low')
+		expect(outlineProviderOptions({ runId: 'outline' }).anthropic.effort).toBe('max')
+	})
 })
 
 describe('--subagent-thinking CLI knob', () => {
