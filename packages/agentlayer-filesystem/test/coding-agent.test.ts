@@ -91,6 +91,28 @@ describe('createAgentSystemPrompt', () => {
 			await rm(repoDir, { recursive: true, force: true })
 		}
 	})
+
+	test('throws when repo instructions are required but no usable sources resolve', async () => {
+		const repoDir = await mkdtemp(join(tmpdir(), 'agentlayer-system-prompt-'))
+		const previousHome = process.env.HOME
+		const tempHome = await mkdtemp(join(tmpdir(), 'agentlayer-empty-home-'))
+		process.env.HOME = tempHome
+		try {
+			await expect(
+				createAgentSystemPrompt({
+					cwd: repoDir,
+					model: mockModel('gpt-5.4'),
+					allowMissingRepoInstructions: false,
+					includeEnvironment: false,
+				}),
+			).rejects.toThrow('No repo instructions found')
+		} finally {
+			await rm(tempHome, { recursive: true, force: true })
+			if (previousHome === undefined) delete process.env.HOME
+			else process.env.HOME = previousHome
+			await rm(repoDir, { recursive: true, force: true })
+		}
+	})
 })
 
 describe('createAgentFilesystemHooks', () => {

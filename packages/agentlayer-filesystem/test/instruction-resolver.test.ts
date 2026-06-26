@@ -216,4 +216,88 @@ describe('instruction resolver', () => {
 			})
 		})
 	})
+
+	test('treats empty project files as absent and records them as skipped', async () => {
+		await withTempDir(async (cwd) => {
+			await writeFile(join(cwd, 'AGENTS.md'), '   \n')
+			await writeFile(join(cwd, 'AGENTS.local.md'), 'Local agents rules')
+			await writeFile(join(cwd, 'CLAUDE.md'), 'Claude rules')
+
+			const resolution = await resolveInstructionSources({ cwd })
+
+			expect(resolution.sources.map((source) => source.path)).toEqual([join(cwd, 'CLAUDE.md')])
+			expect(resolution.log).toMatchObject({ family: 'claude', rule: 'claude-base' })
+			expect(resolution.log.skipped).toContainEqual({ path: join(cwd, 'AGENTS.md'), reason: 'empty' })
+			expect(resolution.log.skipped).toContainEqual({ path: join(cwd, 'AGENTS.local.md'), reason: 'other-family' })
+		})
+	})
+
+	test('loads a lone AGENTS.local.md when no base files are present', async () => {
+		await withTempDir(async (cwd) => {
+			await writeFile(join(cwd, 'AGENTS.local.md'), 'Lone agents local rules')
+
+			const resolution = await resolveInstructionSources({ cwd })
+
+			expect(resolution.sources).toHaveLength(1)
+			expect(resolution.sources[0]).toMatchObject({
+				family: 'agents',
+				tier: 'cwd-project-local',
+				path: join(cwd, 'AGENTS.local.md'),
+				contents: 'Lone agents local rules',
+			})
+			expect(resolution.log.rule).toBe('agents-local-only')
+		})
+	})
+
+	test('loads a lone CLAUDE.local.md when no AGENTS local file is present', async () => {
+		await withTempDir(async (cwd) => {
+			await writeFile(join(cwd, 'CLAUDE.local.md'), 'Lone claude local rules')
+
+			const resolution = await resolveInstructionSources({ cwd })
+
+			expect(resolution.sources).toHaveLength(1)
+			expect(resolution.sources[0]).toMatchObject({
+				family: 'claude',
+				tier: 'cwd-project-local',
+				path: join(cwd, 'CLAUDE.local.md'),
+				contents: 'Lone claude local rules',
+			})
+			expect(resolution.log.rule).toBe('claude-local-only')
+		})
+	})
+
+	test('selects a complete CLAUDE pair when no complete AGENTS pair exists', async () => {
+		await withTempDir(async (cwd) => {
+			await writeFile(join(cwd, 'AGENTS.md'), 'Agents base rules')
+			await writeFile(join(cwd, 'CLAUDE.md'), 'Claude base rules')
+			await writeFile(join(cwd, 'CLAUDE.local.md'), 'Claude local rules')
+
+			const resolution = await resolveInstructionSources({ cwd })
+
+			expect(resolution.sources.map((source) => source.path)).toEqual([
+				join(cwd, 'CLAUDE.md'),
+				join(cwd, 'CLAUDE.local.md'),
+			])
+			expect(resolution.log.rule).toBe('complete-claude-pair')
+			expect(resolution.log.skipped).toContainEqual({ path: join(cwd, 'AGENTS.md'), reason: 'other-family' })
+		})
+	})
+
+	test('records present but skipped other-family files', async () => {
+		await withTempDir(async (cwd) => {
+			await writeFile(join(cwd, 'AGENTS.md'), 'Agents base rules')
+			await writeFile(join(cwd, 'AGENTS.local.md'), 'Agents local rules')
+			await writeFile(join(cwd, 'CLAUDE.md'), 'Claude base rules')
+			await writeFile(join(cwd, 'CLAUDE.local.md'), 'Claude local rules')
+
+			const resolution = await resolveInstructionSources({ cwd })
+
+			expect(resolution.sources.map((source) => source.family)).toEqual(['agents', 'agents'])
+			expect(resolution.log.rule).toBe('complete-agents-pair')
+			expect(resolution.log.skipped).toEqual([
+				{ path: join(cwd, 'CLAUDE.md'), reason: 'other-family' },
+				{ path: join(cwd, 'CLAUDE.local.md'), reason: 'other-family' },
+			])
+		})
+	})
 })
