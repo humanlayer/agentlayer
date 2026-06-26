@@ -326,6 +326,39 @@ describe('convertPromptMessages', () => {
 		expect(part.result.type).toBe('json')
 		expect(part.result.value).toEqual({ status: 200, body: 'ok' })
 	})
+
+	test('converts multimodal tool result content to vendor media parts', () => {
+		const prompt: LanguageModelV3Prompt = [
+			{
+				role: 'tool',
+				content: [
+					{
+						type: 'tool-result',
+						toolCallId: 'call_image',
+						toolName: 'read',
+						output: {
+							type: 'content',
+							value: [
+								{ type: 'text', text: 'Read image.png' },
+								{ type: 'image-data', data: 'iVBORw0KGgo=', mediaType: 'image/png' },
+							],
+						},
+					},
+				],
+			},
+		]
+
+		const { messages } = convertPromptMessages(prompt)
+
+		const part = messages[0]!.content[0] as { type: 'tool-result'; result: { type: string; value: unknown } }
+		expect(part.result).toEqual({
+			type: 'content',
+			value: [
+				{ type: 'text', text: 'Read image.png' },
+				{ type: 'media', mediaType: 'image/png', data: 'iVBORw0KGgo=' },
+			],
+		})
+	})
 })
 
 // ---------------------------------------------------------------------------

@@ -20,7 +20,9 @@ import {
 	SystemPart,
 	ToolChoice,
 	ToolDefinition,
+	type ToolResultContentPart,
 	type ToolResultPart,
+	type ToolResultValue,
 } from '@humanlayer/opencode-llm-vendor/schema'
 import {
 	CODEX_EVENT_IDLE_TIMEOUT_MS,
@@ -215,7 +217,7 @@ export function convertPromptMessages(prompt: LanguageModelV3Prompt): {
 /**
  * Convert an AI SDK tool result output to the vendor's ToolResultValue format.
  */
-function convertToolResultValue(output: unknown): { type: 'text' | 'json'; value: unknown } {
+function convertToolResultValue(output: unknown): ToolResultValue {
 	if (output && typeof output === 'object' && 'type' in output) {
 		const typed = output as { type: string; value: unknown }
 		if (typed.type === 'text') {
@@ -224,9 +226,33 @@ function convertToolResultValue(output: unknown): { type: 'text' | 'json'; value
 		if (typed.type === 'json') {
 			return { type: 'json', value: typed.value }
 		}
+		if (typed.type === 'content' && Array.isArray(typed.value)) {
+			const value = typed.value.flatMap(convertToolResultContentItem)
+			if (value.length > 0) return { type: 'content', value }
+		}
 	}
 	// fallback: encode as JSON text
 	return { type: 'text', value: JSON.stringify(output) }
+}
+
+function convertToolResultContentItem(item: unknown): ToolResultContentPart[] {
+	if (!item || typeof item !== 'object' || !('type' in item)) return []
+	const typed = item as Record<string, unknown> & { type: string }
+
+	if (typed.type === 'text' && typeof typed.text === 'string') {
+		return [{ type: 'text', text: typed.text }]
+	}
+
+	if (typed.type === 'image-data' && typeof typed.data === 'string' && typeof typed.mediaType === 'string') {
+		return [{ type: 'media', mediaType: typed.mediaType, data: typed.data }]
+	}
+
+	if (typed.type === 'image-url' && typeof typed.url === 'string') {
+		const mediaType = typeof typed.mediaType === 'string' ? typed.mediaType : 'image/png'
+		return [{ type: 'media', mediaType, data: typed.url }]
+	}
+
+	return []
 }
 
 // ---------------------------------------------------------------------------
