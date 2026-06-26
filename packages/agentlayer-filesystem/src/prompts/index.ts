@@ -26,6 +26,7 @@ import {
 	repoInstructionsPrompt as createRepoInstructionsPrompt,
 } from '@humanlayer/agentlayer-core/prompts'
 import type { LanguageModel } from 'ai'
+import { renderInstructionSources, resolveInstructionSources } from './instruction-resolver'
 
 export {
 	buildCodingProviderOptions,
@@ -127,16 +128,19 @@ export async function repoInstructionsPrompt(opts: RepoInstructionsPromptOptions
 	}
 
 	const candidates = opts.candidates ?? DEFAULT_REPO_INSTRUCTION_CANDIDATES
-	const found = await findRepoInstructions(opts.cwd, candidates, opts._skipRepoRootFallback ?? false)
+	const found = opts.candidates || opts._skipRepoRootFallback
+		? await findRepoInstructions(opts.cwd, candidates, opts._skipRepoRootFallback ?? false)
+		: undefined
+	const rendered = found ? createRepoInstructionsPrompt(found) : renderInstructionSources((await resolveInstructionSources({ cwd: opts.cwd })).sources)
 
-	if (!found) {
+	if (!rendered) {
 		if (opts.allowMissing) return undefined
 		const repoRoot = await getRepoRoot(opts.cwd)
 		const searched = repoRoot ? [`${opts.cwd} (cwd)`, `${repoRoot} (repo root)`] : [opts.cwd]
 		throw new Error(`No repo instructions found. Searched for ${candidates.join(', ')} in: ${searched.join(', ')}`)
 	}
 
-	return createRepoInstructionsPrompt(found)
+	return rendered
 }
 
 export interface CreateAgentSystemPromptOptions {

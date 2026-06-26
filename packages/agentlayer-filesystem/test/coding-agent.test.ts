@@ -56,9 +56,9 @@ describe('createAgentSystemPrompt', () => {
 		const repoDir = await mkdtemp(join(tmpdir(), 'agentlayer-system-prompt-'))
 		try {
 			await initGitRepo(repoDir)
-			await writeFile(join(repoDir, 'CLAUDE.md'), 'Repository rules here.')
 			const nestedCwd = join(repoDir, 'apps', 'demo')
 			await mkdir(nestedCwd, { recursive: true })
+			await writeFile(join(nestedCwd, 'CLAUDE.md'), 'Repository rules here.')
 
 			const prompt = await createAgentSystemPrompt({
 				cwd: nestedCwd,
@@ -68,6 +68,8 @@ describe('createAgentSystemPrompt', () => {
 			})
 
 			expect(prompt[0]).toBe(codexPrompt)
+			expect(prompt.join('\n\n')).toContain('# Repository Instructions: Current Directory Project')
+			expect(prompt.join('\n\n')).toContain(`Source: ${join(nestedCwd, 'CLAUDE.md')}`)
 			expect(prompt.join('\n\n')).toContain('Repository rules here.')
 			expect(prompt.join('\n\n')).toContain(`Working directory: ${nestedCwd}`)
 			expect(prompt.join('\n\n')).toContain('Extra guidance')
