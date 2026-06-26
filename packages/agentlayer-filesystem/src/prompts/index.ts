@@ -128,10 +128,13 @@ export async function repoInstructionsPrompt(opts: RepoInstructionsPromptOptions
 	}
 
 	const candidates = opts.candidates ?? DEFAULT_REPO_INSTRUCTION_CANDIDATES
-	const found = opts.candidates || opts._skipRepoRootFallback
-		? await findRepoInstructions(opts.cwd, candidates, opts._skipRepoRootFallback ?? false)
-		: undefined
-	const rendered = found ? createRepoInstructionsPrompt(found) : renderInstructionSources((await resolveInstructionSources({ cwd: opts.cwd })).sources)
+	const found =
+		opts.candidates || opts._skipRepoRootFallback
+			? await findRepoInstructions(opts.cwd, candidates, opts._skipRepoRootFallback ?? false)
+			: undefined
+	const rendered = found
+		? createRepoInstructionsPrompt(found)
+		: renderInstructionSources((await resolveInstructionSources({ cwd: opts.cwd })).sources)
 
 	if (!rendered) {
 		if (opts.allowMissing) return undefined

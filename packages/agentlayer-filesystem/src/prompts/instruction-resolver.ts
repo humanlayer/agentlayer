@@ -132,48 +132,68 @@ async function selectProjectDirectory(cwd: string, scope: 'git-root' | 'cwd'): P
 
 	if (!family) return { rule, sources: [], skipped }
 
-	const selected = family === 'agents'
-		? { base: candidates.agentsBase, local: candidates.agentsLocal }
-		: { base: candidates.claudeBase, local: candidates.claudeLocal }
+	const selected =
+		family === 'agents'
+			? { base: candidates.agentsBase, local: candidates.agentsLocal }
+			: { base: candidates.claudeBase, local: candidates.claudeLocal }
 	const baseTier: InstructionTier = scope === 'git-root' ? 'git-root-project' : 'cwd-project'
 	const localTier: InstructionTier = scope === 'git-root' ? 'git-root-project-local' : 'cwd-project-local'
 
-	const unselected = family === 'agents' ? [candidates.claudeBase, candidates.claudeLocal] : [candidates.agentsBase, candidates.agentsLocal]
+	const unselected =
+		family === 'agents'
+			? [candidates.claudeBase, candidates.claudeLocal]
+			: [candidates.agentsBase, candidates.agentsLocal]
 	skipped.push(
 		...unselected
 			.filter((candidate) => candidate.contents !== undefined)
 			.map((candidate) => ({ path: candidate.path, reason: 'other-family' as const })),
 	)
 
-	return { family, rule, skipped, sources: [
-		...(selected.base.contents !== undefined
-			? [{ tier: baseTier, family, path: selected.base.path, contents: selected.base.contents }]
-			: []),
-		...(selected.local.contents !== undefined
-			? [{ tier: localTier, family, path: selected.local.path, contents: selected.local.contents }]
-			: []),
-	] }
+	return {
+		family,
+		rule,
+		skipped,
+		sources: [
+			...(selected.base.contents !== undefined
+				? [{ tier: baseTier, family, path: selected.base.path, contents: selected.base.contents }]
+				: []),
+			...(selected.local.contents !== undefined
+				? [{ tier: localTier, family, path: selected.local.path, contents: selected.local.contents }]
+				: []),
+		],
+	}
 }
 
-async function selectGlobal(preferredFamily?: InstructionFamily): Promise<{ source?: InstructionSource; skipped: ResolutionLog['skipped'] }> {
-	const home = process.env.HOME ?? homedir()
-	const candidates = preferredFamily === 'claude'
-		? [
-			{ family: 'claude' as const, path: join(home, GLOBAL_FILES.claude[0]) },
-			{ family: 'agents' as const, path: join(home, GLOBAL_FILES.agents[0]) },
-			{ family: 'agents' as const, path: join(home, GLOBAL_FILES.agents[1]) },
-		]
-		: [
-			{ family: 'agents' as const, path: join(home, GLOBAL_FILES.agents[0]) },
-			{ family: 'agents' as const, path: join(home, GLOBAL_FILES.agents[1]) },
-			{ family: 'claude' as const, path: join(home, GLOBAL_FILES.claude[0]) },
-		]
+async function selectGlobal(
+	preferredFamily?: InstructionFamily,
+	home = process.env.HOME ?? homedir(),
+): Promise<{ source?: InstructionSource; skipped: ResolutionLog['skipped'] }> {
+	const candidates =
+		preferredFamily === 'claude'
+			? [
+					{ family: 'claude' as const, path: join(home, GLOBAL_FILES.claude[0]) },
+					{ family: 'agents' as const, path: join(home, GLOBAL_FILES.agents[0]) },
+					{ family: 'agents' as const, path: join(home, GLOBAL_FILES.agents[1]) },
+				]
+			: [
+					{ family: 'agents' as const, path: join(home, GLOBAL_FILES.agents[0]) },
+					{ family: 'agents' as const, path: join(home, GLOBAL_FILES.agents[1]) },
+					{ family: 'claude' as const, path: join(home, GLOBAL_FILES.claude[0]) },
+				]
 	const skipped: ResolutionLog['skipped'] = []
 
 	for (const candidate of candidates) {
 		const result = await readCandidate(candidate.path)
 		if (result.contents !== undefined) {
-			return { source: { tier: 'user-global', family: candidate.family, path: candidate.path, contents: result.contents }, skipped }
+			return {
+				source: {
+					tier: 'user-global',
+					family: candidate.family,
+					path: candidate.path,
+					contents: result.contents,
+				},
+				skipped,
+			}
 		}
 		if (result.empty) skipped.push({ path: candidate.path, reason: 'empty' })
 	}
@@ -181,14 +201,15 @@ async function selectGlobal(preferredFamily?: InstructionFamily): Promise<{ sour
 	return { skipped }
 }
 
-export async function resolveInstructionSources(opts: { cwd: string }): Promise<InstructionResolution> {
+export async function resolveInstructionSources(opts: { cwd: string; home?: string }): Promise<InstructionResolution> {
 	const repoRoot = await getRepoRoot(opts.cwd)
 	const cwdRealPath = await realpath(opts.cwd).catch(() => opts.cwd)
-	const rootSelection: DirectorySelection = repoRoot && repoRoot !== cwdRealPath
-		? await selectProjectDirectory(repoRoot, 'git-root')
-		: { rule: 'none', sources: [], skipped: [] }
+	const rootSelection: DirectorySelection =
+		repoRoot && repoRoot !== cwdRealPath
+			? await selectProjectDirectory(repoRoot, 'git-root')
+			: { rule: 'none', sources: [], skipped: [] }
 	const cwdSelection = await selectProjectDirectory(opts.cwd, 'cwd')
-	const global = await selectGlobal(cwdSelection.family ?? rootSelection.family)
+	const global = await selectGlobal(cwdSelection.family ?? rootSelection.family, opts.home)
 	const sources = [...(global.source ? [global.source] : []), ...rootSelection.sources, ...cwdSelection.sources]
 
 	return {
@@ -224,6 +245,13 @@ function labelForTier(tier: InstructionTier): string {
 export function renderInstructionSources(sources: InstructionSource[]): string | undefined {
 	if (sources.length === 0) return undefined
 	return sources
-		.map((source) => [`# Repository Instructions: ${labelForTier(source.tier)}`, `Source: ${source.path}`, '', source.contents].join('\n'))
+		.map((source) =>
+			[
+				`# Repository Instructions: ${labelForTier(source.tier)}`,
+				`Source: ${source.path}`,
+				'',
+				source.contents,
+			].join('\n'),
+		)
 		.join('\n\n')
 }

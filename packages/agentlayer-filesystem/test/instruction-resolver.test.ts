@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import { execFile } from 'node:child_process'
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { renderInstructionSources, resolveInstructionSources } from '../src/prompts/instruction-resolver'
@@ -18,43 +18,33 @@ async function initGitRepo(cwd: string): Promise<void> {
 	await execFileAsync('git', ['init'], cwd)
 }
 
-async function withTempDir<T>(fn: (dir: string) => Promise<T>): Promise<T> {
+async function withTempDir<T>(fn: (dir: string, home: string) => Promise<T>): Promise<T> {
 	const dir = await mkdtemp(join(tmpdir(), 'agentlayer-instructions-'))
-	const previousHome = process.env.HOME
-	const ownsHome = !previousHome?.includes('agentlayer-home-')
-	if (ownsHome) process.env.HOME = await mkdtemp(join(tmpdir(), 'agentlayer-home-'))
+	const home = await mkdtemp(join(tmpdir(), 'agentlayer-home-'))
 	try {
-		return await fn(dir)
+		return await fn(dir, home)
 	} finally {
-		if (ownsHome) {
-			await rm(process.env.HOME!, { recursive: true, force: true })
-			if (previousHome === undefined) delete process.env.HOME
-			else process.env.HOME = previousHome
-		}
+		await rm(home, { recursive: true, force: true })
 		await rm(dir, { recursive: true, force: true })
 	}
 }
 
 async function withTempHome<T>(fn: (home: string) => Promise<T>): Promise<T> {
 	const home = await mkdtemp(join(tmpdir(), 'agentlayer-home-'))
-	const previousHome = process.env.HOME
-	process.env.HOME = home
 	try {
 		return await fn(home)
 	} finally {
-		if (previousHome === undefined) delete process.env.HOME
-		else process.env.HOME = previousHome
 		await rm(home, { recursive: true, force: true })
 	}
 }
 
 describe('instruction resolver', () => {
 	test('loads AGENTS base before AGENTS local from the current directory', async () => {
-		await withTempDir(async (cwd) => {
+		await withTempDir(async (cwd, home) => {
 			await writeFile(join(cwd, 'AGENTS.md'), 'Shared agents rules')
 			await writeFile(join(cwd, 'AGENTS.local.md'), 'Local agents rules')
 
-			const resolution = await resolveInstructionSources({ cwd })
+			const resolution = await resolveInstructionSources({ cwd, home })
 
 			expect(resolution.sources.map((source) => source.path)).toEqual([
 				join(cwd, 'AGENTS.md'),
@@ -66,11 +56,11 @@ describe('instruction resolver', () => {
 	})
 
 	test('loads CLAUDE base before CLAUDE local when AGENTS family is absent', async () => {
-		await withTempDir(async (cwd) => {
+		await withTempDir(async (cwd, home) => {
 			await writeFile(join(cwd, 'CLAUDE.md'), 'Shared claude rules')
 			await writeFile(join(cwd, 'CLAUDE.local.md'), 'Local claude rules')
 
-			const resolution = await resolveInstructionSources({ cwd })
+			const resolution = await resolveInstructionSources({ cwd, home })
 
 			expect(resolution.sources.map((source) => source.path)).toEqual([
 				join(cwd, 'CLAUDE.md'),
@@ -81,10 +71,10 @@ describe('instruction resolver', () => {
 	})
 
 	test('loads a base-only AGENTS file', async () => {
-		await withTempDir(async (cwd) => {
+		await withTempDir(async (cwd, home) => {
 			await writeFile(join(cwd, 'AGENTS.md'), 'Only shared agents rules')
 
-			const resolution = await resolveInstructionSources({ cwd })
+			const resolution = await resolveInstructionSources({ cwd, home })
 
 			expect(resolution.sources).toHaveLength(1)
 			expect(resolution.sources[0]).toMatchObject({
@@ -97,11 +87,11 @@ describe('instruction resolver', () => {
 	})
 
 	test('renders explicit labels and source lines for each selected file', async () => {
-		await withTempDir(async (cwd) => {
+		await withTempDir(async (cwd, home) => {
 			await writeFile(join(cwd, 'AGENTS.md'), 'Shared agents rules')
 			await writeFile(join(cwd, 'AGENTS.local.md'), 'Local agents rules')
 
-			const resolution = await resolveInstructionSources({ cwd })
+			const resolution = await resolveInstructionSources({ cwd, home })
 			const rendered = renderInstructionSources(resolution.sources)
 
 			expect(rendered).toContain('# Repository Instructions: Current Directory Project')
@@ -117,6 +107,7 @@ describe('instruction resolver', () => {
 		await withTempHome(async (home) => {
 			await withTempDir(async (repo) => {
 				await initGitRepo(repo)
+				const _repoRealPath = await realpath(repo)
 				const cwd = join(repo, 'apps', 'demo')
 				await mkdir(cwd, { recursive: true })
 				await mkdir(join(home, '.agents'), { recursive: true })
@@ -126,7 +117,7 @@ describe('instruction resolver', () => {
 				await writeFile(join(cwd, 'AGENTS.md'), 'Cwd agents rules')
 				await writeFile(join(cwd, 'AGENTS.local.md'), 'Cwd local agents rules')
 
-				const resolution = await resolveInstructionSources({ cwd })
+				const resolution = await resolveInstructionSources({ cwd, home })
 
 				expect(resolution.sources.map((source) => source.tier)).toEqual([
 					'user-global',
@@ -146,11 +137,53 @@ describe('instruction resolver', () => {
 		})
 	})
 
+	test('renders layered markdown in broad-to-specific order', async () => {
+		await withTempHome(async (home) => {
+			await withTempDir(async (repo) => {
+				await initGitRepo(repo)
+				const repoRealPath = await realpath(repo)
+				const cwd = join(repo, 'apps', 'demo')
+				await mkdir(cwd, { recursive: true })
+				await mkdir(join(home, '.agents'), { recursive: true })
+				await writeFile(join(home, '.agents', 'AGENTS.md'), 'Global agents rules')
+				await writeFile(join(repo, 'AGENTS.md'), 'Root agents rules')
+				await writeFile(join(repo, 'AGENTS.local.md'), 'Root local agents rules')
+				await writeFile(join(cwd, 'AGENTS.md'), 'Cwd agents rules')
+				await writeFile(join(cwd, 'AGENTS.local.md'), 'Cwd local agents rules')
+
+				const resolution = await resolveInstructionSources({ cwd, home })
+				const rendered = renderInstructionSources(resolution.sources)
+
+				expect(rendered).toBeDefined()
+				const orderedNeedles = [
+					'# Repository Instructions: User Global',
+					`Source: ${join(home, '.agents', 'AGENTS.md')}`,
+					'Global agents rules',
+					'# Repository Instructions: Git Root Project',
+					`Source: ${join(repoRealPath, 'AGENTS.md')}`,
+					'Root agents rules',
+					'# Repository Instructions: Git Root Project Local',
+					`Source: ${join(repoRealPath, 'AGENTS.local.md')}`,
+					'Root local agents rules',
+					'# Repository Instructions: Current Directory Project',
+					`Source: ${join(cwd, 'AGENTS.md')}`,
+					'Cwd agents rules',
+					'# Repository Instructions: Current Directory Project Local',
+					`Source: ${join(cwd, 'AGENTS.local.md')}`,
+					'Cwd local agents rules',
+				]
+				const positions = orderedNeedles.map((needle) => rendered!.indexOf(needle))
+				expect(positions.every((position) => position >= 0)).toBe(true)
+				expect(positions).toEqual([...positions].sort((a, b) => a - b))
+			})
+		})
+	})
+
 	test('loads cwd-only instructions outside a git repository', async () => {
-		await withTempDir(async (cwd) => {
+		await withTempDir(async (cwd, home) => {
 			await writeFile(join(cwd, 'AGENTS.md'), 'Cwd only rules')
 
-			const resolution = await resolveInstructionSources({ cwd })
+			const resolution = await resolveInstructionSources({ cwd, home })
 
 			expect(resolution.sources.map((source) => source.tier)).toEqual(['cwd-project'])
 			expect(resolution.sources[0]?.contents).toBe('Cwd only rules')
@@ -158,11 +191,11 @@ describe('instruction resolver', () => {
 	})
 
 	test('does not duplicate project instructions when cwd is the git root', async () => {
-		await withTempDir(async (repo) => {
+		await withTempDir(async (repo, home) => {
 			await initGitRepo(repo)
 			await writeFile(join(repo, 'AGENTS.md'), 'Root as cwd rules')
 
-			const resolution = await resolveInstructionSources({ cwd: repo })
+			const resolution = await resolveInstructionSources({ cwd: repo, home })
 
 			expect(resolution.sources.map((source) => source.tier)).toEqual(['cwd-project'])
 			expect(resolution.sources[0]?.path).toBe(join(repo, 'AGENTS.md'))
@@ -179,7 +212,7 @@ describe('instruction resolver', () => {
 				await writeFile(join(home, '.codex', 'AGENTS.md'), 'Codex global rules')
 				await writeFile(join(home, '.claude', 'CLAUDE.md'), 'Claude global rules')
 
-				const resolution = await resolveInstructionSources({ cwd })
+				const resolution = await resolveInstructionSources({ cwd, home })
 
 				expect(resolution.sources).toHaveLength(1)
 				expect(resolution.sources[0]).toMatchObject({
@@ -205,7 +238,7 @@ describe('instruction resolver', () => {
 				await writeFile(join(repo, 'AGENTS.md'), 'Root agents rules')
 				await writeFile(join(cwd, 'CLAUDE.md'), 'Cwd claude rules')
 
-				const resolution = await resolveInstructionSources({ cwd })
+				const resolution = await resolveInstructionSources({ cwd, home })
 
 				expect(resolution.sources.map((source) => source.contents)).toEqual([
 					'Claude global rules',
@@ -218,25 +251,28 @@ describe('instruction resolver', () => {
 	})
 
 	test('treats empty project files as absent and records them as skipped', async () => {
-		await withTempDir(async (cwd) => {
+		await withTempDir(async (cwd, home) => {
 			await writeFile(join(cwd, 'AGENTS.md'), '   \n')
 			await writeFile(join(cwd, 'AGENTS.local.md'), 'Local agents rules')
 			await writeFile(join(cwd, 'CLAUDE.md'), 'Claude rules')
 
-			const resolution = await resolveInstructionSources({ cwd })
+			const resolution = await resolveInstructionSources({ cwd, home })
 
 			expect(resolution.sources.map((source) => source.path)).toEqual([join(cwd, 'CLAUDE.md')])
 			expect(resolution.log).toMatchObject({ family: 'claude', rule: 'claude-base' })
 			expect(resolution.log.skipped).toContainEqual({ path: join(cwd, 'AGENTS.md'), reason: 'empty' })
-			expect(resolution.log.skipped).toContainEqual({ path: join(cwd, 'AGENTS.local.md'), reason: 'other-family' })
+			expect(resolution.log.skipped).toContainEqual({
+				path: join(cwd, 'AGENTS.local.md'),
+				reason: 'other-family',
+			})
 		})
 	})
 
 	test('loads a lone AGENTS.local.md when no base files are present', async () => {
-		await withTempDir(async (cwd) => {
+		await withTempDir(async (cwd, home) => {
 			await writeFile(join(cwd, 'AGENTS.local.md'), 'Lone agents local rules')
 
-			const resolution = await resolveInstructionSources({ cwd })
+			const resolution = await resolveInstructionSources({ cwd, home })
 
 			expect(resolution.sources).toHaveLength(1)
 			expect(resolution.sources[0]).toMatchObject({
@@ -250,10 +286,10 @@ describe('instruction resolver', () => {
 	})
 
 	test('loads a lone CLAUDE.local.md when no AGENTS local file is present', async () => {
-		await withTempDir(async (cwd) => {
+		await withTempDir(async (cwd, home) => {
 			await writeFile(join(cwd, 'CLAUDE.local.md'), 'Lone claude local rules')
 
-			const resolution = await resolveInstructionSources({ cwd })
+			const resolution = await resolveInstructionSources({ cwd, home })
 
 			expect(resolution.sources).toHaveLength(1)
 			expect(resolution.sources[0]).toMatchObject({
@@ -267,12 +303,12 @@ describe('instruction resolver', () => {
 	})
 
 	test('selects a complete CLAUDE pair when no complete AGENTS pair exists', async () => {
-		await withTempDir(async (cwd) => {
+		await withTempDir(async (cwd, home) => {
 			await writeFile(join(cwd, 'AGENTS.md'), 'Agents base rules')
 			await writeFile(join(cwd, 'CLAUDE.md'), 'Claude base rules')
 			await writeFile(join(cwd, 'CLAUDE.local.md'), 'Claude local rules')
 
-			const resolution = await resolveInstructionSources({ cwd })
+			const resolution = await resolveInstructionSources({ cwd, home })
 
 			expect(resolution.sources.map((source) => source.path)).toEqual([
 				join(cwd, 'CLAUDE.md'),
@@ -284,13 +320,13 @@ describe('instruction resolver', () => {
 	})
 
 	test('records present but skipped other-family files', async () => {
-		await withTempDir(async (cwd) => {
+		await withTempDir(async (cwd, home) => {
 			await writeFile(join(cwd, 'AGENTS.md'), 'Agents base rules')
 			await writeFile(join(cwd, 'AGENTS.local.md'), 'Agents local rules')
 			await writeFile(join(cwd, 'CLAUDE.md'), 'Claude base rules')
 			await writeFile(join(cwd, 'CLAUDE.local.md'), 'Claude local rules')
 
-			const resolution = await resolveInstructionSources({ cwd })
+			const resolution = await resolveInstructionSources({ cwd, home })
 
 			expect(resolution.sources.map((source) => source.family)).toEqual(['agents', 'agents'])
 			expect(resolution.log.rule).toBe('complete-agents-pair')

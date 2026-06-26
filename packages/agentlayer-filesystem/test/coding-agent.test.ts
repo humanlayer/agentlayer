@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import { execFile } from 'node:child_process'
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
@@ -56,8 +56,11 @@ describe('createAgentSystemPrompt', () => {
 		const repoDir = await mkdtemp(join(tmpdir(), 'agentlayer-system-prompt-'))
 		try {
 			await initGitRepo(repoDir)
+			const repoRealPath = await realpath(repoDir)
 			const nestedCwd = join(repoDir, 'apps', 'demo')
 			await mkdir(nestedCwd, { recursive: true })
+			await writeFile(join(repoDir, 'AGENTS.md'), 'Root repository rules here.')
+			await writeFile(join(repoDir, 'AGENTS.local.md'), 'Root local rules here.')
 			await writeFile(join(nestedCwd, 'CLAUDE.md'), 'Repository rules here.')
 
 			const prompt = await createAgentSystemPrompt({
@@ -68,11 +71,24 @@ describe('createAgentSystemPrompt', () => {
 			})
 
 			expect(prompt[0]).toBe(codexPrompt)
-			expect(prompt.join('\n\n')).toContain('# Repository Instructions: Current Directory Project')
-			expect(prompt.join('\n\n')).toContain(`Source: ${join(nestedCwd, 'CLAUDE.md')}`)
-			expect(prompt.join('\n\n')).toContain('Repository rules here.')
-			expect(prompt.join('\n\n')).toContain(`Working directory: ${nestedCwd}`)
-			expect(prompt.join('\n\n')).toContain('Extra guidance')
+			const joinedPrompt = prompt.join('\n\n')
+			expect(joinedPrompt).toContain('# Repository Instructions: Git Root Project')
+			expect(joinedPrompt).toContain(`Source: ${join(repoRealPath, 'AGENTS.md')}`)
+			expect(joinedPrompt).toContain('# Repository Instructions: Git Root Project Local')
+			expect(joinedPrompt).toContain(`Source: ${join(repoRealPath, 'AGENTS.local.md')}`)
+			expect(joinedPrompt).toContain('# Repository Instructions: Current Directory Project')
+			expect(joinedPrompt).toContain(`Source: ${join(nestedCwd, 'CLAUDE.md')}`)
+			expect(joinedPrompt).toContain('Root repository rules here.')
+			expect(joinedPrompt).toContain('Root local rules here.')
+			expect(joinedPrompt).toContain('Repository rules here.')
+			expect(joinedPrompt).toContain(`Working directory: ${nestedCwd}`)
+			expect(joinedPrompt).toContain('Extra guidance')
+			expect(joinedPrompt.indexOf('Root local rules here.')).toBeLessThan(
+				joinedPrompt.indexOf('Repository rules here.'),
+			)
+			expect(joinedPrompt.indexOf(`Working directory: ${nestedCwd}`)).toBeLessThan(
+				joinedPrompt.indexOf('Extra guidance'),
+			)
 		} finally {
 			await rm(repoDir, { recursive: true, force: true })
 		}
