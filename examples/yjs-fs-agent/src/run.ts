@@ -97,7 +97,7 @@ const modePresenceHooks =
 			: [...createYjsFsBashPresenceHooks(fs), ...createYjsFsSecureExecPresenceHooks(fs)]
 
 const agent = new Agent({
-	model: anthropic(process.env.ANTHROPIC_MODEL ?? 'claude-sonnet-4-6'),
+	model: anthropic(process.env.ANTHROPIC_MODEL ?? 'claude-sonnet-5'),
 	system: [claudePrompt],
 	tools: {
 		...tools,

@@ -20,4 +20,18 @@ describe('ModelProvider.getModelLimits', () => {
 		expect(limits?.context).toBe(1_050_000)
 		expect(limits?.output).toBe(128_000)
 	})
+
+	test('anthropic/claude-sonnet-5 exposes 1M context and 128k output metadata', () => {
+		const info = provider.getModelInfo('anthropic/claude-sonnet-5')
+		const limits = provider.getModelLimits('anthropic/claude-sonnet-5')
+		const pricing = provider.getModelPricing('anthropic/claude-sonnet-5')
+
+		expect(info?.reasoning).toBe(true)
+		expect(info?.tool_call).toBe(true)
+		expect(info?.temperature).toBe(false)
+		expect(info?.modalities?.input).toEqual(['text', 'image', 'pdf'])
+		expect(info?.modalities?.output).toEqual(['text'])
+		expect(limits).toEqual({ context: 1_000_000, output: 128_000 })
+		expect(pricing).toEqual({ input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 })
+	})
 })

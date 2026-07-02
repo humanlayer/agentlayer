@@ -89,6 +89,8 @@ function assertThinkingValue(args: { provider: ProviderType; modelId: string; th
 		supported(['low', 'medium', 'high', 'xhigh', 'max'])
 	} else if (modelId.includes('opus') && (modelId.includes('4-6') || modelId.includes('4.6'))) {
 		supported(['low', 'medium', 'high', 'max'])
+	} else if (modelId.includes('sonnet-5')) {
+		supported(['low', 'medium', 'high', 'xhigh', 'max'])
 	} else if (modelId.includes('sonnet') && (modelId.includes('4-6') || modelId.includes('4.6'))) {
 		supported(['low', 'medium', 'high'])
 	}

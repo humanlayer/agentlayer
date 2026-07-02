@@ -31,6 +31,10 @@ function resolveAnthropicThinking(modelId: string): Record<string, unknown> {
 		return { thinking: { type: 'adaptive' as const } }
 	}
 
+	if (modelId.includes('sonnet-5')) {
+		return { thinking: { type: 'adaptive' as const } }
+	}
+
 	if (modelId.includes('4-5') || modelId.includes('4.5')) {
 		return { thinking: { type: 'enabled' as const, budgetTokens: 10000 } }
 	}

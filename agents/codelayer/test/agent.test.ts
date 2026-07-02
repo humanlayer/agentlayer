@@ -255,6 +255,21 @@ describe('createCodelayerAgent', () => {
 		})
 	})
 
+	test('keeps explicit enabled thinking overrides adaptive for Sonnet 5', () => {
+		const model = createMockModel('claude-sonnet-5')
+		const overrides = parseProviderOptionOverrides([
+			'anthropic.thinking=enabled',
+			'anthropic.budgetTokens=1234',
+			'anthropic.effort=max',
+		])
+
+		expect(buildProviderOptions(model, overrides).anthropic).toEqual({
+			thinking: { type: 'adaptive' },
+			effort: 'max',
+			cacheControl: { type: 'ephemeral' },
+		})
+	})
+
 	test('uses medium reasoning for gpt-5.5 codex by default', () => {
 		const model = createMockModel('gpt-5.5')
 
@@ -290,10 +305,16 @@ describe('createCodelayerAgent', () => {
 
 	test('uses medium adaptive thinking effort for modern anthropic models by default', () => {
 		const opus47 = createMockModel('claude-opus-4-7')
+		const sonnet5 = createMockModel('claude-sonnet-5')
 		const sonnet46 = createMockModel('claude-sonnet-4-6')
 
 		expect(buildProviderOptions(opus47).anthropic).toEqual({
 			thinking: { type: 'adaptive', display: 'summarized' },
+			effort: 'medium',
+			cacheControl: { type: 'ephemeral' },
+		})
+		expect(buildProviderOptions(sonnet5).anthropic).toEqual({
+			thinking: { type: 'adaptive' },
 			effort: 'medium',
 			cacheControl: { type: 'ephemeral' },
 		})
@@ -448,6 +469,22 @@ describe('createCodelayerAgent', () => {
 		})
 	})
 
+	test('uses adaptive thinking with max CLI effort for Sonnet 5', () => {
+		const model = createMockModel('claude-sonnet-5')
+		const overrides = applyCliThinkingOverride({
+			provider: 'anthropic',
+			modelId: 'claude-sonnet-5',
+			thinking: 'max',
+			overrides: {},
+		})
+
+		expect(buildProviderOptions(model, overrides).anthropic).toEqual({
+			thinking: { type: 'adaptive' },
+			effort: 'max',
+			cacheControl: { type: 'ephemeral' },
+		})
+	})
+
 	test('supports dot-form opus 4.8 CLI thinking validation', () => {
 		const model = createMockModel('claude-opus-4.8')
 		const overrides = applyCliThinkingOverride({
@@ -513,6 +550,15 @@ describe('createCodelayerAgent', () => {
 			applyCliThinkingOverride({
 				provider: 'anthropic',
 				modelId: 'claude-opus-4-8',
+				thinking: 'extreme',
+				overrides: {},
+			}),
+		).toThrow('Unsupported --thinking value "extreme"')
+
+		expect(() =>
+			applyCliThinkingOverride({
+				provider: 'anthropic',
+				modelId: 'claude-sonnet-5',
 				thinking: 'extreme',
 				overrides: {},
 			}),

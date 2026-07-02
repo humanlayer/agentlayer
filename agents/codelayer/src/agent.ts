@@ -127,6 +127,12 @@ function resolveAnthropicThinking(model: LanguageModel, effort?: string): Record
 			effort: resolvedEffort,
 		}
 	}
+	if (modelId.includes('sonnet-5')) {
+		return {
+			thinking: { type: 'adaptive' },
+			effort: resolvedEffort,
+		}
+	}
 	if (modelId.includes('4-6') || modelId.includes('4.6')) {
 		return {
 			thinking: { type: 'adaptive' },
@@ -180,6 +186,8 @@ export function buildProviderOptions(
 	model: LanguageModel,
 	overrides: CodelayerProviderOptionOverrides = {},
 ): CodelayerProviderOptions {
+	const modelId = ((model as { modelId?: string }).modelId ?? '').toLowerCase()
+	const sonnet5UsesAdaptiveThinking = modelId.includes('sonnet-5')
 	const anthropicThinking =
 		overrides.anthropic?.thinking === 'off'
 			? {}
@@ -189,10 +197,15 @@ export function buildProviderOptions(
 						...(overrides.anthropic.effort ? { effort: overrides.anthropic.effort } : {}),
 					}
 				: overrides.anthropic?.thinking === 'enabled'
-					? {
-							thinking: { type: 'enabled' as const, budgetTokens: overrides.anthropic.budgetTokens ?? 10000 },
-							...(overrides.anthropic.effort ? { effort: overrides.anthropic.effort } : {}),
-						}
+					? sonnet5UsesAdaptiveThinking
+						? {
+								thinking: { type: 'adaptive' as const },
+								...(overrides.anthropic.effort ? { effort: overrides.anthropic.effort } : {}),
+							}
+						: {
+								thinking: { type: 'enabled' as const, budgetTokens: overrides.anthropic.budgetTokens ?? 10000 },
+								...(overrides.anthropic.effort ? { effort: overrides.anthropic.effort } : {}),
+							}
 					: resolveAnthropicThinking(model, overrides.anthropic?.effort)
 	const codexOptions = {
 		...resolveCodexThinking(model),

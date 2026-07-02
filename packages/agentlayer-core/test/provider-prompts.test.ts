@@ -48,6 +48,13 @@ describe('provider system prompts', () => {
 			cacheControl: { type: 'ephemeral' },
 		})
 
+		const sonnet5 = buildCodingProviderOptions('claude-sonnet-5')
+		expect(sonnet5.anthropic).toEqual({
+			// @ts-expect-error
+			thinking: { type: 'adaptive' },
+			cacheControl: { type: 'ephemeral' },
+		})
+
 		const openai = buildCodingProviderOptions('gpt-5.4')
 		expect(openai.openai).toEqual({
 			store: false,

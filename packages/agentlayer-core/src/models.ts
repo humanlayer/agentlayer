@@ -6,6 +6,13 @@ import type { ModelPricing } from './token-usage'
 interface ModelsDevModel {
 	id?: string
 	name?: string
+	reasoning?: boolean
+	tool_call?: boolean
+	temperature?: boolean
+	modalities?: {
+		input?: string[]
+		output?: string[]
+	}
 	cost?: {
 		input?: number
 		output?: number
