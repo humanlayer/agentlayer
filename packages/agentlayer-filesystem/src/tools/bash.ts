@@ -2,7 +2,7 @@ import { BashTool } from '@humanlayer/agentlayer-core/interfaces'
 import { BASH_DESCRIPTION } from '@humanlayer/agentlayer-core/prompts'
 import { runProcess } from '../utils/process'
 
-export function createBashTool(opts?: { cwd?: string }) {
+export function createBashTool(opts?: { cwd?: string; env?: NodeJS.ProcessEnv }) {
 	return BashTool.define(
 		async (input, ctx) => {
 			const cwd = input.workdir ?? opts?.cwd
@@ -10,6 +10,10 @@ export function createBashTool(opts?: { cwd?: string }) {
 				cwd,
 				timeoutMs: input.timeout,
 				signal: ctx.signal,
+				// node's spawn() REPLACES the child env when `env` is provided (it does not
+				// merge), so merge over process.env here to preserve PATH/HOME/etc. Leaving
+				// env undefined keeps full inheritance from the parent process (prior behavior).
+				env: opts?.env ? { ...process.env, ...opts.env } : undefined,
 			})
 
 			let output = stdout
