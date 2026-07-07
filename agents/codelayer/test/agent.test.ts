@@ -1063,3 +1063,61 @@ describe('createCodingSubagentTool', () => {
 		expect(tool.description).toContain('library-researcher')
 	})
 })
+
+describe('createCodelayerAgent shellEnv passthrough', () => {
+	const ctx = { signal: new AbortController().signal } as any
+	const SHELL_ENV = { CODELAYER_SHELL_ENV_TEST: 'threaded' }
+
+	function bashSees(tool: unknown): Promise<string> {
+		return (tool as Tool<any, any>).execute(
+			{ command: 'echo "$CODELAYER_SHELL_ENV_TEST"', timeout: 5_000 },
+			ctx,
+		)
+	}
+
+	test('threads shellEnv into the top-level claude bash tool', async () => {
+		const agent = await createCodelayerAgent({
+			model: createMockModel('claude-sonnet-4-5'),
+			cwd: '/tmp',
+			shellEnv: SHELL_ENV,
+		})
+		expect(await bashSees(getAgentConfig(agent).tools?.bash)).toContain('threaded')
+	})
+
+	test('threads shellEnv into the top-level codex bash tool', async () => {
+		const agent = await createCodelayerAgent({
+			model: createMockModel('gpt-4.1'),
+			cwd: '/tmp',
+			shellEnv: SHELL_ENV,
+		})
+		expect(await bashSees(getAgentConfig(agent).tools?.bash)).toContain('threaded')
+	})
+
+	test('threads shellEnv into every bash-bearing subagent', async () => {
+		const agent = await createCodelayerAgent({
+			model: createMockModel('claude-sonnet-4-5'),
+			cwd: '/tmp',
+			shellEnv: SHELL_ENV,
+		})
+		const subagents = getSubagents(getAgentConfig(agent).tools?.agent)
+		const withBash = subagents.filter((sub) => getAgentConfig(sub.agent).tools?.bash)
+
+		// bash specialist + general-purpose + implementer + outline-implementer all carry bash.
+		expect(withBash.length).toBeGreaterThanOrEqual(3)
+		for (const sub of withBash) {
+			expect(await bashSees(getAgentConfig(sub.agent).tools?.bash), `subagent "${sub.name}"`).toContain('threaded')
+		}
+	})
+
+	test('leaves bash env untouched when shellEnv is omitted (back-compat)', async () => {
+		const agent = await createCodelayerAgent({
+			model: createMockModel('claude-sonnet-4-5'),
+			cwd: '/tmp',
+		})
+		const output = await (getAgentConfig(agent).tools?.bash as Tool<any, any>).execute(
+			{ command: 'echo "[$CODELAYER_SHELL_ENV_TEST]"', timeout: 5_000 },
+			ctx,
+		)
+		expect(output).toContain('[]')
+	})
+})
