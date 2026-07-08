@@ -43,7 +43,7 @@ Individual tool factories are also exported for manual composition, e.g. `create
 - **Hooks** (`src/hooks/`): `createAgentFilesystemHooks({ cwd, outputTruncation? })` wires together:
   - `createWastedReadHook` / `createReadBeforeWriteHook` (pre-tool-use) — block re-reading unchanged file ranges and require a fresh read before `write`/`edit`/`apply_patch`, tracked via SHA-256 hashes in agent state.
   - `createFileStateTrackingHook` (post-tool-use) — records read/verification state after read/write/edit/apply_patch.
-  - `create{Bash,Glob,Grep,List}OutputTruncationHook` + `createReadTruncationHook` — truncate large tool outputs and spill the full output to a temp file via `saveFullOutput`.
+  - `create{Bash,Glob,Grep,List}OutputTruncationHook` — truncate large tool outputs and spill the full output to a temp file via `saveFullOutput`. `createReadTruncationHook` truncates large reads and hints to continue at a higher `offset` (no temp file).
 - **Prompts** (`src/prompts/`): `createAgentSystemPrompt` assembles `[persona, repoInstructions?, environment?, ...additions]` for a given model. `repoInstructionsPrompt` searches `CLAUDE.md`/`AGENTS.md`/`CONTEXT.md` (cwd, then git root) or layers multiple instruction sources via `instruction-resolver`. `environmentPrompt` reports cwd/platform/git-repo status.
 
 ## Toolset assembly

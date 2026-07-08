@@ -64,4 +64,4 @@ File-mutating tools (`write`, `edit`, `apply_patch`) write through shell heredoc
 
 ## Tests
 
-`bun run test` (see `test/`) covers the prompt-building helpers, `code-search` input validation, and `web-search` result shaping using a mocked `Bash.exec`.
+Run `bun test` from this directory (or `bun run test` from the repo root) (see `test/`) to cover the prompt-building helpers, `code-search` input validation, and `web-search` result shaping using a mocked `Bash.exec`.

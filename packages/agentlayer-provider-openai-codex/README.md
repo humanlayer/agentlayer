@@ -64,7 +64,7 @@ interface CodexProviderOptions {
 }
 ```
 
-`createCodexResponsesProvider`, `createCodexSseVendorProvider`, and `createCodexEffectProvider` additionally accept `chunkTimeout`/`headerTimeout` (ms; default `120000`/`10000`, pass `false` to disable).
+`createCodexResponsesProvider` additionally accepts `chunkTimeout`/`headerTimeout` (ms; default `120000`/`10000`, pass `false` to disable). The vendor-backed providers (`createCodexSseVendorProvider`, `createCodexEffectProvider`) use fixed internal stream timeouts and don't expose these as options.
 
 ## Fast mode & service tier
 

@@ -2,7 +2,7 @@
 
 An [Effect](https://effect.website)-based LLM client vendored from [opencode](https://github.com/sst/opencode). It turns a single provider-agnostic `LLMRequest` into a streamed sequence of `LLMEvent`s over HTTP (SSE) or WebSocket, with retries, timeouts, redacted diagnostics, and typed tool orchestration built in. `agentlayer-provider-openai-codex` is the primary consumer, wrapping it in an `@ai-sdk/provider` `LanguageModelV3`.
 
-Most files under `src/` carry `// @ts-nocheck — vendored from opencode, tested upstream under different tsconfig`: they are kept close to the upstream source and are typechecked (and tested) in opencode itself, not here.
+The largest, most upstream-derived files under `src/` (roughly half the code by line count) carry `// @ts-nocheck — vendored from opencode, tested upstream under different tsconfig`: they are kept close to the upstream source and are typechecked (and tested) in opencode itself, not here.
 
 ## Install / usage
 
@@ -45,7 +45,7 @@ A deployment (`Route`, from `./route`) is composed of four orthogonal pieces:
 
 - **Protocol** (`./route/protocol`) — the wire contract: builds/validates the provider-native request body and decodes streamed frames into `LLMEvent`s. `./protocols/openai-responses` is the only concrete protocol currently vendored (HTTP SSE `route` and `webSocketRoute`).
 - **Endpoint** (`./route/endpoint`) — base URL + path (string or function of the request/body).
-- **Auth** (`./route/auth`) — composable header injection (`Auth.bearer`, `Auth.headers`, `Auth.andThen`, `Auth.orElse`, `Config`-backed credentials).
+- **Auth** (`./route/auth`) — composable header injection (`Auth.bearer`, `Auth.headers`, `Config`-backed credentials, chained via `.andThen(...)`/`.orElse(...)` on the resulting `Auth` value, e.g. `Auth.bearer(token).andThen(Auth.headers(extra))`).
 - **Framing** (`./route/framing`) — cuts the raw byte stream into protocol frames (`Framing.sse` for SSE; WebSocket routes frame differently, see `./route/transport/websocket`).
 
 `Route.make({ id, protocol, endpoint, auth, framing, defaults })` builds an HTTP route; `route.with({ auth, endpoint, stream })` patches an existing route (e.g. to point at a different host or add stream timeouts) without mutating it. `Model.make({ id, provider, route })` binds a route to a specific model id for use in an `LLMRequest`.

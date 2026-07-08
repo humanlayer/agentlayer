@@ -27,14 +27,14 @@ For tests, use `createMemoryAuthStore(initialAuth?)` instead — same `AuthStore
 
 ## Key exports
 
-- `AuthStore` — interface with `get`/`set`/`delete`/`getAll`, all async, all return deep clones so callers can't mutate stored state.
+- `AuthStore` — interface with `get`/`set`/`delete`/`getAll`, all async; `get`/`getAll` return deep clones of stored data, and `set` stores a deep clone of its input, so callers can't mutate stored state.
 - `AuthInfo` — discriminated union: `OAuthAuthInfo` (`kind: 'oauth'`, `accessToken`, optional `refreshToken`/`expiresAt`/`idToken`/`scope`/`tokenType`/`accountId`/`enterpriseUrl`) or `ApiAuthInfo` (`kind: 'api'`, `apiKey`, optional `metadata`).
 - `createMemoryAuthStore(initialAuth?)` — in-memory `AuthStore`.
 - `createFileAuthStore(options?)` — file-backed `AuthStore`. `options.filePath` defaults to `getDefaultAgentLayerAuthPath()`.
 - `ensureFileAuthStore(options?)` — like `createFileAuthStore`, but first seeds the AgentLayer auth file from the Agent SDK auth file (`getDefaultAgentSdkAuthPath()`) if the AgentLayer file doesn't exist yet. Use this at startup.
 - `readAuth` / `writeAuth` / `removeAuth` / `readAllAuth` — one-shot convenience wrappers around `createFileAuthStore(options).get/set/delete/getAll`.
 - `requireAuth(store, providerId, expectedKind?)` — fetches auth or throws; with `expectedKind` it also narrows the return type and throws on a `kind` mismatch.
-- `normalizeProviderId(providerId)` — trims trailing slashes and maps aliases/subpaths (`openai`, `openai.codex`, `codex.*` → `codex`; `github-copilot` → `copilot`; `github-copilot-enterprise` → `copilot-enterprise`) to `CanonicalAuthProviderId`. All store methods normalize the id internally.
+- `normalizeProviderId(providerId)` — trims trailing slashes and maps known aliases/subpaths (`openai`, `openai.codex`, `codex.*` → `codex`; `github-copilot` → `copilot`; `github-copilot-enterprise` → `copilot-enterprise`) to their canonical id; unrecognized ids pass through unchanged. Returns `string` (not `CanonicalAuthProviderId`). All store methods normalize the id internally.
 - `getDefaultAgentLayerAuthPath()` / `getDefaultAgentSdkAuthPath()` / `getDefaultOpenCodeAuthPath()` — resolve default file locations, each overridable via `AGENTLAYER_AUTH_PATH`, `AGENT_SDK_AUTH_PATH`, `OPENCODE_AUTH_PATH`.
 
 ## Notes

@@ -12,12 +12,13 @@ bunx codelayer --provider codex --rpi
 
 Auth: reads `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `FIREWORKS_API_KEY` from the environment, falling back to AgentLayer's file-based auth store (`~/.humanlayer/agent-sdk`) for `anthropic`, `codex`, `copilot`, and `firepass`. `EXA_API_KEY` enables web search for research sub-agents.
 
-Key flags (see `createCodelayerCommand` in `src/command.ts`): `-p/--provider`, `-m/--model`, `--thinking <level>`, `--subagent-thinking <level>`, `--rlm` (orchestrator mode with a generic subagent tool), `--rpi` (enables the RPI specialist sub-agents), `--tars` (adds the TARS persona), `--provider-option key=value` (repeatable; e.g. `codex.reasoningEffort=xhigh`, `anthropic.thinking=enabled`).
+Key flags (see `createCodelayerCommand` in `src/command.ts`): `-p/--provider`, `-m/--model`, `--thinking <level>`, `--subagent-thinking <level>`, `--rlm` (orchestrator mode with a generic subagent tool), `--rpi` (nudges the system prompt to prefer delegating to the RPI specialist sub-agents, which are otherwise always present in the roster), `--tars` (adds the TARS persona), `--provider-option key=value` (repeatable; e.g. `codex.reasoningEffort=xhigh`, `anthropic.thinking=enabled`).
 
 ## Programmatic usage
 
 ```ts
 import { createCodelayerAgent, resolveModel } from '@humanlayer/codelayer'
+import { startState } from '@humanlayer/agentlayer-core'
 
 const model = await resolveModel('anthropic', 'claude-opus-4-5')
 const agent = await createCodelayerAgent({ model, cwd: process.cwd(), rpi: true })
@@ -28,14 +29,14 @@ const run = agent.run({ state: startState([{ role: 'user', content: 'fix the fai
 
 ## Sub-agents
 
-`createCodingSubagentTool` (`src/coding-subagent-tool.ts`) assembles a `createSubagentsTool` from `agentlayer-core` with a fixed roster of child `Agent`s, each scoped to its own tools and system prompt: `general-purpose`, `bash`, plus the RPI specialists from `src/rpi-agents/` — `implementer-agent`, `outline-implementer-agent`, `codebase-locator`, `codebase-analyzer`, `codebase-pattern-finder`, `web-search-researcher`, and (when `exaApiKey`/`context7ApiKey` is set) `library-researcher`. This tool is exported separately (`./rpi-agents` entry point) so other agents in the monorepo can reuse the RPI specialist set.
+`createCodingSubagentTool` (`src/coding-subagent-tool.ts`) assembles a `createSubagentsTool` from `agentlayer-core` with a fixed roster of child `Agent`s, each scoped to its own tools and system prompt: `general-purpose`, `bash`, plus the RPI specialists from `src/rpi-agents/` — `implementer-agent`, `outline-implementer-agent`, `codebase-locator`, `codebase-analyzer`, `codebase-pattern-finder`, `web-search-researcher`, and (when `exaApiKey`/`context7ApiKey` is set) `library-researcher`. The individual RPI specialist-agent factories (e.g. `createCodebaseLocatorAgent`) are exported separately via the `./rpi-agents` entry point so other agents in the monorepo can reuse them.
 
 When `rlm: true`, `createCodelayerAgent` runs the top-level agent in orchestrator mode: a minimal read/write/edit(or apply_patch) toolset plus the subagent tool, biased toward delegating work instead of doing it inline.
 
 ```mermaid
 flowchart TD
     CLI["cli.ts / createCodelayerCommand"] --> AGENT["createCodelayerAgent (agent.ts)"]
-    AGENT -->|"modelFamily = claude"| CLAUDE_TOOLS["createClaudeCodingAgentToolset"]
+    AGENT -->|"modelFamily != codex (claude/gemini/openai)"| CLAUDE_TOOLS["createClaudeCodingAgentToolset"]
     AGENT -->|"modelFamily = codex"| CODEX_TOOLS["createCodexCodingAgentToolset"]
     AGENT --> SUBTOOL["createCodingSubagentTool (coding-subagent-tool.ts)"]
     SUBTOOL --> GP["general-purpose"]
@@ -51,9 +52,9 @@ flowchart TD
 ## Key exports (`src/index.ts`)
 
 - `createCodelayerAgent(opts: CodelayerAgentOptions): Promise<Agent>` — main agent factory.
-- `buildProviderOptions`, `createCodelayerProviderOptionsFactory`, `subagentThinkingOverrides` — provider reasoning-option helpers.
+- `buildProviderOptions` — provider reasoning-option helper.
 - `createCodelayerCommand(): Command` — the commander.js CLI definition used by `src/cli.ts`.
-- `createCodingSubagentTool` — standalone sub-agent-tool factory (also at `@humanlayer/codelayer/rpi-agents`).
+- `createCodingSubagentTool` — standalone sub-agent-tool factory.
 - `resolveModel`, `DEFAULT_MODELS`, `resolveExaApiKey` (from `src/providers.ts`) — turns a `(provider, modelId)` pair into a `LanguageModel`.
 
 ## Depends on

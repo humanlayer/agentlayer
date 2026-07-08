@@ -1,6 +1,6 @@
 # agentlayer-yjs-fs-secure-exec
 
-Bridges [`@humanlayer/yjs-fs`](../yjs-fs) (a Y.js CRDT filesystem) into [`secure-exec`](https://github.com/vercel-labs/secure-exec)'s sandboxed Node runtime, and exposes it as an `agentlayer-core` tool. Code the agent runs inside the sandbox reads/writes through `node:fs` as usual, but every operation is actually applied to the collaborative Y.js document — so filesystem edits made by sandboxed code stay in sync with other collaborators/editors.
+Bridges [`@humanlayer/yjs-fs`](../yjs-fs) (a Y.js CRDT filesystem) into [`secure-exec`](https://github.com/rivet-dev/secure-exec)'s sandboxed Node runtime, and exposes it as an `agentlayer-core` tool. Code the agent runs inside the sandbox reads/writes through `node:fs` as usual, but every operation is actually applied to the collaborative Y.js document — so filesystem edits made by sandboxed code stay in sync with other collaborators/editors.
 
 ## Install
 
@@ -32,7 +32,7 @@ export const ok = true`,
 )
 
 fs.readFile('/output.txt') // 'hello world'
-raw.operations // [{ type: 'read', path: '/input.txt', ... }, { type: 'write', path: '/output.txt', ... }]
+if ('operations' in raw) raw.operations // [{ type: 'read', path: '/input.txt', ... }, { type: 'write', path: '/output.txt', ... }]
 ```
 
 Wire the tool into an `Agent` (from `@humanlayer/agentlayer-core`) as `tools: { secure_exec: tool }`.

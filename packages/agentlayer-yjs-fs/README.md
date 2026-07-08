@@ -42,9 +42,9 @@ import { createYjsFsPresenceHooks } from '@humanlayer/agentlayer-yjs-fs/hooks'
 
 - `createYjsFsToolset(opts?)` (`.`) — `{ fs, tools, hooks }`. `opts` is either `{ fs }` or `{ doc?, awareness? }` plus optional `presence` options.
 - `./tools` — `createYjsFsReadTool`, `createYjsFsWriteTool`, `createYjsFsEditTool`, `createYjsFsApplyPatchTool(fs, { cwd? })`, `createYjsFsGlobTool`, `createYjsFsGrepTool`, `createYjsFsListTool` — each takes a `YjsFilesystem` and returns a `Tool` built via `<Interface>.define(executor, { description })` from `@humanlayer/agentlayer-core/interfaces`, using the shared prompt strings from `@humanlayer/agentlayer-core/prompts`.
-- `./hooks` — `createYjsFsPresenceHooks(fs, { selectionFadeMs? })` returns `PostToolUseHook[]` for read/edit/write/apply_patch/delete. After each call it writes `awareness.getLocalState().presence` (`{ currentFile, action, editResult? }`) via `fs.updateLocalPresence` and highlights the affected range with `fs.setLocalSelection`, clearing it after `selectionFadeMs` (default `5000`). All awareness calls are no-ops (swallowed) when no `Awareness` is attached, so hooks are safe to use headlessly.
+- `./hooks` — `createYjsFsPresenceHooks(fs, { selectionFadeMs? })` returns `PostToolUseHook[]` for read/edit/write/apply_patch/delete. After each call it writes `awareness.getLocalState().presence` (`{ currentFile, action, editResult? }`) via `fs.updateLocalPresence`. read/edit/write/apply_patch also highlight the affected range with `fs.setLocalSelection`, clearing it after `selectionFadeMs` (default `5000`); delete instead clears any existing selection immediately via `fs.clearLocalSelection`. All awareness calls are no-ops (swallowed) when no `Awareness` is attached, so hooks are safe to use headlessly.
 - `write`/`apply_patch` create missing parent directories automatically (`fs.mkdir`) before writing.
-- `glob`/`grep`/`list` walk the CRDT tree via `fs.tree()`/`fs.list()` and match with `minimatch` (`src/utils/tree.ts`); results are capped at 100 matches.
+- `glob`/`grep`/`list` walk the CRDT tree via `fs.tree()`/`fs.list()` and match with `minimatch` (`src/utils/tree.ts`); `glob`/`grep` results are capped at 100 matches, `list` returns all non-ignored entries in the target directory.
 
 ## Collaboration model
 

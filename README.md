@@ -19,6 +19,8 @@ flowchart TB
         codex["agentlayer-provider-openai-codex"]
     end
 
+    vendor["opencode-llm-vendor<br/>(vendored inline at build)"]
+
     subgraph YjsFamily["Yjs collaborative filesystem"]
         yjsfs["yjs-fs"]
         yjsfsreact["yjs-fs-react"]
@@ -39,7 +41,9 @@ flowchart TB
     auth --> copilot
     auth --> codex
     core --> codex
+    vendor --> codex
 
+    core --> yjsfs
     core --> yjsfstools
     yjsfs --> yjsfstools
     core --> yjsfsbash
@@ -62,7 +66,7 @@ flowchart TB
     yjsfs --> yjsfsagents
 ```
 
-`opencode-llm-vendor` is a standalone, provider-agnostic Effect-based LLM client with no in-repo dependencies or dependents.
+`opencode-llm-vendor` is a standalone, provider-agnostic Effect-based LLM client with no in-repo dependencies; its only in-repo dependent is `agentlayer-provider-openai-codex`, which vendors it in as a devDependency bundled inline at build time.
 
 ## Monorepo Map
 

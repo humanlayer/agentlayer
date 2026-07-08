@@ -57,7 +57,7 @@ flowchart LR
     F -->|"Authorization, User-Agent,\nOpenai-Intent, x-initiator,\nCopilot-Vision-Request"| G["GitHub Copilot API"]
 ```
 
-`shouldUseCopilotResponsesApi(modelId)` picks the Responses API for `gpt-5*` models (excluding `gpt-5-mini`) and Chat Completions otherwise. `buildCopilotHeaders` also strips any caller-supplied `Authorization`/`x-api-key` headers, sets `x-initiator` to `agent` unless the last message is a real user turn (a synthetic `SYNTHETIC_ATTACHMENT_PROMPT` message still counts as `user`), and sets `Copilot-Vision-Request: true` when the request body contains an image part.
+`shouldUseCopilotResponsesApi(modelId)` picks the Responses API for `gpt-5*` models (excluding `gpt-5-mini`) and Chat Completions otherwise. `buildCopilotHeaders` also strips any caller-supplied `Authorization`/`x-api-key` headers, sets `x-initiator` to `agent` unless the last message is a real user turn (a synthetic `SYNTHETIC_ATTACHMENT_PROMPT` message does not count, so it still yields `agent`), and sets `Copilot-Vision-Request: true` when the request body contains an image part.
 
 ## Key exports (`src/index.ts`)
 
