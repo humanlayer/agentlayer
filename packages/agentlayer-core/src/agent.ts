@@ -89,6 +89,14 @@ export interface AgentConfig<TTools extends Record<string, Tool<any, any>> = Rec
 	}
 }
 
+/** Incremental additions applied by {@link Agent.withOverrides} to produce a derived agent. */
+export interface AgentOverrides {
+	/** Extra tools merged into the agent's tool set (keyed by tool name). */
+	tools?: Record<string, Tool<any, any>>
+	/** Extra system-prompt strings appended after the agent's existing system prompt. */
+	system?: string[]
+}
+
 export type FinishReason = 'complete' | 'maxSteps' | 'stopCondition' | 'interrupted' | 'approvalRequired' | 'error'
 
 export interface RunResult {
@@ -272,6 +280,35 @@ export class Agent<TTools extends Record<string, Tool<any, any>> = Record<string
 		this.contextWindowLimit = config.contextWindowLimit
 		this.hooks = config.hooks
 		this.modelProvider = config.modelProvider ?? new ModelProvider()
+	}
+
+	/**
+	 * Return a NEW agent with extra tools merged in and extra system-prompt strings appended,
+	 * leaving this instance unchanged. Returns `this` when `overrides` is empty, so it chains
+	 * cleanly off a builder: `createSomeAgent({ … }).withOverrides(subagentOverrides[name] ?? {})`.
+	 *
+	 * Handy for granting a single (sub)agent an extra capability — e.g. a scoped write tool plus
+	 * some guidance — without rebuilding its whole config or reaching into private state.
+	 */
+	withOverrides(overrides: AgentOverrides): Agent {
+		const extraTools = overrides.tools && Object.keys(overrides.tools).length > 0 ? overrides.tools : undefined
+		const extraSystem = overrides.system && overrides.system.length > 0 ? overrides.system : undefined
+		if (!extraTools && !extraSystem) return this
+		return new Agent({
+			model: this.model,
+			system: extraSystem ? [this.system, ...extraSystem].filter((s): s is string => !!s).join('\n\n') : this.system,
+			tools: extraTools ? { ...this.tools, ...extraTools } : this.tools,
+			toolChoice: this.toolChoice,
+			providerOptions: this.providerOptions,
+			maxSteps: this.maxStepsLimit,
+			stopWhen: this.stopWhen,
+			modelProvider: this.modelProvider,
+			onError: this.onError,
+			onStop: this.onStop,
+			onApprovalRequested: this.onApprovalRequested,
+			contextWindowLimit: this.contextWindowLimit,
+			hooks: this.hooks,
+		})
 	}
 
 	run(options: RunOptions): AgentRun {

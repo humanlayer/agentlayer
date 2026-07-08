@@ -1,5 +1,5 @@
 import type { LanguageModel, JSONValue } from 'ai'
-import { Agent, doomLoop, tarsPersona, type AgentConfig, type ProviderOptionsFactory, type Tool } from '@humanlayer/agentlayer-core'
+import { Agent, doomLoop, tarsPersona, type AgentConfig, type AgentOverrides, type ProviderOptionsFactory, type Tool } from '@humanlayer/agentlayer-core'
 import {
 	createAgentFilesystemHooks,
 	createAgentSystemPrompt,
@@ -39,6 +39,8 @@ export interface CodelayerAgentOptions {
 	skillTool?: Tool<any, any>
 	additionalTools?: Record<string, Tool<any, any>>
 	subagentTool?: Tool<any, any>
+	/** Per-subagent tool/prompt overrides, keyed by subagent name. Ignored when `subagentTool` is provided. */
+	subagentOverrides?: Record<string, AgentOverrides>
 	providerOptionOverrides?: CodelayerProviderOptionOverrides
 	subagentThinking?: string
 	environment?: CodelayerEnvironmentOptions
@@ -331,6 +333,7 @@ export async function createCodelayerAgent(opts: CodelayerAgentOptions): Promise
 		skillTool,
 		additionalTools = {},
 		subagentTool,
+		subagentOverrides,
 		providerOptionOverrides,
 		subagentThinking = 'low',
 		environment,
@@ -363,6 +366,7 @@ export async function createCodelayerAgent(opts: CodelayerAgentOptions): Promise
 			providerOptions: subagentProviderOptions,
 			outlineImplementerProviderOptions: providerOptions,
 			systemPromptAdditions: personaPromptAdditions,
+			subagentOverrides,
 		}))
 
 	if (rlm) {

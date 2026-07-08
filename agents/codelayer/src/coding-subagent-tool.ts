@@ -1,5 +1,13 @@
 import type { LanguageModel } from 'ai'
-import { Agent, createSubagentsTool, doomLoop, TodoWriteTool, type AgentConfig, type Tool } from '@humanlayer/agentlayer-core'
+import {
+	Agent,
+	type AgentConfig,
+	type AgentOverrides,
+	createSubagentsTool,
+	doomLoop,
+	TodoWriteTool,
+	type Tool,
+} from '@humanlayer/agentlayer-core'
 import { createWebFetchTool } from '@humanlayer/agentlayer-core'
 import type { CodeSearchInput } from '@humanlayer/agentlayer-core/interfaces'
 import { CodeSearchTool } from '@humanlayer/agentlayer-core/interfaces'
@@ -59,6 +67,12 @@ export interface CreateCodingSubagentToolOptions
 	stopWhen?: AgentConfig['stopWhen']
 	providerOptions?: AgentConfig['providerOptions']
 	outlineImplementerProviderOptions?: AgentConfig['providerOptions']
+	/**
+	 * Per-subagent tool/prompt overrides, keyed by subagent `name` (e.g. `rpi:codebase-analyzer`,
+	 * `web-search-researcher`). Each entry is applied with {@link Agent.withOverrides}, granting that
+	 * subagent extra tools + system guidance without replacing the whole subagent tool.
+	 */
+	subagentOverrides?: Record<string, AgentOverrides>
 }
 
 async function fetchExaCodeSearch(input: CodeSearchInput, apiKey: string, timeoutMs: number): Promise<string | null> {
@@ -233,7 +247,7 @@ export async function createCodingSubagentTool(opts: CreateCodingSubagentToolOpt
 		hooks,
 		stopWhen,
 		providerOptions: opts.providerOptions,
-	})
+	}).withOverrides(opts.subagentOverrides?.['general-purpose'] ?? {})
 
 	const bashAgent = createBashSpecialistAgent({
 		model: opts.model,
@@ -245,7 +259,7 @@ export async function createCodingSubagentTool(opts: CreateCodingSubagentToolOpt
 		hooks,
 		stopWhen,
 		providerOptions: opts.providerOptions,
-	})
+	}).withOverrides(opts.subagentOverrides?.['bash'] ?? {})
 
 	const implementerTools: Record<string, Tool<any, any>> = family === 'codex'
 		? {
@@ -278,7 +292,7 @@ export async function createCodingSubagentTool(opts: CreateCodingSubagentToolOpt
 		hooks,
 		stopWhen,
 		providerOptions: opts.providerOptions,
-	})
+	}).withOverrides(opts.subagentOverrides?.[IMPLEMENTER_AGENT_NAME] ?? {})
 	const outlineImplementerAgent = createOutlineImplementerAgent({
 		model: opts.model,
 		tools: implementerTools,
@@ -286,7 +300,7 @@ export async function createCodingSubagentTool(opts: CreateCodingSubagentToolOpt
 		hooks,
 		stopWhen,
 		providerOptions: opts.outlineImplementerProviderOptions ?? opts.providerOptions,
-	})
+	}).withOverrides(opts.subagentOverrides?.[OUTLINE_IMPLEMENTER_AGENT_NAME] ?? {})
 
 	const webResearcherTools: Record<string, Tool<any, any>> = {
 		web_fetch: createWebFetchTool(),
@@ -302,7 +316,7 @@ export async function createCodingSubagentTool(opts: CreateCodingSubagentToolOpt
 		hooks,
 		stopWhen,
 		providerOptions: opts.providerOptions,
-	})
+	}).withOverrides(opts.subagentOverrides?.['web-search-researcher'] ?? {})
 
 	const libraryResearcherTools: Record<string, Tool<any, any>> = {
 		web_fetch: createWebFetchTool(),
@@ -323,7 +337,7 @@ export async function createCodingSubagentTool(opts: CreateCodingSubagentToolOpt
 					hooks,
 					stopWhen,
 					providerOptions: opts.providerOptions,
-				})
+				}).withOverrides(opts.subagentOverrides?.['library-researcher'] ?? {})
 			: undefined
 
 	const agents: SubAgentConfig[] = [
@@ -363,7 +377,7 @@ export async function createCodingSubagentTool(opts: CreateCodingSubagentToolOpt
 				hooks,
 				stopWhen,
 				providerOptions: opts.providerOptions,
-			}),
+			}).withOverrides(opts.subagentOverrides?.[CODEBASE_LOCATOR_NAME] ?? {}),
 		},
 		{
 			name: CODEBASE_ANALYZER_NAME,
@@ -380,7 +394,7 @@ export async function createCodingSubagentTool(opts: CreateCodingSubagentToolOpt
 				hooks,
 				stopWhen,
 				providerOptions: opts.providerOptions,
-			}),
+			}).withOverrides(opts.subagentOverrides?.[CODEBASE_ANALYZER_NAME] ?? {}),
 		},
 		{
 			name: CODEBASE_PATTERN_FINDER_NAME,
@@ -397,7 +411,7 @@ export async function createCodingSubagentTool(opts: CreateCodingSubagentToolOpt
 				hooks,
 				stopWhen,
 				providerOptions: opts.providerOptions,
-			}),
+			}).withOverrides(opts.subagentOverrides?.[CODEBASE_PATTERN_FINDER_NAME] ?? {}),
 		},
 		{
 			name: 'web-search-researcher',
