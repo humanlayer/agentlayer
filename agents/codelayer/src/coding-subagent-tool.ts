@@ -216,6 +216,7 @@ export async function createCodingSubagentTool(opts: CreateCodingSubagentToolOpt
 					exaApiKey: opts.exaApiKey,
 					additionalTools: opts.additionalTools,
 					allowMissingSkills: opts.allowMissingSkills,
+					env: opts.env,
 				})
 		: await createClaudeCodingAgentToolset({
 					cwd: opts.cwd,
@@ -224,6 +225,7 @@ export async function createCodingSubagentTool(opts: CreateCodingSubagentToolOpt
 					exaApiKey: opts.exaApiKey,
 					additionalTools: opts.additionalTools,
 					allowMissingSkills: opts.allowMissingSkills,
+					env: opts.env,
 				})
 
 	const generalPurposeAgent = createChildAgent({
@@ -238,7 +240,7 @@ export async function createCodingSubagentTool(opts: CreateCodingSubagentToolOpt
 	const bashAgent = createBashSpecialistAgent({
 		model: opts.model,
 		tools: {
-			bash: createBashTool({ cwd: opts.cwd }),
+			bash: createBashTool({ cwd: opts.cwd, env: opts.env }),
 			read: createReadMultimodalTool({ cwd: opts.cwd, readToolModalities: CODELAYER_READ_TOOL_MODALITIES }),
 		},
 		system: baseSystem,
@@ -256,6 +258,7 @@ export async function createCodingSubagentTool(opts: CreateCodingSubagentToolOpt
 					exaApiKey: opts.exaApiKey,
 					additionalTools: opts.additionalTools,
 					allowMissingSkills: opts.allowMissingSkills,
+					env: opts.env,
 				})),
 				todo_write: TodoWriteTool,
 			}
@@ -267,6 +270,7 @@ export async function createCodingSubagentTool(opts: CreateCodingSubagentToolOpt
 					exaApiKey: opts.exaApiKey,
 					additionalTools: opts.additionalTools,
 					allowMissingSkills: opts.allowMissingSkills,
+					env: opts.env,
 				})),
 				todo_write: TodoWriteTool,
 			}

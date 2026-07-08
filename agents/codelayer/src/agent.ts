@@ -42,6 +42,15 @@ export interface CodelayerAgentOptions {
 	providerOptionOverrides?: CodelayerProviderOptionOverrides
 	subagentThinking?: string
 	environment?: CodelayerEnvironmentOptions
+	/**
+	 * Extra environment variables to inject into the bash tool's child processes for
+	 * this agent and its subagents. Merged over process.env at spawn time, giving each
+	 * agent an isolated shell env without mutating the shared global process.env.
+	 *
+	 * NOTE: distinct from `environment` above, which is prompt metadata (date/platform),
+	 * not process env — hence the separate name.
+	 */
+	shellEnv?: NodeJS.ProcessEnv
 }
 
 export interface CodelayerEnvironmentOptions {
@@ -334,6 +343,7 @@ export async function createCodelayerAgent(opts: CodelayerAgentOptions): Promise
 		providerOptionOverrides,
 		subagentThinking = 'low',
 		environment,
+		shellEnv,
 	} = opts
 	const modelFamily = detectModelFamily(model)
 	const providerOptions = createCodelayerProviderOptionsFactory(model, providerOptionOverrides)
@@ -359,6 +369,7 @@ export async function createCodelayerAgent(opts: CodelayerAgentOptions): Promise
 			context7ApiKey,
 			skillTool,
 			additionalTools,
+			env: shellEnv,
 			hooks,
 			providerOptions: subagentProviderOptions,
 			outlineImplementerProviderOptions: providerOptions,
@@ -425,6 +436,7 @@ export async function createCodelayerAgent(opts: CodelayerAgentOptions): Promise
 						skillTool,
 						exaApiKey,
 						additionalTools,
+						env: shellEnv,
 					}),
 					toolOpts,
 				)
@@ -436,6 +448,7 @@ export async function createCodelayerAgent(opts: CodelayerAgentOptions): Promise
 						skillTool,
 						exaApiKey,
 						additionalTools,
+						env: shellEnv,
 					}),
 					toolOpts,
 				)
