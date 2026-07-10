@@ -33,18 +33,36 @@ export interface ModelLimits {
 
 export type ModelKey = `${string}/${string}`
 
-export const PRIVATE_CODEX_API_CONTEXT_WINDOW_SIZE_LIMIT = 258_400
+/**
+ * Effective Codex context window, per model.
+ *
+ * Codex reserves 5% of the raw backend window for system prompt, tool overhead, and output:
+ * gpt-5.4/5.5 use 272,000 raw tokens; gpt-5.6 uses 372,000 raw tokens.
+ */
+export const CODEX_CONTEXT_WINDOWS = {
+	'gpt-5.6-sol': 353_400,
+	'gpt-5.6-terra': 353_400,
+	'gpt-5.6-luna': 353_400,
+	'gpt-5.5': 258_400,
+	'gpt-5.4': 258_400,
+	'gpt-5.4-mini': 258_400,
+} as const
 
-const PROVIDER_LIMIT_OVERRIDES: Record<string, Partial<ModelLimits>> = {
-	codex: { context: PRIVATE_CODEX_API_CONTEXT_WINDOW_SIZE_LIMIT },
+export type CodexModel = keyof typeof CODEX_CONTEXT_WINDOWS
+
+/** Unrecognized Codex models predate GPT-5.6's larger window, or are newer than this build. */
+export function getCodexContextWindow(modelId: string): number {
+	return CODEX_CONTEXT_WINDOWS[modelId as CodexModel] ?? CODEX_CONTEXT_WINDOWS['gpt-5.5']
 }
 
-function getProviderLimitOverride(modelKey: ModelKey): Partial<ModelLimits> | undefined {
-	const [rawProviderKey] = modelKey.split('/', 2)
-	const baseKey = rawProviderKey?.split('.')[0]
-	if (!baseKey) return undefined
+const PROVIDER_LIMIT_OVERRIDES: Record<string, Partial<ModelLimits>> = {}
 
-	if (baseKey.startsWith('codex')) return PROVIDER_LIMIT_OVERRIDES.codex
+function getProviderLimitOverride(modelKey: ModelKey): Partial<ModelLimits> | undefined {
+	const [rawProviderKey, modelId] = modelKey.split('/', 2)
+	const baseKey = rawProviderKey?.split('.')[0]
+	if (!baseKey || !modelId) return undefined
+
+	if (baseKey.startsWith('codex')) return { context: getCodexContextWindow(modelId) }
 	return PROVIDER_LIMIT_OVERRIDES[baseKey]
 }
 

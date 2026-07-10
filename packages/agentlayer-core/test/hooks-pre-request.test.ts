@@ -22,7 +22,7 @@ import { simulateReadableStream } from 'ai/test'
 import { z } from 'zod'
 import type { PreRequestHook } from '../src'
 import { Agent, createPreRequestHook, defineTool, startState } from '../src'
-import { PRIVATE_CODEX_API_CONTEXT_WINDOW_SIZE_LIMIT } from '../src/models'
+import { CODEX_CONTEXT_WINDOWS } from '../src/models'
 import { assistantText, assistantWithToolCall, mockModel, userMessage } from './mocks'
 
 // ── Spy model helper ──────────────────────────────────────────────────────────
@@ -623,7 +623,7 @@ describe('preRequest — token context', () => {
 
 		await agent.run({ state: startState([userMessage('go')]) }).result
 
-		expect(capturedLimit).toBe(PRIVATE_CODEX_API_CONTEXT_WINDOW_SIZE_LIMIT)
+		expect(capturedLimit).toBe(CODEX_CONTEXT_WINDOWS['gpt-5.5'])
 	})
 
 	test('contextWindowLimit is undefined when not configured', async () => {

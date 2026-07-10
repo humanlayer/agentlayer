@@ -74,7 +74,12 @@ function assertThinkingValue(args: { provider: ProviderType; modelId: string; th
 		}
 	}
 
-	if (args.provider === 'codex' && modelId.includes('gpt-5.5')) {
+	if (args.provider === 'codex' && modelId.includes('gpt-5.6')) {
+		supported(['low', 'medium', 'high', 'xhigh', 'max'])
+		return
+	}
+
+	if (args.provider === 'codex' && modelId.includes('gpt-5.')) {
 		supported(['low', 'medium', 'high', 'xhigh'])
 		return
 	}
