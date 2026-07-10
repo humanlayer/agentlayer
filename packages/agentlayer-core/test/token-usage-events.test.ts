@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import { z } from 'zod'
 import { Agent, type AgentEvent, defineTool, startState } from '../src'
-import { PRIVATE_CODEX_API_CONTEXT_WINDOW_SIZE_LIMIT } from '../src/models'
+import { CODEX_CONTEXT_WINDOWS } from '../src/models'
 import { assistantText, assistantWithToolCall, mockModel, mockStreamingModel, userMessage } from './mocks'
 
 const mockUsage = (input: number, output: number) => ({
@@ -37,7 +37,7 @@ describe('token usage events', () => {
 		expect(tokenEvents[0]!.type).toBe('tokenUsage')
 		if (tokenEvents[0]!.type === 'tokenUsage') {
 			expect(tokenEvents[0]!.usage.model).toBe('codex/gpt-5.5')
-			expect(tokenEvents[0]!.usage.contextWindowLimit).toBe(PRIVATE_CODEX_API_CONTEXT_WINDOW_SIZE_LIMIT)
+			expect(tokenEvents[0]!.usage.contextWindowLimit).toBe(CODEX_CONTEXT_WINDOWS['gpt-5.5'])
 		}
 	})
 

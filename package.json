@@ -13,6 +13,7 @@
 		"docs:build": "bun --filter '@humanlayer/agentlayer-docs' build",
 		"githooks": "mkdir -p scripts/hooks && cp scripts/hooks/pre-push $(git rev-parse --git-common-dir)/hooks/pre-push && chmod +x $(git rev-parse --git-common-dir)/hooks/pre-push",
 		"hook:prepush": "env -i HOME=\"$HOME\" PATH=\"$PATH\" TMPDIR=\"$TMPDIR\" bun check",
+		"models:refresh": "bun -e \"const data = await fetch('https://models.dev/api.json').then((response) => response.json()); await Bun.write('packages/agentlayer-core/models.json', JSON.stringify(data, null, 2) + '\\n')\"",
 		"test": "bun test --concurrency 16 **/*",
 		"test:ci": "bun test --conditions=source ./packages/*/test/*.test.ts ./agents/*/test/*.test.ts",
         "typecheck": "bun --filter '*' --parallel typecheck",

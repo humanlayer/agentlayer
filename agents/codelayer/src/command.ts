@@ -74,7 +74,13 @@ function assertThinkingValue(args: { provider: ProviderType; modelId: string; th
 		}
 	}
 
-	if (args.provider === 'codex' && modelId.includes('gpt-5.5')) {
+	if (args.provider === 'codex' && modelId.includes('gpt-5.6')) {
+		// GPT-5.6 also advertises ultra, but it assumes Codex CLI spawn-agent tools we do not expose yet.
+		supported(['low', 'medium', 'high', 'xhigh', 'max'])
+		return
+	}
+
+	if (args.provider === 'codex' && modelId.includes('gpt-5.')) {
 		supported(['low', 'medium', 'high', 'xhigh'])
 		return
 	}
