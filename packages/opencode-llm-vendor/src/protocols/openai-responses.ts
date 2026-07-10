@@ -72,8 +72,27 @@ const OpenAIResponsesFunctionCallOutput = Schema.Union([
 	Schema.Array(OpenAIResponsesFunctionCallOutputContent),
 ])
 
+const OpenAIResponsesTool = Schema.Struct({
+	type: Schema.tag('function'),
+	name: Schema.String,
+	description: Schema.String,
+	parameters: JsonObject,
+	strict: Schema.optional(Schema.Boolean),
+})
+type OpenAIResponsesTool = Schema.Schema.Type<typeof OpenAIResponsesTool>
+
 const OpenAIResponsesInputItem = Schema.Union([
 	Schema.Struct({ role: Schema.tag('system'), content: Schema.String }),
+	Schema.Struct({
+		type: Schema.tag('message'),
+		role: Schema.tag('developer'),
+		content: Schema.Array(OpenAIResponsesInputText),
+	}),
+	Schema.Struct({
+		type: Schema.tag('additional_tools'),
+		role: Schema.tag('developer'),
+		tools: Schema.Array(OpenAIResponsesTool),
+	}),
 	Schema.Struct({ role: Schema.tag('user'), content: Schema.Array(OpenAIResponsesInputContent) }),
 	Schema.Struct({ role: Schema.tag('assistant'), content: Schema.Array(OpenAIResponsesOutputText) }),
 	OpenAIResponsesReasoningItem,
@@ -101,15 +120,6 @@ type OpenAIResponsesReasoningInput = {
 	encrypted_content?: string | null
 }
 
-const OpenAIResponsesTool = Schema.Struct({
-	type: Schema.tag('function'),
-	name: Schema.String,
-	description: Schema.String,
-	parameters: JsonObject,
-	strict: Schema.optional(Schema.Boolean),
-})
-type OpenAIResponsesTool = Schema.Schema.Type<typeof OpenAIResponsesTool>
-
 const OpenAIResponsesToolChoice = Schema.Union([
 	Schema.Literals(['auto', 'none', 'required']),
 	Schema.Struct({ type: Schema.tag('function'), name: Schema.String }),
@@ -132,8 +142,10 @@ const OpenAIResponsesCoreFields = {
 		Schema.Struct({
 			effort: Schema.optional(OpenAIOptions.OpenAIReasoningEffort),
 			summary: Schema.optional(Schema.String),
+			context: Schema.optional(Schema.Literal('all_turns')),
 		}),
 	),
+	parallel_tool_calls: Schema.optional(Schema.Boolean),
 	text: Schema.optional(
 		Schema.Struct({
 			verbosity: Schema.optional(OpenAIOptions.OpenAITextVerbosity),
@@ -429,6 +441,59 @@ const lowerOptions = Effect.fn('OpenAIResponses.lowerOptions')(function* (reques
 	}
 })
 
+export const RESPONSES_LITE_MODELS = new Set(['gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna'])
+
+export const isResponsesLiteModel = (modelId: string): boolean => RESPONSES_LITE_MODELS.has(modelId)
+
+export const prepareResponsesLiteBody = (
+	body: Record<string, unknown>,
+	sessionId?: string,
+): Record<string, unknown> => {
+	if (!Array.isArray(body.input)) throw new Error('Responses Lite requires an input array')
+	if (body.tools !== undefined && !Array.isArray(body.tools)) {
+		throw new Error('Responses Lite requires a tools array')
+	}
+	if (body.instructions !== undefined && typeof body.instructions !== 'string') {
+		throw new Error('Responses Lite requires string instructions')
+	}
+
+	const instructions = body.instructions
+	body.input = [
+		{ type: 'additional_tools', role: 'developer', tools: body.tools ?? [] },
+		...(instructions
+			? [
+					{
+						type: 'message',
+						role: 'developer',
+						content: [{ type: 'input_text', text: instructions }],
+					},
+				]
+			: []),
+		...body.input,
+	]
+	delete body.tools
+	delete body.instructions
+	body.tool_choice = 'auto'
+	body.parallel_tool_calls = false
+	if (sessionId) body.prompt_cache_key = sessionId
+	body.reasoning = {
+		...(ProviderShared.isRecord(body.reasoning) ? body.reasoning : {}),
+		context: 'all_turns',
+	}
+	stripImageDetail(body.input)
+	return body
+}
+
+const stripImageDetail = (input: unknown): void => {
+	if (Array.isArray(input)) {
+		for (const item of input) stripImageDetail(item)
+		return
+	}
+	if (!ProviderShared.isRecord(input)) return
+	if (input.type === 'input_image') delete input.detail
+	for (const value of Object.values(input)) stripImageDetail(value)
+}
+
 const fromRequest = Effect.fn('OpenAIResponses.fromRequest')(function* (request: LLMRequest) {
 	const generation = request.generation
 	return {
@@ -442,6 +507,13 @@ const fromRequest = Effect.fn('OpenAIResponses.fromRequest')(function* (request:
 		top_p: generation?.topP,
 		...(yield* lowerOptions(request)),
 	}
+})
+
+const fromHttpRequest = Effect.fn('OpenAIResponses.fromHttpRequest')(function* (request: LLMRequest) {
+	const body = yield* fromRequest(request)
+	return isResponsesLiteModel(request.model.id)
+		? prepareResponsesLiteBody(body, OpenAIOptions.promptCacheKey(request))
+		: body
 })
 
 // =============================================================================
@@ -875,6 +947,26 @@ export const protocol = Protocol.make({
 	},
 })
 
+const httpProtocol = Protocol.make({
+	id: ADAPTER,
+	body: {
+		schema: OpenAIResponsesBody,
+		from: fromHttpRequest,
+	},
+	stream: {
+		event: Protocol.jsonEvent(OpenAIResponsesEvent),
+		initial: (request) => ({
+			hasFunctionCall: false,
+			tools: ToolStream.empty<string>(),
+			lifecycle: Lifecycle.initial(),
+			reasoningItems: {},
+			store: OpenAIOptions.store(request),
+		}),
+		step,
+		terminal: (event) => TERMINAL_TYPES.has(event.type),
+	},
+})
+
 const endpoint = Endpoint.path<OpenAIResponsesBody>(PATH, { baseURL: DEFAULT_BASE_URL })
 const auth = Auth.none
 
@@ -883,7 +975,7 @@ export const httpTransport = HttpTransport.sseJson.with<OpenAIResponsesBody>()
 export const route = Route.make({
 	id: ADAPTER,
 	provider: 'openai',
-	protocol,
+	protocol: httpProtocol,
 	endpoint,
 	auth,
 	transport: httpTransport,
