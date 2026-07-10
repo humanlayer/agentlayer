@@ -1,6 +1,10 @@
 import { describe, expect, test } from 'bun:test'
 import type { LanguageModelV3CallOptions, LanguageModelV3Prompt } from '@ai-sdk/provider'
-import { webSocketRoute } from '@humanlayer/opencode-llm-vendor/protocols/openai-responses'
+import {
+	isReasoningEffortForModel,
+	prepareResponsesLiteBody,
+	webSocketRoute,
+} from '@humanlayer/opencode-llm-vendor/protocols/openai-responses'
 import * as AuthModule from '@humanlayer/opencode-llm-vendor/route/auth'
 import {
 	type AdapterConfig,
@@ -31,6 +35,29 @@ function makeOptions(overrides?: Partial<LanguageModelV3CallOptions>): LanguageM
 		...overrides,
 	}
 }
+
+describe('GPT-5.6 max reasoning', () => {
+	test.each(['gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna'])('%s accepts max effort', (modelId) => {
+		expect(isReasoningEffortForModel(modelId, 'max')).toBe(true)
+	})
+
+	test('does not enable max effort for older models', () => {
+		expect(isReasoningEffortForModel('gpt-5.4', 'max')).toBe(false)
+	})
+
+	test('Responses Lite preserves max effort and adds all-turns context', () => {
+		const body = prepareResponsesLiteBody({
+			input: [],
+			reasoning: { effort: 'max', summary: 'detailed' },
+		})
+
+		expect(body.reasoning).toEqual({
+			effort: 'max',
+			summary: 'detailed',
+			context: 'all_turns',
+		})
+	})
+})
 
 // ---------------------------------------------------------------------------
 // strictifySchema
