@@ -17,9 +17,9 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version: 22
           registry-url: https://registry.npmjs.org
-      - run: npm install -g npm@latest
+      - run: npm install -g npm@11.18.0
       - name: Get version and npm tag from git tag
         id: version
         run: bun run scripts/release/tag-info.ts
