@@ -10,6 +10,7 @@ import {
 	LLMEvent,
 	type LLMRequest,
 	type ProviderMetadata,
+	ReasoningEffort,
 	type ReasoningPart,
 	type TextPart,
 	type ToolCallPart,
@@ -140,7 +141,7 @@ const OpenAIResponsesCoreFields = {
 	include: optionalArray(OpenAIOptions.OpenAIResponseIncludable),
 	reasoning: Schema.optional(
 		Schema.Struct({
-			effort: Schema.optional(OpenAIOptions.OpenAIReasoningEffort),
+			effort: Schema.optional(ReasoningEffort),
 			summary: Schema.optional(Schema.String),
 			context: Schema.optional(Schema.Literal('all_turns')),
 		}),
@@ -425,7 +426,7 @@ const lowerOptions = Effect.fn('OpenAIResponses.lowerOptions')(function* (reques
 	const store = OpenAIOptions.store(request)
 	const promptCacheKey = OpenAIOptions.promptCacheKey(request)
 	const effort = OpenAIOptions.reasoningEffort(request)
-	if (effort && !OpenAIOptions.isReasoningEffort(effort))
+	if (effort && !isReasoningEffortForModel(request.model.id, effort))
 		return yield* invalid(`OpenAI Responses does not support reasoning effort ${effort}`)
 	const summary = OpenAIOptions.reasoningSummary(request)
 	const include = OpenAIOptions.include(request)
@@ -444,6 +445,9 @@ const lowerOptions = Effect.fn('OpenAIResponses.lowerOptions')(function* (reques
 export const RESPONSES_LITE_MODELS = new Set(['gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna'])
 
 export const isResponsesLiteModel = (modelId: string): boolean => RESPONSES_LITE_MODELS.has(modelId)
+
+export const isReasoningEffortForModel = (modelId: string, effort: ReasoningEffort): boolean =>
+	OpenAIOptions.isReasoningEffort(effort) || (effort === 'max' && isResponsesLiteModel(modelId))
 
 export const prepareResponsesLiteBody = (
 	body: Record<string, unknown>,
