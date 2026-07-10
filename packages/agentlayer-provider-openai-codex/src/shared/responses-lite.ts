@@ -1,5 +1,5 @@
 import { isResponsesLiteModel } from '@humanlayer/opencode-llm-vendor/protocols/openai-responses'
-import { v7 as uuidv7, validate as validateUuid, version as uuidVersion } from 'uuid'
+import { version as uuidVersion, v7 as uuidv7, validate as validateUuid } from 'uuid'
 
 export const CODEX_RESPONSES_LITE_VERSION = '0.144.0'
 export const CODEX_RESPONSES_LITE_HEADER = 'x-openai-internal-codex-responses-lite'
