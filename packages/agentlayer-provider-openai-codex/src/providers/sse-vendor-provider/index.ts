@@ -21,6 +21,11 @@ import { effectStreamToReadableStream } from '../../shared/bridge'
 import { CODEX_API_ENDPOINT, CODEX_DEFAULT_VERSION } from '../../shared/constants'
 import { makeCodexDiagnosticsLayer } from '../../shared/diagnostics'
 import { type AnyLLMEvent, emptyUsage, llmEventToStreamParts } from '../../shared/events'
+import {
+	isResponsesLiteModel,
+	resolveResponsesLiteSessionId,
+	responsesLiteHeaderRecord,
+} from '../../shared/responses-lite'
 import type { CodexDiagnosticsContext, CodexProviderOptions } from '../../shared/types'
 
 // Debug logging gated behind DEBUG_CODEX_SSE=1
@@ -75,6 +80,11 @@ function createSseCodexModel(
 		_testLayers?: Layer.Layer<any>
 	},
 ): LanguageModelV3 {
+	const responsesLite = isResponsesLiteModel(modelId)
+	const sessionId = responsesLite
+		? resolveResponsesLiteSessionId(providerOptions.sessionId)
+		: providerOptions.sessionId
+
 	return {
 		specificationVersion: 'v3',
 		provider: 'codex-sse-vendor',
@@ -161,9 +171,10 @@ function createSseCodexModel(
 			const customHeaders: Record<string, string> = {
 				originator: 'opencode',
 				'User-Agent': buildCodexUserAgent(providerOptions.version),
+				...(responsesLite && sessionId ? responsesLiteHeaderRecord(sessionId) : {}),
 			}
-			if (providerOptions.sessionId) {
-				customHeaders['session-id'] = providerOptions.sessionId
+			if (!responsesLite && sessionId) {
+				customHeaders['session-id'] = sessionId
 			}
 			if (accountId) {
 				customHeaders['ChatGPT-Account-Id'] = accountId
@@ -178,7 +189,7 @@ function createSseCodexModel(
 				route: httpSseRoute,
 				fastMode: providerOptions.fastMode,
 				serviceTier: providerOptions.serviceTier,
-				sessionId: providerOptions.sessionId,
+				sessionId,
 			})
 
 			// 4. Build the streaming Effect pipeline:
