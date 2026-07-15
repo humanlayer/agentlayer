@@ -673,6 +673,30 @@ describe('createCodingSubagentTool', () => {
 		})
 	})
 
+	test('uses bash instead of dedicated search tools for research subagents', async () => {
+		const tool = await createCodingSubagentTool({
+			cwd: '/tmp',
+			model: createMockModel('claude-sonnet-4-5'),
+		})
+		const subagents = getSubagents(tool)
+
+		for (const name of [
+			'rpi:codebase-locator',
+			'rpi:codebase-analyzer',
+			'rpi:codebase-pattern-finder',
+			'web-search-researcher',
+		]) {
+			const subagent = subagents.find((candidate) => candidate.name === name)
+			const tools = getAgentConfig(subagent?.agent ?? {}).tools
+
+			expect(tools?.bash).toBeDefined()
+			expect(tools?.read).toBeDefined()
+			expect(tools?.glob).toBeUndefined()
+			expect(tools?.grep).toBeUndefined()
+			expect(tools?.list).toBeUndefined()
+		}
+	})
+
 	test('includes library-researcher when documentation search keys are available', async () => {
 		const tool = await createCodingSubagentTool({
 			cwd: '/tmp',
