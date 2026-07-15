@@ -10,9 +10,6 @@ import {
 	createBashTool,
 	createClaudeCodingAgentToolset,
 	createCodexCodingAgentToolset,
-	createGlobTool,
-	createGrepTool,
-	createListTool,
 	createReadMultimodalTool,
 	detectModelFamily,
 	type CreateAgentFilesystemHooksOptions,
@@ -293,10 +290,9 @@ export async function createCodingSubagentTool(opts: CreateCodingSubagentToolOpt
 	})
 
 	const webResearcherTools: Record<string, Tool<any, any>> = {
+		bash: createBashTool({ cwd: opts.cwd, env: opts.env }),
 		web_fetch: createWebFetchTool(),
 		read: createReadMultimodalTool({ cwd: opts.cwd, readToolModalities: CODELAYER_READ_TOOL_MODALITIES }),
-		glob: createGlobTool({ cwd: opts.cwd }),
-		grep: createGrepTool({ cwd: opts.cwd }),
 	}
 	if (opts.exaApiKey) webResearcherTools.web_search = createWebSearchTool({ exaApiKey: opts.exaApiKey })
 	const webResearcherAgent = createWebSearchResearcherAgent({
@@ -358,10 +354,8 @@ export async function createCodingSubagentTool(opts: CreateCodingSubagentToolOpt
 			agent: createCodebaseLocatorAgent({
 				model: opts.model,
 				tools: {
+					bash: createBashTool({ cwd: opts.cwd, env: opts.env }),
 					read: createReadMultimodalTool({ cwd: opts.cwd, readToolModalities: CODELAYER_READ_TOOL_MODALITIES }),
-					glob: createGlobTool({ cwd: opts.cwd }),
-					grep: createGrepTool({ cwd: opts.cwd }),
-					list: createListTool({ cwd: opts.cwd }),
 				},
 				system: baseSystem,
 				hooks,
@@ -375,10 +369,8 @@ export async function createCodingSubagentTool(opts: CreateCodingSubagentToolOpt
 			agent: createCodebaseAnalyzerAgent({
 				model: opts.model,
 				tools: {
+					bash: createBashTool({ cwd: opts.cwd, env: opts.env }),
 					read: createReadMultimodalTool({ cwd: opts.cwd, readToolModalities: CODELAYER_READ_TOOL_MODALITIES }),
-					glob: createGlobTool({ cwd: opts.cwd }),
-					grep: createGrepTool({ cwd: opts.cwd }),
-					list: createListTool({ cwd: opts.cwd }),
 				},
 				system: baseSystem,
 				hooks,
@@ -392,10 +384,8 @@ export async function createCodingSubagentTool(opts: CreateCodingSubagentToolOpt
 			agent: createCodebasePatternFinderAgent({
 				model: opts.model,
 				tools: {
+					bash: createBashTool({ cwd: opts.cwd, env: opts.env }),
 					read: createReadMultimodalTool({ cwd: opts.cwd, readToolModalities: CODELAYER_READ_TOOL_MODALITIES }),
-					glob: createGlobTool({ cwd: opts.cwd }),
-					grep: createGrepTool({ cwd: opts.cwd }),
-					list: createListTool({ cwd: opts.cwd }),
 				},
 				system: baseSystem,
 				hooks,

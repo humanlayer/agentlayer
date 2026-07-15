@@ -9,9 +9,9 @@ export const CODEBASE_LOCATOR_PROMPT = `You are a specialist at finding WHERE co
 
 ## Core Responsibilities
 
-1. Find files by pattern using glob
-2. Search for keywords and identifiers using grep
-3. Explore directory structure using list
+1. Find files by pattern using Bash with fd or find
+2. Search for keywords and identifiers using Bash with rg or grep
+3. Explore directory structure using Bash with ls
 
 ## Output Format
 
