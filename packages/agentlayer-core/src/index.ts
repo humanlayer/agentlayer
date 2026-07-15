@@ -1,6 +1,7 @@
 export {
 	Agent,
 	type AgentConfig,
+	type AgentOverrides,
 	type FinishReason,
 	type ProviderOptions,
 	type ProviderOptionsFactory,
