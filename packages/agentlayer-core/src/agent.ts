@@ -21,6 +21,7 @@ import {
 } from './hooks'
 import { type AgentLayerToolOutput, buildToolResultMessage } from './messages'
 import { type ModelKey, ModelProvider } from './models'
+import { sanitizeTextForModelState, sanitizeToolOutputForModelState } from './sanitize-text'
 import type { AgentState, ApprovalDecision, ApprovalHistoryEntry } from './state'
 import type { Step, StepToolResult, StopResult, StopTiming, StopWhen } from './stop-conditions'
 import { shouldStop } from './stop-conditions'
@@ -1025,7 +1026,9 @@ export class Agent<TTools extends Record<string, Tool<any, any>> = Record<string
 
 			if (approvalResult.type === 'deny') {
 				const reason = approvalResult.reason ?? 'Tool execution denied'
-				const output = `The user denied this tool call with the following message: ${reason}`
+				const output = sanitizeTextForModelState(
+					`The user denied this tool call with the following message: ${reason}`,
+				)
 				const message = buildToolResultMessage(tc.toolCallId, tc.toolName, output, false)
 				return {
 					kind: 'denied',
@@ -1064,19 +1067,15 @@ export class Agent<TTools extends Record<string, Tool<any, any>> = Record<string
 			const hookResult = hookChainResult.result
 
 			if (hookResult.type === 'toolResult') {
-				const message = buildToolResultMessage(
-					tc.toolCallId,
-					tc.toolName,
-					hookResult.output,
-					hookResult.isError,
-				)
+				const output = sanitizeToolOutputForModelState(hookResult.output)
+				const message = buildToolResultMessage(tc.toolCallId, tc.toolName, output, hookResult.isError)
 				return {
 					kind: 'toolResult',
 					toolCallId: tc.toolCallId,
 					toolName: tc.toolName,
 					input: tcInput,
 					message,
-					output: hookResult.output,
+					output,
 					isError: hookResult.isError,
 					...(hookChainResult.stateUpdates.length > 0
 						? { hookStateUpdate: hookChainResult.stateUpdates }
@@ -1087,9 +1086,12 @@ export class Agent<TTools extends Record<string, Tool<any, any>> = Record<string
 			if (hookResult.type === 'stop') {
 				const stopOptions: StopOptions = {
 					include: hookResult.include,
-					output: hookResult.output,
+					output:
+						hookResult.output === undefined
+							? undefined
+							: sanitizeToolOutputForModelState(hookResult.output),
 					dropParallel: hookResult.dropParallel,
-					reason: hookResult.reason,
+					reason: hookResult.reason ? sanitizeTextForModelState(hookResult.reason) : undefined,
 				}
 				return {
 					kind: 'hookStop',
@@ -1195,15 +1197,11 @@ export class Agent<TTools extends Record<string, Tool<any, any>> = Record<string
 		hookStateUpdates = [...hookStateUpdates, ...hookChainResult.stateUpdates]
 
 		if (hookChainResult.result.mutatedResult !== undefined) {
+			const mutatedResult = sanitizeToolOutputForModelState(hookChainResult.result.mutatedResult)
 			execResult = {
 				...execResult,
-				output: hookChainResult.result.mutatedResult,
-				message: buildToolResultMessage(
-					tc.toolCallId,
-					tc.toolName,
-					hookChainResult.result.mutatedResult,
-					false,
-				),
+				output: mutatedResult,
+				message: buildToolResultMessage(tc.toolCallId, tc.toolName, mutatedResult, false),
 			}
 		}
 

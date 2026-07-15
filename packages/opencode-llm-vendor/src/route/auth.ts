@@ -1,7 +1,9 @@
 // @ts-nocheck — vendored from opencode, tested upstream under different tsconfig
 import { Config, Effect, Redacted } from 'effect'
+import * as Option from 'effect/Option'
 import { Headers } from 'effect/unstable/http'
 import { AuthenticationReason, InvalidRequestReason, LLMError, type LLMRequest } from '../schema'
+import { type Interface as DiagnosticsInterface, LLMDiagnostics, noopDiagnostics } from './diagnostics'
 
 export class MissingCredentialError extends Error {
 	readonly _tag = 'MissingCredentialError'
@@ -44,7 +46,23 @@ export const isAuth = (input: unknown): input is Auth =>
 const credential = (load: Effect.Effect<Redacted.Redacted, CredentialError>): Credential => {
 	const self: Credential = {
 		load,
-		orElse: (that) => credential(load.pipe(Effect.catch(() => that.load))),
+		orElse: (that) =>
+			credential(
+				load.pipe(
+					Effect.catch((error) =>
+						Effect.flatMap(Effect.serviceOption(LLMDiagnostics.Service), (optDiag) => {
+							const diag: DiagnosticsInterface = Option.getOrElse(optDiag, () => noopDiagnostics)
+							return diag
+								.warning('codex.provider.auth.credential_fallback', {
+									terminal: false,
+									operation: 'Credential.load',
+									errorMessage: error instanceof Error ? error.message : String(error),
+								})
+								.pipe(Effect.flatMap(() => that.load))
+						}),
+					),
+				),
+			),
 		bearer: () => fromCredential(self, (secret) => ({ authorization: `Bearer ${secret}` })),
 		header: (name) => fromCredential(self, (secret) => ({ [name]: secret })),
 		pipe: (f) => f(self),
@@ -57,7 +75,23 @@ const auth = (apply: Auth['apply']): Auth => {
 		apply,
 		andThen: (that) =>
 			auth((input) => apply(input).pipe(Effect.flatMap((headers) => that.apply({ ...input, headers })))),
-		orElse: (that) => auth((input) => apply(input).pipe(Effect.catch(() => that.apply(input)))),
+		orElse: (that) =>
+			auth((input) =>
+				apply(input).pipe(
+					Effect.catch((error) =>
+						Effect.flatMap(Effect.serviceOption(LLMDiagnostics.Service), (optDiag) => {
+							const diag: DiagnosticsInterface = Option.getOrElse(optDiag, () => noopDiagnostics)
+							return diag
+								.warning('codex.provider.auth.fallback', {
+									terminal: false,
+									operation: 'Auth.apply',
+									errorMessage: error instanceof Error ? error.message : String(error),
+								})
+								.pipe(Effect.flatMap(() => that.apply(input)))
+						}),
+					),
+				),
+			),
 		pipe: (f) => f(self),
 	}
 	return self

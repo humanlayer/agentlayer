@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import { z } from 'zod'
 import { Agent, type AgentEvent, defineTool, startState } from '../src'
+import { CODEX_CONTEXT_WINDOWS } from '../src/models'
 import { assistantText, assistantWithToolCall, mockModel, mockStreamingModel, userMessage } from './mocks'
 
 const mockUsage = (input: number, output: number) => ({
@@ -16,6 +17,30 @@ const echoTool = defineTool({
 })
 
 describe('token usage events', () => {
+	test('emits resolved Codex contextWindowLimit when not configured', async () => {
+		const agent = new Agent({
+			model: {
+				...mockModel([assistantText('Done.', { usage: mockUsage(1000, 500) })]),
+				provider: 'codex',
+				modelId: 'gpt-5.5',
+			},
+			tools: {},
+		})
+
+		const run = agent.run({ state: startState([userMessage('go')]) })
+		const tokenEvents: AgentEvent[] = []
+		for await (const event of run) {
+			if (event.type === 'tokenUsage') tokenEvents.push(event)
+		}
+
+		expect(tokenEvents).toHaveLength(1)
+		expect(tokenEvents[0]!.type).toBe('tokenUsage')
+		if (tokenEvents[0]!.type === 'tokenUsage') {
+			expect(tokenEvents[0]!.usage.model).toBe('codex/gpt-5.5')
+			expect(tokenEvents[0]!.usage.contextWindowLimit).toBe(CODEX_CONTEXT_WINDOWS['gpt-5.5'])
+		}
+	})
+
 	test('emits tokenUsage event after each streamText call', async () => {
 		const agent = new Agent({
 			model: mockModel([

@@ -1,5 +1,7 @@
 import { Effect, Stream } from 'effect'
+import * as Option from 'effect/Option'
 import type { Concurrency } from 'effect/Types'
+import { type Interface as DiagnosticsInterface, LLMDiagnostics, noopDiagnostics } from './route/diagnostics'
 import {
 	type ContentPart,
 	type FinishReason,
@@ -295,9 +297,25 @@ const dispatch = (
 
 	return decodeAndExecute(tool, call).pipe(
 		Effect.catchTag('LLM.ToolFailure', (failure) =>
-			Effect.succeed({
-				result: { type: 'error' as const, value: failure.message } satisfies ToolResultValueType,
-				error: failure.error,
+			Effect.flatMap(Effect.serviceOption(LLMDiagnostics.Service), (optDiag) => {
+				const diag: DiagnosticsInterface = Option.getOrElse(optDiag, () => noopDiagnostics)
+				return diag
+					.warning('codex.provider.tool.failure', {
+						terminal: false,
+						toolName: call.name,
+						toolCallId: call.id,
+						operation: 'ToolRuntime.dispatch',
+						failureMessage: failure.message,
+					})
+					.pipe(
+						Effect.as({
+							result: {
+								type: 'error' as const,
+								value: failure.message,
+							} satisfies ToolResultValueType,
+							error: failure.error,
+						}),
+					)
 			}),
 		),
 		Effect.map((result) => ('result' in result ? result : { result })),

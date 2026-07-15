@@ -1,6 +1,7 @@
 import type { Effect, Stream } from 'effect'
 import type { LLMError, LLMRequest } from '../../schema'
 import type { Auth } from '../auth'
+import type { Interface as DiagnosticsInterface } from '../diagnostics'
 import type { Endpoint } from '../endpoint'
 import type { Interface as RequestExecutorInterface } from '../executor'
 import type { Interface as WebSocketExecutorInterface } from './websocket'
@@ -8,6 +9,7 @@ import type { Interface as WebSocketExecutorInterface } from './websocket'
 export interface TransportRuntime {
 	readonly http: RequestExecutorInterface
 	readonly webSocket?: WebSocketExecutorInterface
+	readonly diagnostics?: DiagnosticsInterface
 }
 
 export interface Transport<Body, Prepared, Frame> {

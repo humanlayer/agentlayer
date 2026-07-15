@@ -79,6 +79,13 @@ export function createAgentFilesystemHooks(opts: CreateAgentFilesystemHooksOptio
 export interface CreateAgentFilesystemToolsetOptions {
 	cwd: string
 	readToolModalities?: ReadToolModalities
+	/**
+	 * Extra environment variables to inject into the bash tool's child processes.
+	 * Merged over process.env inside createBashTool (does not replace inherited env).
+	 * Lets a caller give each agent/session an isolated shell env without mutating
+	 * the shared global process.env.
+	 */
+	env?: NodeJS.ProcessEnv
 }
 
 function createFilesystemReadTool(opts: CreateAgentFilesystemToolsetOptions) {
@@ -89,7 +96,7 @@ function createFilesystemReadTool(opts: CreateAgentFilesystemToolsetOptions) {
 
 export function createClaudeAgentFilesystemToolset(opts: CreateAgentFilesystemToolsetOptions) {
 	return {
-		bash: createBashTool({ cwd: opts.cwd }),
+		bash: createBashTool({ cwd: opts.cwd, env: opts.env }),
 		read: createFilesystemReadTool(opts),
 		write: createWriteTool({ cwd: opts.cwd }),
 		edit: createEditTool({ cwd: opts.cwd }),
@@ -101,7 +108,7 @@ export function createClaudeAgentFilesystemToolset(opts: CreateAgentFilesystemTo
 
 export function createCodexAgentFilesystemToolset(opts: CreateAgentFilesystemToolsetOptions) {
 	return {
-		bash: createBashTool({ cwd: opts.cwd }),
+		bash: createBashTool({ cwd: opts.cwd, env: opts.env }),
 		read: createFilesystemReadTool(opts),
 		apply_patch: createApplyPatchTool({ cwd: opts.cwd }),
 		glob: createGlobTool({ cwd: opts.cwd }),
@@ -124,6 +131,13 @@ export interface CreateCodingAgentAuxToolsetOptions {
 	webFetchTool?: Tool<any, any>
 	additionalTools?: Record<string, Tool<any, any>>
 	onChildEvent?: (event: AgentEvent) => void
+	/**
+	 * Extra environment variables for the bash tool's child processes. Forwarded to
+	 * the filesystem toolset (and thus createBashTool) by the combined coding-agent
+	 * toolset builders. Carried on this interface so it is inherited by
+	 * CreateCodingAgentToolsetOptions and downstream subagent option types.
+	 */
+	env?: NodeJS.ProcessEnv
 }
 
 function resolveSkillDirPath(path: string, cwd: string): string {
@@ -184,14 +198,22 @@ export interface CreateCodingAgentToolsetOptions extends CreateCodingAgentAuxToo
 
 export async function createClaudeCodingAgentToolset(opts: CreateCodingAgentToolsetOptions) {
 	return {
-		...createClaudeAgentFilesystemToolset({ cwd: opts.cwd, readToolModalities: opts.readToolModalities }),
+		...createClaudeAgentFilesystemToolset({
+			cwd: opts.cwd,
+			readToolModalities: opts.readToolModalities,
+			env: opts.env,
+		}),
 		...(await createCodingAgentAuxToolset(opts)),
 	} as const
 }
 
 export async function createCodexCodingAgentToolset(opts: CreateCodingAgentToolsetOptions) {
 	return {
-		...createCodexAgentFilesystemToolset({ cwd: opts.cwd, readToolModalities: opts.readToolModalities }),
+		...createCodexAgentFilesystemToolset({
+			cwd: opts.cwd,
+			readToolModalities: opts.readToolModalities,
+			env: opts.env,
+		}),
 		...(await createCodingAgentAuxToolset(opts)),
 	} as const
 }

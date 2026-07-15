@@ -25,6 +25,17 @@ describe('createCodexResponsesProvider', () => {
 		expect(model.modelId).toBe('gpt-5.5')
 	})
 
+	it('languageModel reports a codex-prefixed provider for registry discovery', () => {
+		const authStore = createMemoryAuthStore({
+			[CODEX_PROVIDER_ID]: { kind: 'api', apiKey: 'test-key' },
+		})
+		const provider = createCodexResponsesProvider({ authStore })
+
+		const model = provider.languageModel('gpt-5.5')
+
+		expect(model.provider).toBe('codex.responses')
+	})
+
 	describe('custom fetch wrapper', () => {
 		it('rewrites URL to CODEX_API_ENDPOINT for /v1/responses', async () => {
 			const capturedRequests: { url: string; init?: RequestInit }[] = []

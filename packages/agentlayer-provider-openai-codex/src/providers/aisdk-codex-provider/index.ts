@@ -7,11 +7,12 @@ import {
 	CODEX_API_ENDPOINT,
 	CODEX_DEFAULT_VERSION,
 	CODEX_FAST_SERVICE_TIER,
+	CODEX_HEADER_TIMEOUT_MS,
 	DEFAULT_CHUNK_TIMEOUT_MS,
 } from '../../shared/constants'
 import { normalizeCodexServiceTier } from '../../shared/service-tier'
 import { wrapSSE } from '../../shared/sse'
-import type { CodexProviderOptions } from '../../shared/types'
+import type { CodexDiagnosticRecord, CodexProviderOptions } from '../../shared/types'
 
 export interface CodexResponsesProviderOptions extends CodexProviderOptions {
 	/**
@@ -20,6 +21,13 @@ export interface CodexResponsesProviderOptions extends CodexProviderOptions {
 	 * @default 120000 (2 minutes)
 	 */
 	chunkTimeout?: number | false
+	/**
+	 * Timeout in milliseconds for receiving the initial response headers from
+	 * the server. If headers are not received within this window, the request
+	 * is aborted. Set to 0 or false to disable.
+	 * @default 10000 (10 seconds)
+	 */
+	headerTimeout?: number | false
 }
 
 /**
@@ -34,9 +42,30 @@ export function createCodexResponsesProvider(options: CodexResponsesProviderOpti
 	const fetchFn: CodexFetchLike = options.fetch ?? globalThis.fetch
 	const now = options.now ?? Date.now
 	const chunkTimeout = options.chunkTimeout === false ? 0 : (options.chunkTimeout ?? DEFAULT_CHUNK_TIMEOUT_MS)
+	const headerTimeout = options.headerTimeout === false ? 0 : (options.headerTimeout ?? CODEX_HEADER_TIMEOUT_MS)
+	const diagnostics = options.diagnostics
+
+	const emit = (event: string, severity: CodexDiagnosticRecord['severity'], metadata: Record<string, unknown>) => {
+		diagnostics?.onEvent({
+			event,
+			severity,
+			transport: 'aisdk_responses',
+			annotations: diagnostics.annotations,
+			metadata,
+		})
+	}
 
 	const codexFetch: CodexFetchLike = async (input, init): Promise<Response> => {
-		const auth = await resolveCodexAuth(authStore, providerId, fetchFn, now)
+		let auth: Awaited<ReturnType<typeof resolveCodexAuth>>
+		try {
+			auth = await resolveCodexAuth(authStore, providerId, fetchFn, now)
+		} catch (error) {
+			emit('codex.provider.auth.failed', 'error', {
+				terminal: true,
+				error: error instanceof Error ? error.message : String(error),
+			})
+			throw error
+		}
 
 		const headers = new Headers(init?.headers)
 
@@ -50,7 +79,7 @@ export function createCodexResponsesProvider(options: CodexResponsesProviderOpti
 		headers.set('User-Agent', buildCodexUserAgent(version))
 
 		if (options.sessionId) {
-			headers.set('session_id', options.sessionId)
+			headers.set('session-id', options.sessionId)
 		}
 
 		if (auth.kind === 'oauth' && auth.accountId) {
@@ -136,19 +165,63 @@ export function createCodexResponsesProvider(options: CodexResponsesProviderOpti
 		// Set up chunk timeout abort controller if enabled
 		const chunkAbortCtl = chunkTimeout > 0 ? new AbortController() : undefined
 
-		// Combine signals: caller's signal + chunk timeout signal
+		// Set up header timeout abort controller if enabled
+		const headerAbortCtl = headerTimeout > 0 ? new AbortController() : undefined
+		let headerTimeoutId: ReturnType<typeof setTimeout> | undefined
+		if (headerAbortCtl) {
+			headerTimeoutId = setTimeout(() => {
+				emit('codex.provider.fetch.header_timeout', 'error', {
+					terminal: true,
+					timeoutMs: headerTimeout,
+					url: finalUrl,
+				})
+				headerAbortCtl.abort()
+			}, headerTimeout)
+		}
+
+		// Combine signals: caller's signal + chunk timeout + header timeout
 		const signals: AbortSignal[] = []
 		if (init?.signal) signals.push(init.signal)
 		if (chunkAbortCtl) signals.push(chunkAbortCtl.signal)
+		if (headerAbortCtl) signals.push(headerAbortCtl.signal)
 
 		const combinedSignal =
 			signals.length === 0 ? undefined : signals.length === 1 ? signals[0] : AbortSignal.any(signals)
 
-		const res = await fetchFn(finalUrl, { ...init, headers, body, signal: combinedSignal })
+		let res: Response
+		try {
+			res = await fetchFn(finalUrl, { ...init, headers, body, signal: combinedSignal })
+		} catch (error) {
+			const isAbort = error instanceof DOMException && error.name === 'AbortError'
+			emit('codex.provider.fetch.failed', 'error', {
+				terminal: true,
+				error: error instanceof Error ? error.message : String(error),
+				isAbort,
+				url: finalUrl,
+			})
+			throw error
+		} finally {
+			if (headerTimeoutId) clearTimeout(headerTimeoutId)
+		}
+
+		if (!res.ok) {
+			emit('codex.provider.fetch.http_error', 'error', {
+				terminal: false,
+				status: res.status,
+				statusText: res.statusText,
+				url: finalUrl,
+			})
+		}
 
 		// Wrap SSE responses with per-chunk timeout watchdog
 		if (!chunkAbortCtl) return res
-		return wrapSSE(res, chunkTimeout, chunkAbortCtl)
+		return wrapSSE(res, chunkTimeout, chunkAbortCtl, () => {
+			emit('codex.provider.fetch.chunk_timeout', 'error', {
+				terminal: true,
+				timeoutMs: chunkTimeout,
+				url: finalUrl,
+			})
+		})
 	}
 
 	const openai = createOpenAI({
@@ -160,7 +233,11 @@ export function createCodexResponsesProvider(options: CodexResponsesProviderOpti
 		specificationVersion: 'v3',
 
 		languageModel(modelId: string) {
-			return openai.responses(modelId)
+			const model = openai.responses(modelId)
+			return new Proxy(model, {
+				get: (target, prop, receiver) =>
+					prop === 'provider' ? 'codex.responses' : Reflect.get(target, prop, receiver),
+			})
 		},
 
 		embeddingModel(modelId: string) {

@@ -331,7 +331,7 @@ export function buildCodexHeaders(args: {
 	headers.set('User-Agent', buildCodexUserAgent(args.version ?? CODEX_DEFAULT_VERSION))
 
 	if (args.sessionId) {
-		headers.set('session_id', args.sessionId)
+		headers.set('session-id', args.sessionId)
 	}
 
 	if (args.auth.kind === 'oauth' && args.auth.accountId) {

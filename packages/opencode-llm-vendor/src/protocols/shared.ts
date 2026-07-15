@@ -1,7 +1,9 @@
 import { Buffer } from 'node:buffer'
 import { Effect, Schema, Stream } from 'effect'
+import * as Option from 'effect/Option'
 import * as Sse from 'effect/unstable/encoding/Sse'
 import { Headers, HttpClientRequest } from 'effect/unstable/http'
+import { type Interface as DiagnosticsInterface, LLMDiagnostics, noopDiagnostics } from '../route/diagnostics'
 import {
 	type ContentPart,
 	InvalidProviderOutputReason,
@@ -95,7 +97,18 @@ export const parseJson = (route: string, input: string, message: string) =>
 	Effect.try({
 		try: () => decodeJson(input),
 		catch: () => eventError(route, message, input),
-	})
+	}).pipe(
+		Effect.tapError((error) =>
+			Effect.flatMap(Effect.serviceOption(LLMDiagnostics.Service), (optDiag) => {
+				const diag: DiagnosticsInterface = Option.getOrElse(optDiag, () => noopDiagnostics)
+				return diag.warning('codex.provider.parse.json_failed', {
+					terminal: false,
+					route,
+					operation: 'parseJson',
+				})
+			}),
+		),
+	)
 
 /**
  * Join the `text` field of a list of parts with newlines. Used by routes
@@ -162,7 +175,18 @@ export const sseFraming = (bytes: Stream.Stream<Uint8Array, LLMError>): Stream.S
 	bytes.pipe(
 		Stream.decodeText(),
 		Stream.pipeThroughChannel(Sse.decode()),
-		Stream.catchTag('Retry', () => Stream.empty),
+		Stream.catchTag('Retry', () =>
+			Stream.unwrap(
+				Effect.flatMap(Effect.serviceOption(LLMDiagnostics.Service), (optDiag) => {
+					const diag: DiagnosticsInterface = Option.getOrElse(optDiag, () => noopDiagnostics)
+					return diag
+						.info('codex.provider.sse.retry_control_dropped', {
+							operation: 'sseFraming',
+						})
+						.pipe(Effect.as(Stream.empty))
+				}),
+			),
+		),
 		Stream.filter((event) => event.data.length > 0 && event.data !== '[DONE]'),
 		Stream.map((event) => event.data),
 	)

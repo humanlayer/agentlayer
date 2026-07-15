@@ -33,6 +33,39 @@ export interface ModelLimits {
 
 export type ModelKey = `${string}/${string}`
 
+/**
+ * Effective Codex context window, per model.
+ *
+ * Codex reserves 5% of the raw backend window for system prompt, tool overhead, and output:
+ * gpt-5.4/5.5 use 272,000 raw tokens; gpt-5.6 uses 372,000 raw tokens.
+ */
+export const CODEX_CONTEXT_WINDOWS = {
+	'gpt-5.6-sol': 353_400,
+	'gpt-5.6-terra': 353_400,
+	'gpt-5.6-luna': 353_400,
+	'gpt-5.5': 258_400,
+	'gpt-5.4': 258_400,
+	'gpt-5.4-mini': 258_400,
+} as const
+
+export type CodexModel = keyof typeof CODEX_CONTEXT_WINDOWS
+
+/** Unrecognized Codex models predate GPT-5.6's larger window, or are newer than this build. */
+export function getCodexContextWindow(modelId: string): number {
+	return CODEX_CONTEXT_WINDOWS[modelId as CodexModel] ?? CODEX_CONTEXT_WINDOWS['gpt-5.5']
+}
+
+const PROVIDER_LIMIT_OVERRIDES: Record<string, Partial<ModelLimits>> = {}
+
+function getProviderLimitOverride(modelKey: ModelKey): Partial<ModelLimits> | undefined {
+	const [rawProviderKey, modelId] = modelKey.split('/', 2)
+	const baseKey = rawProviderKey?.split('.')[0]
+	if (!baseKey || !modelId) return undefined
+
+	if (baseKey.startsWith('codex')) return { context: getCodexContextWindow(modelId) }
+	return PROVIDER_LIMIT_OVERRIDES[baseKey]
+}
+
 export class ModelProvider {
 	public static readonly API_URL = 'https://models.dev/api.json'
 	private modelsData: Record<string, ModelsDevProvider> | undefined
@@ -97,10 +130,11 @@ export class ModelProvider {
 	public getModelLimits(modelKey: ModelKey): ModelLimits | undefined {
 		const entry = this.getModelInfo(modelKey)
 		if (!entry?.limit?.context || !entry?.limit?.output) return undefined
+		const override = getProviderLimitOverride(modelKey)
 		return {
-			context: entry.limit.context,
-			output: entry.limit.output,
-			input: entry.limit.input,
+			context: override?.context ?? entry.limit.context,
+			output: override?.output ?? entry.limit.output,
+			input: override?.input ?? entry.limit.input,
 		}
 	}
 

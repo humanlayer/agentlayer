@@ -137,6 +137,7 @@ describe('createFileAuthStore', () => {
 		})
 
 		expect(await store.get('codex')).toEqual({ kind: 'oauth', accessToken: 'codex-access' })
+		expect(await store.get('codex.responses')).toEqual({ kind: 'oauth', accessToken: 'codex-access' })
 		expect(await store.get('copilot')).toEqual({ kind: 'oauth', accessToken: 'copilot-access' })
 		expect(await store.get('copilot-enterprise')).toEqual({
 			kind: 'oauth',

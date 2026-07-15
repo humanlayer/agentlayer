@@ -94,6 +94,7 @@ export { getPendingToolCalls } from './pending'
 export * from './prompts'
 export { Renderer, type RendererOptions, renderFinish } from './render'
 export { CodingRenderer, type CodingRendererOptions } from './render-coding'
+export { sanitizeTextForModelState, sanitizeToolOutputForModelState } from './sanitize-text'
 export {
 	type AgentPath,
 	type AgentState,

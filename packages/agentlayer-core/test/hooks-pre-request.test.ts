@@ -22,6 +22,7 @@ import { simulateReadableStream } from 'ai/test'
 import { z } from 'zod'
 import type { PreRequestHook } from '../src'
 import { Agent, createPreRequestHook, defineTool, startState } from '../src'
+import { CODEX_CONTEXT_WINDOWS } from '../src/models'
 import { assistantText, assistantWithToolCall, mockModel, userMessage } from './mocks'
 
 // ── Spy model helper ──────────────────────────────────────────────────────────
@@ -600,6 +601,29 @@ describe('preRequest — token context', () => {
 		await agent.run({ state: startState([userMessage('go')]) }).result
 
 		expect(capturedLimit).toBe(200_000)
+	})
+
+	test('hook receives resolved Codex contextWindowLimit when not configured', async () => {
+		let capturedLimit: number | undefined
+
+		const hook = createPreRequestHook((ctx) => {
+			capturedLimit = ctx.contextWindowLimit
+			return ctx.next()
+		})
+
+		const agent = new Agent({
+			model: {
+				...mockModel([assistantText('Done.')]),
+				provider: 'codex.responses',
+				modelId: 'gpt-5.5',
+			},
+			tools: { echo: echoTool },
+			hooks: { preRequest: [hook] },
+		})
+
+		await agent.run({ state: startState([userMessage('go')]) }).result
+
+		expect(capturedLimit).toBe(CODEX_CONTEXT_WINDOWS['gpt-5.5'])
 	})
 
 	test('contextWindowLimit is undefined when not configured', async () => {

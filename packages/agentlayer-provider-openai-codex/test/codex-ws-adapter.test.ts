@@ -1,6 +1,10 @@
 import { describe, expect, test } from 'bun:test'
 import type { LanguageModelV3CallOptions, LanguageModelV3Prompt } from '@ai-sdk/provider'
-import { webSocketRoute } from '@humanlayer/opencode-llm-vendor/protocols/openai-responses'
+import {
+	isReasoningEffortForModel,
+	prepareResponsesLiteBody,
+	webSocketRoute,
+} from '@humanlayer/opencode-llm-vendor/protocols/openai-responses'
 import * as AuthModule from '@humanlayer/opencode-llm-vendor/route/auth'
 import {
 	type AdapterConfig,
@@ -31,6 +35,29 @@ function makeOptions(overrides?: Partial<LanguageModelV3CallOptions>): LanguageM
 		...overrides,
 	}
 }
+
+describe('GPT-5.6 max reasoning', () => {
+	test.each(['gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna'])('%s accepts max effort', (modelId) => {
+		expect(isReasoningEffortForModel(modelId, 'max')).toBe(true)
+	})
+
+	test('does not enable max effort for older models', () => {
+		expect(isReasoningEffortForModel('gpt-5.4', 'max')).toBe(false)
+	})
+
+	test('Responses Lite preserves max effort and adds all-turns context', () => {
+		const body = prepareResponsesLiteBody({
+			input: [],
+			reasoning: { effort: 'max', summary: 'detailed' },
+		})
+
+		expect(body.reasoning).toEqual({
+			effort: 'max',
+			summary: 'detailed',
+			context: 'all_turns',
+		})
+	})
+})
 
 // ---------------------------------------------------------------------------
 // strictifySchema
@@ -325,6 +352,39 @@ describe('convertPromptMessages', () => {
 		const part = messages[0]!.content[0] as { type: 'tool-result'; result: { type: string; value: unknown } }
 		expect(part.result.type).toBe('json')
 		expect(part.result.value).toEqual({ status: 200, body: 'ok' })
+	})
+
+	test('converts multimodal tool result content to vendor media parts', () => {
+		const prompt: LanguageModelV3Prompt = [
+			{
+				role: 'tool',
+				content: [
+					{
+						type: 'tool-result',
+						toolCallId: 'call_image',
+						toolName: 'read',
+						output: {
+							type: 'content',
+							value: [
+								{ type: 'text', text: 'Read image.png' },
+								{ type: 'image-data', data: 'iVBORw0KGgo=', mediaType: 'image/png' },
+							],
+						},
+					},
+				],
+			},
+		]
+
+		const { messages } = convertPromptMessages(prompt)
+
+		const part = messages[0]!.content[0] as { type: 'tool-result'; result: { type: string; value: unknown } }
+		expect(part.result).toEqual({
+			type: 'content',
+			value: [
+				{ type: 'text', text: 'Read image.png' },
+				{ type: 'media', mediaType: 'image/png', data: 'iVBORw0KGgo=' },
+			],
+		})
 	})
 })
 

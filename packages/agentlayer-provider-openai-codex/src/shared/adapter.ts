@@ -20,7 +20,9 @@ import {
 	SystemPart,
 	ToolChoice,
 	ToolDefinition,
+	type ToolResultContentPart,
 	type ToolResultPart,
+	type ToolResultValue,
 } from '@humanlayer/opencode-llm-vendor/schema'
 import {
 	CODEX_EVENT_IDLE_TIMEOUT_MS,
@@ -29,6 +31,10 @@ import {
 	CODEX_FIRST_EVENT_RETRY_MAX_DELAY_MS,
 	CODEX_FIRST_EVENT_TIMEOUT_MS,
 	CODEX_FIRST_EVENT_TIMEOUT_RETRIES,
+	CODEX_HEADER_TIMEOUT_MS,
+	CODEX_MAX_STREAM_DURATION_MS,
+	CODEX_PRODUCTIVE_EVENT_IDLE_WARNING_MS,
+	CODEX_PRODUCTIVE_FIRST_EVENT_TIMEOUT_MS,
 } from './constants'
 import { strictifySchema } from './schema'
 import { normalizeCodexServiceTier } from './service-tier'
@@ -46,6 +52,7 @@ export interface AdapterConfig {
 	route: AnyRoute
 	fastMode?: boolean
 	serviceTier?: string
+	sessionId?: string
 }
 
 // ---------------------------------------------------------------------------
@@ -71,6 +78,10 @@ export function buildCodexModel(modelId: string, auth: Auth, baseURL: string, ro
 			firstEventRetryBaseDelayMs: CODEX_FIRST_EVENT_RETRY_BASE_DELAY_MS,
 			firstEventRetryMaxDelayMs: CODEX_FIRST_EVENT_RETRY_MAX_DELAY_MS,
 			eventIdleTimeoutMs: CODEX_EVENT_IDLE_TIMEOUT_MS,
+			productiveFirstEventTimeoutMs: CODEX_PRODUCTIVE_FIRST_EVENT_TIMEOUT_MS,
+			productiveEventIdleWarningMs: CODEX_PRODUCTIVE_EVENT_IDLE_WARNING_MS,
+			headerTimeoutMs: CODEX_HEADER_TIMEOUT_MS,
+			maxStreamDurationMs: CODEX_MAX_STREAM_DURATION_MS,
 		},
 	})
 
@@ -206,7 +217,7 @@ export function convertPromptMessages(prompt: LanguageModelV3Prompt): {
 /**
  * Convert an AI SDK tool result output to the vendor's ToolResultValue format.
  */
-function convertToolResultValue(output: unknown): { type: 'text' | 'json'; value: unknown } {
+function convertToolResultValue(output: unknown): ToolResultValue {
 	if (output && typeof output === 'object' && 'type' in output) {
 		const typed = output as { type: string; value: unknown }
 		if (typed.type === 'text') {
@@ -215,9 +226,33 @@ function convertToolResultValue(output: unknown): { type: 'text' | 'json'; value
 		if (typed.type === 'json') {
 			return { type: 'json', value: typed.value }
 		}
+		if (typed.type === 'content' && Array.isArray(typed.value)) {
+			const value = typed.value.flatMap(convertToolResultContentItem)
+			if (value.length > 0) return { type: 'content', value }
+		}
 	}
 	// fallback: encode as JSON text
 	return { type: 'text', value: JSON.stringify(output) }
+}
+
+function convertToolResultContentItem(item: unknown): ToolResultContentPart[] {
+	if (!item || typeof item !== 'object' || !('type' in item)) return []
+	const typed = item as Record<string, unknown> & { type: string }
+
+	if (typed.type === 'text' && typeof typed.text === 'string') {
+		return [{ type: 'text', text: typed.text }]
+	}
+
+	if (typed.type === 'image-data' && typeof typed.data === 'string' && typeof typed.mediaType === 'string') {
+		return [{ type: 'media', mediaType: typed.mediaType, data: typed.data }]
+	}
+
+	if (typed.type === 'image-url' && typeof typed.url === 'string') {
+		const mediaType = typeof typed.mediaType === 'string' ? typed.mediaType : 'image/png'
+		return [{ type: 'media', mediaType, data: typed.url }]
+	}
+
+	return []
 }
 
 // ---------------------------------------------------------------------------
@@ -271,7 +306,7 @@ export function mapProviderOptions(
 	const reasoningSummary = (providerOptions?.reasoningSummary as string | undefined) ?? 'detailed'
 	const store = false // Codex always uses store: false
 	const include = (providerOptions?.include as string[] | undefined) ?? ['reasoning.encrypted_content']
-	const promptCacheKey = providerOptions?.promptCacheKey as string | undefined
+	const promptCacheKey = (providerOptions?.promptCacheKey as string | undefined) ?? config.sessionId
 
 	// service_tier normalization (DQ4)
 	let serviceTier: string | undefined
@@ -370,6 +405,7 @@ export function convertCallOptionsToLLMRequest(
 	})
 
 	return new LLMRequest({
+		id: crypto.randomUUID(),
 		model,
 		system: [], // system messages go via instructions, not input items
 		messages,
