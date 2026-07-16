@@ -559,12 +559,13 @@ describe('createCodelayerAgent', () => {
 		expect(config.tools?.read).toBeDefined()
 		expect(config.tools?.edit).toBeDefined()
 		expect(config.tools?.write).toBeDefined()
-		expect(config.tools?.list).toBeDefined()
-		expect(config.tools?.grep).toBeDefined()
-		expect(config.tools?.glob).toBeDefined()
 		expect(config.tools?.web_fetch).toBeDefined()
 		expect(config.tools?.agent).toBeDefined()
 		expect(config.system?.length).toBeGreaterThan(0)
+		// glob, grep, list removed - agent uses bash for file discovery
+		expect(config.tools?.list).toBeUndefined()
+		expect(config.tools?.grep).toBeUndefined()
+		expect(config.tools?.glob).toBeUndefined()
 	})
 
 	test('hard-codes multimodal read for standard CodeLayer agents', async () => {
