@@ -21,9 +21,6 @@ import {
 import { createApplyPatchTool } from './tools/apply-patch'
 import { createBashTool } from './tools/bash'
 import { createEditTool } from './tools/edit'
-import { createGlobTool } from './tools/glob'
-import { createGrepTool } from './tools/grep'
-import { createListTool } from './tools/list'
 import { createReadTool } from './tools/read'
 import { createReadMultimodalTool } from './tools/read-multimodal'
 import { createSkillToolFromDirs, createSkillToolFromRepoDirs, type SkillDirEntry } from './tools/skill'
@@ -100,9 +97,6 @@ export function createClaudeAgentFilesystemToolset(opts: CreateAgentFilesystemTo
 		read: createFilesystemReadTool(opts),
 		write: createWriteTool({ cwd: opts.cwd }),
 		edit: createEditTool({ cwd: opts.cwd }),
-		glob: createGlobTool({ cwd: opts.cwd }),
-		grep: createGrepTool({ cwd: opts.cwd }),
-		list: createListTool({ cwd: opts.cwd }),
 	} as const
 }
 
@@ -111,9 +105,6 @@ export function createCodexAgentFilesystemToolset(opts: CreateAgentFilesystemToo
 		bash: createBashTool({ cwd: opts.cwd, env: opts.env }),
 		read: createFilesystemReadTool(opts),
 		apply_patch: createApplyPatchTool({ cwd: opts.cwd }),
-		glob: createGlobTool({ cwd: opts.cwd }),
-		grep: createGrepTool({ cwd: opts.cwd }),
-		list: createListTool({ cwd: opts.cwd }),
 	} as const
 }
 
