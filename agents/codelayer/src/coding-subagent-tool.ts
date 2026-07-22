@@ -9,6 +9,7 @@ import {
 	createAgentSystemPrompt,
 	createBashTool,
 	createClaudeCodingAgentToolset,
+	createCodingAgentAuxToolset,
 	createCodexCodingAgentToolset,
 	createReadMultimodalTool,
 	detectModelFamily,
@@ -203,7 +204,7 @@ export async function createCodingSubagentTool(opts: CreateCodingSubagentToolOpt
 						systemPromptAdditions: opts.systemPromptAdditions,
 					})
 
-	const skillTool = opts.skillTool
+	const { skill: skillTool } = await createCodingAgentAuxToolset(opts)
 	const generalPurposeTools =
 		family === 'codex'
 		? await createCodexCodingAgentToolset({
@@ -239,6 +240,7 @@ export async function createCodingSubagentTool(opts: CreateCodingSubagentToolOpt
 		tools: {
 			bash: createBashTool({ cwd: opts.cwd, env: opts.env }),
 			read: createReadMultimodalTool({ cwd: opts.cwd, readToolModalities: CODELAYER_READ_TOOL_MODALITIES }),
+			skill: skillTool,
 		},
 		system: baseSystem,
 		hooks,
@@ -293,6 +295,7 @@ export async function createCodingSubagentTool(opts: CreateCodingSubagentToolOpt
 		bash: createBashTool({ cwd: opts.cwd, env: opts.env }),
 		web_fetch: createWebFetchTool(),
 		read: createReadMultimodalTool({ cwd: opts.cwd, readToolModalities: CODELAYER_READ_TOOL_MODALITIES }),
+		skill: skillTool,
 	}
 	if (opts.exaApiKey) webResearcherTools.web_search = createWebSearchTool({ exaApiKey: opts.exaApiKey })
 	const webResearcherAgent = createWebSearchResearcherAgent({
@@ -306,6 +309,7 @@ export async function createCodingSubagentTool(opts: CreateCodingSubagentToolOpt
 
 	const libraryResearcherTools: Record<string, Tool<any, any>> = {
 		web_fetch: createWebFetchTool(),
+		skill: skillTool,
 	}
 	if (opts.exaApiKey || opts.context7ApiKey) {
 		libraryResearcherTools.codesearch = createCodeSearchTool({
@@ -356,6 +360,7 @@ export async function createCodingSubagentTool(opts: CreateCodingSubagentToolOpt
 				tools: {
 					bash: createBashTool({ cwd: opts.cwd, env: opts.env }),
 					read: createReadMultimodalTool({ cwd: opts.cwd, readToolModalities: CODELAYER_READ_TOOL_MODALITIES }),
+					skill: skillTool,
 				},
 				system: baseSystem,
 				hooks,
@@ -371,6 +376,7 @@ export async function createCodingSubagentTool(opts: CreateCodingSubagentToolOpt
 				tools: {
 					bash: createBashTool({ cwd: opts.cwd, env: opts.env }),
 					read: createReadMultimodalTool({ cwd: opts.cwd, readToolModalities: CODELAYER_READ_TOOL_MODALITIES }),
+					skill: skillTool,
 				},
 				system: baseSystem,
 				hooks,
@@ -386,6 +392,7 @@ export async function createCodingSubagentTool(opts: CreateCodingSubagentToolOpt
 				tools: {
 					bash: createBashTool({ cwd: opts.cwd, env: opts.env }),
 					read: createReadMultimodalTool({ cwd: opts.cwd, readToolModalities: CODELAYER_READ_TOOL_MODALITIES }),
+					skill: skillTool,
 				},
 				system: baseSystem,
 				hooks,
