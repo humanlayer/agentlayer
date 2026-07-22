@@ -12,6 +12,37 @@ bunx codelayer --provider codex --rpi
 
 Auth: reads `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `FIREWORKS_API_KEY` from the environment, falling back to AgentLayer's file-based auth store (`~/.humanlayer/agent-sdk`) for `anthropic`, `codex`, `copilot`, and `firepass`. `EXA_API_KEY` enables web search for research sub-agents.
 
+### Custom Codex Responses endpoint
+
+CodeLayer can send the existing `codex` choice to a standard OpenAI-compatible Responses endpoint. Set both required values in the daemon environment:
+
+```bash
+CODELAYER_CODEX_BASE_URL=https://resource.services.ai.azure.com/openai/v1
+CODELAYER_CODEX_API_KEY=your-api-key
+```
+
+The client uses `Authorization: Bearer <key>` by default. Azure resource keys use the `api-key` header instead:
+
+```bash
+CODELAYER_CODEX_API_KEY_HEADER=api-key
+```
+
+`CODELAYER_CODEX_API_KEY_HEADER` may name another valid HTTP header for a compatible endpoint. When set, CodeLayer removes the SDK's automatic `Authorization` header and sends the raw key only in the named header.
+
+The base URL may be either an API base, such as `https://resource.services.ai.azure.com/openai/v1`, or the full `https://resource.services.ai.azure.com/openai/v1/responses` endpoint. CodeLayer strips trailing slashes and adds `/responses` exactly once. It requires HTTPS except for loopback hosts such as `localhost`, `127.0.0.1`, and `[::1]`. URLs cannot contain a username, password, query string, or fragment.
+
+An optional wire-model setting supports endpoints whose deployment name differs from the model selected in CodeLayer:
+
+```bash
+CODELAYER_CODEX_MODEL=my-azure-deployment
+```
+
+The selected CodeLayer model still controls prompts, reasoning, context, and cost data. Only the `model` value sent on the wire changes. Custom requests keep reasoning effort and summary, stateless `store: false`, encrypted reasoning content, and prompt caching. They omit fast mode and `service_tier`.
+
+Setting any optional override without both `CODELAYER_CODEX_BASE_URL` and `CODELAYER_CODEX_API_KEY` fails before CodeLayer reads Codex file auth or sends a request. Restart the Riptide daemon after changing any override value. When all override values are absent, CodeLayer keeps its current Codex file auth and `CODEX_PROVIDER=sse|websockets|aisdk_responses` behavior.
+
+Custom endpoint failures flow through the existing Codex diagnostics sink. The CLI writes them to its Codex diagnostics log; Riptide writes them to daemon logs and captures error events in Sentry. Diagnostic records omit API keys and response bodies.
+
 Key flags (see `createCodelayerCommand` in `src/command.ts`): `-p/--provider`, `-m/--model`, `--thinking <level>`, `--subagent-thinking <level>`, `--rlm` (orchestrator mode with a generic subagent tool), `--rpi` (nudges the system prompt to prefer delegating to the RPI specialist sub-agents, which are otherwise always present in the roster), `--tars` (adds the TARS persona), `--provider-option key=value` (repeatable; e.g. `codex.reasoningEffort=xhigh`, `anthropic.thinking=enabled`).
 
 ## Programmatic usage
