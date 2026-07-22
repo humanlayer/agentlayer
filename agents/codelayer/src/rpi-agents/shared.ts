@@ -8,6 +8,7 @@ export interface SpecialistAgentOptions {
 	hooks?: AgentConfig['hooks']
 	stopWhen?: AgentConfig['stopWhen']
 	providerOptions?: AgentConfig['providerOptions']
+	promptCacheKey?: string
 }
 
 export function createSpecialistAgent(agentPrompt: string, opts: SpecialistAgentOptions): Agent {
@@ -18,5 +19,6 @@ export function createSpecialistAgent(agentPrompt: string, opts: SpecialistAgent
 		hooks: opts.hooks,
 		stopWhen: opts.stopWhen ?? [doomLoop(3)],
 		providerOptions: opts.providerOptions,
+		promptCacheKey: opts.promptCacheKey,
 	})
 }

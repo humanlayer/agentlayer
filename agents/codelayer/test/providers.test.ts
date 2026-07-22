@@ -2,6 +2,7 @@ import { afterEach, describe, expect, mock, spyOn, test } from 'bun:test'
 import type { LanguageModelV3 } from '@ai-sdk/provider'
 import { buildProviderOptions } from '../src/agent'
 import {
+	captureResponseUsage,
 	createCustomCodexResponsesModel,
 	readCodexResponsesOverride,
 	resolveModel,
@@ -77,6 +78,122 @@ function errorMessage(run: () => unknown): string {
 		return error instanceof Error ? error.message : String(error)
 	}
 }
+
+function responsesPayload(id: string, cacheRead: number, cacheWrite: number) {
+	return {
+		id,
+		object: 'response',
+		created_at: 1,
+		model: 'wire-model',
+		status: 'completed',
+		output: [],
+		parallel_tool_calls: true,
+		tool_choice: 'auto',
+		tools: [],
+		usage: {
+			input_tokens: 100,
+			input_tokens_details: { cached_tokens: cacheRead, cache_write_tokens: cacheWrite },
+			output_tokens: 10,
+			output_tokens_details: { reasoning_tokens: 0 },
+			total_tokens: 110,
+		},
+	}
+}
+
+function sseResponse(payload: ReturnType<typeof responsesPayload>, delayMs = 0): Response {
+	const encoder = new TextEncoder()
+	const stream = new ReadableStream<Uint8Array>({
+		async start(controller) {
+			if (delayMs > 0) await Bun.sleep(delayMs)
+			controller.enqueue(encoder.encode(`event: response.completed\ndata: ${JSON.stringify({ type: 'response.completed', response: payload })}\n\n`))
+			controller.enqueue(encoder.encode('data: [DONE]\n\n'))
+			controller.close()
+		},
+	})
+	return new Response(stream, { headers: { 'content-type': 'text/event-stream' } })
+}
+
+function cacheUsageEvent(cacheWrite: unknown): string {
+	return JSON.stringify({
+		type: 'response.completed',
+		response: { usage: { input_tokens_details: { cache_write_tokens: cacheWrite } } },
+	})
+}
+
+function chunkedSseResponse(bytes: Uint8Array, chunkSizes: number[], init?: ResponseInit): Response {
+	let offset = 0
+	return new Response(new ReadableStream<Uint8Array>({
+		start(controller) {
+			for (const size of chunkSizes) {
+				controller.enqueue(bytes.slice(offset, offset + size))
+				offset += size
+			}
+			if (offset < bytes.length) controller.enqueue(bytes.slice(offset))
+			controller.close()
+		},
+	}), {
+		...init,
+		headers: { 'content-type': 'text/event-stream', ...init?.headers },
+	})
+}
+
+describe('captureResponseUsage SSE parsing', () => {
+	test.each(['\n', '\r\n', '\r'] as const)('accepts %j lines split across byte chunks', async (newline) => {
+		const source = new TextEncoder().encode(`data: ${cacheUsageEvent(23)}${newline}${newline}`)
+		const usage = {}
+		const response = await captureResponseUsage(
+			chunkedSseResponse(source, Array.from({ length: source.length }, () => 1)),
+			usage,
+		)
+
+		expect(new Uint8Array(await response.arrayBuffer())).toEqual(source)
+		expect(usage).toEqual({ cacheWriteTokens: 23 })
+	})
+
+	test('joins multiline data and accepts blank lines with mixed endings', async () => {
+		const event = cacheUsageEvent(31)
+		const split = event.indexOf('"response"')
+		const source = new TextEncoder().encode(`data: ${event.slice(0, split)}\r\ndata: ${event.slice(split)}\r\n\r`)
+		const usage = {}
+		const response = await captureResponseUsage(chunkedSseResponse(source, [7, split + 1, 1, 1]), usage)
+
+		await response.arrayBuffer()
+		expect(usage).toEqual({ cacheWriteTokens: 31 })
+	})
+
+	test('ignores malformed cache write counts', async () => {
+		const source = new TextEncoder().encode(`data: ${cacheUsageEvent('many')}\n\n`)
+		const usage = {}
+		const response = await captureResponseUsage(chunkedSseResponse(source, [source.length - 1, 1]), usage)
+
+		await response.arrayBuffer()
+		expect(usage).toEqual({})
+	})
+
+	test('captures a final event without a blank line', async () => {
+		const source = new TextEncoder().encode(`data: ${cacheUsageEvent(47)}`)
+		const usage = {}
+		const response = await captureResponseUsage(chunkedSseResponse(source, [2, source.length - 3]), usage)
+
+		await response.arrayBuffer()
+		expect(usage).toEqual({ cacheWriteTokens: 47 })
+	})
+
+	test('preserves response bytes, status, status text, and headers', async () => {
+		const source = new TextEncoder().encode(`: keep this exactly\r\ndata: ${cacheUsageEvent(5)}\r\n\r\n`)
+		const usage = {}
+		const response = await captureResponseUsage(chunkedSseResponse(source, [1, 2, 3, 5, 8], {
+			status: 206,
+			statusText: 'Partial Content',
+			headers: { 'x-request-id': 'request-123' },
+		}), usage)
+
+		expect(response.status).toBe(206)
+		expect(response.statusText).toBe('Partial Content')
+		expect(response.headers.get('x-request-id')).toBe('request-123')
+		expect(new Uint8Array(await response.arrayBuffer())).toEqual(source)
+	})
+})
 
 describe('readCodexResponsesOverride', () => {
 	test('returns no override only when all override settings are absent', () => {
@@ -268,6 +385,48 @@ describe('createCustomCodexResponsesModel', () => {
 
 		expect(model.specificationVersion).toBe('v3')
 		expect(model.supportedUrls).toBeDefined()
+	})
+
+	test('restores cache writes and uncached input from non-streaming JSON', async () => {
+		const model = createCustomCodexResponsesModel({
+			override: override(),
+			selectedModelId: 'gpt-5.6',
+			fetch: mock(async () => new Response(JSON.stringify(responsesPayload('json', 30, 20)), {
+				headers: { 'content-type': 'application/json' },
+			})),
+		}) as LanguageModelV3
+
+		const result = await model.doGenerate({
+			prompt: [{ role: 'user', content: [{ type: 'text', text: 'test' }] }],
+		})
+
+		expect(result.usage.inputTokens).toEqual({ total: 100, noCache: 50, cacheRead: 30, cacheWrite: 20 })
+	})
+
+	test('keeps overlapping stream cache usage scoped to its request', async () => {
+		let request = 0
+		const model = createCustomCodexResponsesModel({
+			override: override(),
+			selectedModelId: 'gpt-5.6',
+			fetch: mock(async () => {
+				request++
+				return request === 1
+					? sseResponse(responsesPayload('slow', 11, 17), 30)
+					: sseResponse(responsesPayload('fast', 23, 29))
+			}),
+		}) as LanguageModelV3
+		const run = async () => {
+			const result = await model.doStream({
+				prompt: [{ role: 'user', content: [{ type: 'text', text: 'test' }] }],
+			})
+			let usage
+			for await (const part of result.stream) if (part.type === 'finish') usage = part.usage.inputTokens
+			return usage
+		}
+
+		const [slow, fast] = await Promise.all([run(), run()])
+		expect(slow).toEqual({ total: 100, noCache: 72, cacheRead: 11, cacheWrite: 17 })
+		expect(fast).toEqual({ total: 100, noCache: 48, cacheRead: 23, cacheWrite: 29 })
 	})
 
 	test('reports request failures through diagnostics without exposing the API key or response body', async () => {

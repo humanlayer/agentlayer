@@ -28,7 +28,7 @@ import { shouldStop } from './stop-conditions'
 import { extractUsage, getModelKey, type TokenUsage, TokenUsageAccumulator } from './token-usage'
 
 export type ProviderOptions = Parameters<typeof streamText>[0]['providerOptions']
-export type ProviderOptionsFactory = (ctx: { runId: string }) => ProviderOptions
+export type ProviderOptionsFactory = (ctx: { runId: string; promptCacheKey?: string }) => ProviderOptions
 type StreamPart = TextStreamPart<any>
 
 function isReasoningOnlyAssistantMessage(message: ModelMessage): boolean {
@@ -62,6 +62,8 @@ export interface AgentConfig<TTools extends Record<string, Tool<any, any>> = Rec
 	model: LanguageModel
 	system?: string | string[]
 	tools: TTools
+	/** Stable prompt cache scope used when a run does not supply one. */
+	promptCacheKey?: string
 	toolChoice?: ToolChoice<TTools>
 	providerOptions?: ProviderOptions | ProviderOptionsFactory
 	maxSteps?: number
@@ -110,6 +112,7 @@ export interface RunOptions {
 	state: AgentState
 	signal?: AbortSignal
 	stream?: boolean
+	promptCacheKey?: string
 }
 
 function convertTools(tools: Record<string, Tool<any, any>>) {
@@ -254,6 +257,7 @@ export class Agent<TTools extends Record<string, Tool<any, any>> = Record<string
 	private onStop: AgentConfig['onStop']
 	private onApprovalRequested: AgentConfig['onApprovalRequested']
 	private contextWindowLimit: number | undefined
+	private promptCacheKey: string
 
 	private modelProvider: ModelProvider
 
@@ -263,6 +267,7 @@ export class Agent<TTools extends Record<string, Tool<any, any>> = Record<string
 		this.tools = config.tools
 		this.toolChoice = config.toolChoice
 		this.providerOptions = config.providerOptions
+		this.promptCacheKey = config.promptCacheKey ?? crypto.randomUUID()
 		this.maxStepsLimit = config.maxSteps
 		this.stopWhen = config.stopWhen
 		this.aiSdkTools = convertTools(config.tools)
@@ -281,8 +286,10 @@ export class Agent<TTools extends Record<string, Tool<any, any>> = Record<string
 		return agentRun
 	}
 
-	private resolveProviderOptions(runId: string): ProviderOptions {
-		return typeof this.providerOptions === 'function' ? this.providerOptions({ runId }) : this.providerOptions
+	private resolveProviderOptions(runId: string, promptCacheKey?: string): ProviderOptions {
+		return typeof this.providerOptions === 'function'
+			? this.providerOptions({ runId, promptCacheKey })
+			: this.providerOptions
 	}
 
 	private async executeLoop(options: RunOptions, agentRun: AgentRun): Promise<void> {
@@ -297,7 +304,8 @@ export class Agent<TTools extends Record<string, Tool<any, any>> = Record<string
 		// Mutable sub-agent state map — updated when sub-agents pause/resume
 		const subAgents: Record<string, AgentState> = { ...(options.state.subAgents ?? {}) }
 		const sink = new MessageSink(allMessages, newMessages, agentRun)
-		const providerOptions = this.resolveProviderOptions(crypto.randomUUID())
+		const promptCacheKey = options.promptCacheKey ?? this.promptCacheKey
+		const providerOptions = this.resolveProviderOptions(crypto.randomUUID(), promptCacheKey)
 
 		// Token usage tracking — ephemeral to this run
 		// Initialize models.dev cache — await so contextWindowLimit can resolve
@@ -350,6 +358,7 @@ export class Agent<TTools extends Record<string, Tool<any, any>> = Record<string
 				toolState,
 				subAgents,
 				agentRun,
+				promptCacheKey,
 				getContextWindowTokens: () => contextWindowTokens,
 				getContextWindowLimit: () => this.contextWindowLimit,
 			}

@@ -56,6 +56,24 @@ export type SubAgentConfig = ResumableSubAgentConfig | EphemeralSubAgentConfig
 const subagentStateSchema = z.record(z.string(), z.any())
 type SubagentStateMap = Record<string, AgentState>
 
+const CHILD_CACHE_SUFFIX_LENGTH = 28
+const MAX_PROMPT_CACHE_KEY_LENGTH = 64
+
+async function sha256Base64Url(value: string): Promise<string> {
+	const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value)))
+	let binary = ''
+	for (const byte of digest) binary += String.fromCharCode(byte)
+	return btoa(binary).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '')
+}
+
+export async function deriveChildPromptCacheKey(parentKey: string, toolCallId: string): Promise<string> {
+	const maxParentLength = MAX_PROMPT_CACHE_KEY_LENGTH - CHILD_CACHE_SUFFIX_LENGTH
+	const safeParent =
+		parentKey.length <= maxParentLength ? parentKey : (await sha256Base64Url(parentKey)).slice(0, maxParentLength)
+	const suffix = (await sha256Base64Url(toolCallId)).slice(0, CHILD_CACHE_SUFFIX_LENGTH)
+	return `${safeParent}${suffix}`
+}
+
 // ── Factory ──────────────────────────────────────────────────────────────────
 
 export function createSubagentsTool(opts: { agents: SubAgentConfig[]; onChildEvent?: (event: AgentEvent) => void }) {
@@ -119,7 +137,16 @@ export function createSubagentsTool(opts: { agents: SubAgentConfig[]; onChildEve
 			}
 
 			// Run the child agent
-			const childRun = config.agent.run({ state: childState, signal: ctx.signal, stream: ctx.stream })
+			const promptCacheKey =
+				ctx.promptCacheKey && ctx.toolCallId
+					? await deriveChildPromptCacheKey(ctx.promptCacheKey, ctx.toolCallId)
+					: undefined
+			const childRun = config.agent.run({
+				state: childState,
+				signal: ctx.signal,
+				stream: ctx.stream,
+				promptCacheKey,
+			})
 			let result: RunResult
 
 			// Use awaitSubAgent for event forwarding if available, otherwise fallback

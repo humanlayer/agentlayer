@@ -20,7 +20,7 @@ const bashTool = defineTool({
 })
 
 describe('streaming events', () => {
-	test('providerOptions factory is resolved once per agent run', async () => {
+	test('selects one stable effective prompt cache key per Agent', async () => {
 		const seenKeys: string[] = []
 		let factoryCalls = 0
 		const usage = {
@@ -51,18 +51,71 @@ describe('streaming events', () => {
 		const agent = new Agent({
 			model,
 			tools: { echo: echoTool },
-			providerOptions: () => {
+			providerOptions: ({ promptCacheKey }) => {
 				factoryCalls++
-				return { openai: { promptCacheKey: crypto.randomUUID() } }
+				return { openai: { promptCacheKey } }
+			},
+		})
+
+		const first = await agent.run({ state: startState([userMessage('go')]) }).result
+		await agent.run({
+			state: { ...first.state, messages: [...first.state.messages, userMessage('go again')] },
+		}).result
+
+		expect(factoryCalls).toBe(2)
+		expect(seenKeys).toHaveLength(2)
+		expect(seenKeys[0]).toBeString()
+		expect(seenKeys[1]).toBe(seenKeys[0])
+
+		const configured = new Agent({
+			model,
+			tools: { echo: echoTool },
+			promptCacheKey: 'configured-key',
+			providerOptions: ({ promptCacheKey }) => ({ openai: { promptCacheKey } }),
+		})
+		await configured.run({ state: startState([userMessage('configured')]) }).result
+		await configured.run({ state: startState([userMessage('override')]), promptCacheKey: 'run-key' }).result
+
+		const other = new Agent({
+			model,
+			tools: { echo: echoTool },
+			providerOptions: ({ promptCacheKey }) => ({ openai: { promptCacheKey } }),
+		})
+		await other.run({ state: startState([userMessage('other')]) }).result
+
+		expect(seenKeys.slice(2)).toEqual(['configured-key', 'run-key', expect.any(String)])
+		expect(seenKeys[4]).not.toBe(seenKeys[0])
+	})
+
+	test('passes the same effective prompt cache key to provider options and tools', async () => {
+		let providerKey: string | undefined
+		let toolKey: string | undefined
+		const inspect = defineTool({
+			name: 'inspect',
+			description: 'Inspect context',
+			input: z.object({}),
+			execute: async (_input, ctx) => {
+				toolKey = ctx.promptCacheKey
+				return 'ok'
+			},
+		})
+		const agent = new Agent({
+			model: mockStreamingModel([
+				assistantWithToolCalls({ toolName: 'inspect', input: {} }),
+				assistantText('done'),
+			]),
+			tools: { inspect },
+			promptCacheKey: 'shared-key',
+			providerOptions: ({ promptCacheKey }) => {
+				providerKey = promptCacheKey
+				return {}
 			},
 		})
 
 		await agent.run({ state: startState([userMessage('go')]) }).result
-		await agent.run({ state: startState([userMessage('go again')]) }).result
 
-		expect(factoryCalls).toBe(2)
-		expect(seenKeys).toHaveLength(2)
-		expect(seenKeys[1]).not.toBe(seenKeys[0])
+		expect(providerKey).toBe('shared-key')
+		expect(toolKey).toBe(providerKey)
 	})
 
 	test('stream=true emits root text events in order and preserves final transcript parity', async () => {

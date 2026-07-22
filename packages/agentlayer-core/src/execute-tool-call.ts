@@ -22,6 +22,8 @@ export interface ExecuteToolCallContext {
 	subAgents?: Record<string, AgentState>
 	/** The parent AgentRun — used for wiring awaitSubAgent (event forwarding + activeChildren). */
 	agentRun?: AgentRun
+	/** Stable cache scope inherited by child agents. */
+	promptCacheKey?: string
 	/** Returns the current estimated context window tokens. */
 	getContextWindowTokens?: () => number
 	/** Returns the context window token limit for the current model. */
@@ -96,6 +98,7 @@ export async function executeToolCall(tc: ToolCallRef, ctx: ExecuteToolCallConte
 		getContextWindowLimit: ctx.getContextWindowLimit ?? (() => undefined),
 		// Sub-agent integration
 		toolCallId: tc.toolCallId,
+		promptCacheKey: ctx.promptCacheKey,
 		pauseForSubAgent: (agentId: string, childState: AgentState): SubAgentPauseResult => {
 			return { type: 'subAgentPause', agentId, childState }
 		},

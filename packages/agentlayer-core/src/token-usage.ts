@@ -94,11 +94,14 @@ export class TokenUsageAccumulator {
 
 		for (const [modelKey, usage] of Object.entries(this.byModel)) {
 			const pricing = this.pricingLookup?.(modelKey as ModelKey)
+			const cacheReadTokens = Math.min(Math.max(0, usage.cacheReadTokens), usage.inputTokens)
+			const cacheWriteTokens = Math.min(Math.max(0, usage.cacheWriteTokens), usage.inputTokens - cacheReadTokens)
+			const uncachedInputTokens = usage.inputTokens - cacheReadTokens - cacheWriteTokens
 			const estimatedCostUsd = pricing
-				? (usage.inputTokens * pricing.input) / 1_000_000 +
+				? (uncachedInputTokens * pricing.input) / 1_000_000 +
 					(usage.outputTokens * pricing.output) / 1_000_000 +
-					(usage.cacheReadTokens * (pricing.cacheRead ?? 0)) / 1_000_000 +
-					(usage.cacheWriteTokens * (pricing.cacheWrite ?? 0)) / 1_000_000
+					(cacheReadTokens * (pricing.cacheRead ?? pricing.input)) / 1_000_000 +
+					(cacheWriteTokens * (pricing.cacheWrite ?? pricing.input)) / 1_000_000
 				: undefined
 
 			byModel[modelKey] = { ...usage, estimatedCostUsd }

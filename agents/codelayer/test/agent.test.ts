@@ -406,30 +406,64 @@ describe('createCodelayerAgent', () => {
 		})
 	})
 
-	test('generates a fresh run-scoped prompt cache key for CodeLayer provider options', () => {
+	test('uses a unique stable fallback prompt cache key per factory', () => {
 		const model = createMockModel('gpt-5.5')
 		const factory = createCodelayerProviderOptionsFactory(model)
+		const otherFactory = createCodelayerProviderOptionsFactory(model)
 
 		const first = factory({ runId: 'parent' })?.openai as { promptCacheKey?: string }
 		const second = factory({ runId: 'subagent' })?.openai as { promptCacheKey?: string }
+		const other = otherFactory({ runId: 'other' })?.openai as { promptCacheKey?: string }
 
 		expect(first.promptCacheKey).toBeString()
-		expect(second.promptCacheKey).toBeString()
-		expect(first.promptCacheKey).not.toBe(second.promptCacheKey)
+		expect(first.promptCacheKey).toBe(second.promptCacheKey)
+		expect(first.promptCacheKey).not.toBe(other.promptCacheKey)
 	})
 
-	test('derives explicit prompt cache key overrides per CodeLayer provider options run', () => {
+	test('prefers the run key, then configured override, then stable fallback', () => {
 		const model = createMockModel('gpt-5.5')
 		const factory = createCodelayerProviderOptionsFactory(model, {
 			codex: { promptCacheKey: 'session-abc-123' },
 		})
 
-		const first = factory({ runId: 'parent' })?.openai as { promptCacheKey?: string }
-		const second = factory({ runId: 'subagent' })?.openai as { promptCacheKey?: string }
+		const runKey = factory({ runId: 'first', promptCacheKey: 'run-session' })?.openai as {
+			promptCacheKey?: string
+		}
+		const configured = factory({ runId: 'second' })?.openai as { promptCacheKey?: string }
+		const fallback = createCodelayerProviderOptionsFactory(model)({ runId: 'third' })?.openai as {
+			promptCacheKey?: string
+		}
 
-		expect(first.promptCacheKey?.startsWith('session-abc-123-')).toBe(true)
-		expect(second.promptCacheKey?.startsWith('session-abc-123-')).toBe(true)
-		expect(first.promptCacheKey).not.toBe(second.promptCacheKey)
+		expect(runKey.promptCacheKey).toBe('run-session')
+		expect(configured.promptCacheKey).toBe('session-abc-123')
+		expect(fallback.promptCacheKey).toBeString()
+		expect(fallback.promptCacheKey).not.toBe(configured.promptCacheKey)
+	})
+
+	test('bounds overlong explicit, configured, and run prompt cache keys', () => {
+		const model = createMockModel('gpt-5.5')
+		const longKey = 'explicit-key-'.repeat(20)
+		const configuredFactory = createCodelayerProviderOptionsFactory(model, {
+			codex: { promptCacheKey: longKey },
+		})
+		const explicitFactory = createCodelayerProviderOptionsFactory(model, {
+			codex: { promptCacheKey: longKey },
+		})
+		const runFactory = createCodelayerProviderOptionsFactory(model)
+		const configured = configuredFactory({ runId: 'configured' })?.openai as { promptCacheKey: string }
+		const explicit = explicitFactory({ runId: 'explicit' })?.openai as { promptCacheKey: string }
+		const run = runFactory({ runId: 'run', promptCacheKey: `${longKey}-run` })?.openai as {
+			promptCacheKey: string
+		}
+
+		expect(configured.promptCacheKey).toHaveLength(43)
+		expect(explicit.promptCacheKey).toBe(configured.promptCacheKey)
+		expect(run.promptCacheKey.length).toBeLessThanOrEqual(64)
+		expect(
+			(runFactory({ runId: 'uuid', promptCacheKey: '019f8ace-744b-7b97-8b4f-7e5b1ac44a87' })?.openai as {
+				promptCacheKey: string
+			}).promptCacheKey,
+		).toBe('019f8ace-744b-7b97-8b4f-7e5b1ac44a87')
 	})
 
 	test('includes reasoning.encrypted_content in include by default', () => {

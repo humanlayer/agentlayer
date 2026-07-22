@@ -1,4 +1,5 @@
 import type { LanguageModel, JSONValue } from 'ai'
+import { createHash } from 'node:crypto'
 import { Agent, doomLoop, tarsPersona, type AgentConfig, type ProviderOptionsFactory, type Tool } from '@humanlayer/agentlayer-core'
 import {
 	createAgentFilesystemHooks,
@@ -109,6 +110,7 @@ export interface CodelayerProviderOptions extends Record<string, Record<string, 
 		fastMode?: boolean
 		serviceTier?: string | null
 		forceReasoning?: boolean
+		promptCacheKey?: string
 	}
 	copilot: {
 		reasoningEffort?: ReasoningEffort
@@ -231,12 +233,10 @@ export function buildProviderOptions(
 	}
 }
 
-function withRunScopedPromptCacheKey(
+function withPromptCacheKey(
 	overrides: CodelayerProviderOptionOverrides | undefined,
+	promptCacheKey: string,
 ): CodelayerProviderOptionOverrides {
-	const baseKey = overrides?.codex?.promptCacheKey
-	const promptCacheKey = baseKey ? `${baseKey}-${crypto.randomUUID()}` : crypto.randomUUID()
-
 	return {
 		...(overrides ?? {}),
 		codex: {
@@ -246,11 +246,26 @@ function withRunScopedPromptCacheKey(
 	}
 }
 
+const MAX_PROMPT_CACHE_KEY_LENGTH = 64
+
+function boundPromptCacheKey(promptCacheKey: string): string {
+	if (promptCacheKey.length <= MAX_PROMPT_CACHE_KEY_LENGTH) return promptCacheKey
+	return createHash('sha256').update(promptCacheKey).digest('base64url').slice(0, MAX_PROMPT_CACHE_KEY_LENGTH)
+}
+
 export function createCodelayerProviderOptionsFactory(
 	model: LanguageModel,
 	overrides: CodelayerProviderOptionOverrides = {},
 ): ProviderOptionsFactory {
-	return () => buildProviderOptions(model, withRunScopedPromptCacheKey(overrides))
+	const fallbackPromptCacheKey = crypto.randomUUID()
+	return ({ promptCacheKey }) =>
+		buildProviderOptions(
+			model,
+			withPromptCacheKey(
+				overrides,
+				boundPromptCacheKey(promptCacheKey ?? overrides.codex?.promptCacheKey ?? fallbackPromptCacheKey),
+			),
+		)
 }
 
 export const LOW_ANTHROPIC_BUDGET = 2048
@@ -351,6 +366,7 @@ export async function createCodelayerAgent(opts: CodelayerAgentOptions): Promise
 		shellEnv,
 	} = opts
 	const modelFamily = detectModelFamily(model)
+	const promptCacheKey = providerOptionOverrides?.codex?.promptCacheKey
 	const providerOptions = createCodelayerProviderOptionsFactory(model, providerOptionOverrides)
 	const subagentProviderOptions = createCodelayerProviderOptionsFactory(
 		model,
@@ -378,6 +394,7 @@ export async function createCodelayerAgent(opts: CodelayerAgentOptions): Promise
 			hooks,
 			providerOptions: subagentProviderOptions,
 			outlineImplementerProviderOptions: providerOptions,
+			promptCacheKey,
 			systemPromptAdditions: personaPromptAdditions,
 		}))
 
@@ -428,6 +445,7 @@ export async function createCodelayerAgent(opts: CodelayerAgentOptions): Promise
 			hooks: mergedHooks,
 			stopWhen: [doomLoop(3)],
 			providerOptions,
+			promptCacheKey,
 		})
 	}
 
@@ -477,6 +495,7 @@ export async function createCodelayerAgent(opts: CodelayerAgentOptions): Promise
 		hooks: mergedHooks,
 		stopWhen: [doomLoop(3)],
 		providerOptions,
+		promptCacheKey,
 	})
 }
 

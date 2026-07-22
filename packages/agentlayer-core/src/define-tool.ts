@@ -105,6 +105,9 @@ export interface ToolContext {
 	 */
 	toolCallId?: string
 
+	/** Stable prompt cache scope for this agent run. */
+	promptCacheKey?: string
+
 	/**
 	 * Signal that this tool is pausing because a child agent needs approval.
 	 * Returns a sentinel that the tool should `return` — the loop will detect it

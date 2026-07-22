@@ -57,6 +57,7 @@ export interface CreateCodingSubagentToolOptions
 	stopWhen?: AgentConfig['stopWhen']
 	providerOptions?: AgentConfig['providerOptions']
 	outlineImplementerProviderOptions?: AgentConfig['providerOptions']
+	promptCacheKey?: string
 }
 
 async function fetchExaCodeSearch(input: CodeSearchInput, apiKey: string, timeoutMs: number): Promise<string | null> {
@@ -171,6 +172,7 @@ function createChildAgent(opts: {
 	hooks: AgentConfig['hooks']
 	stopWhen: AgentConfig['stopWhen']
 	providerOptions?: AgentConfig['providerOptions']
+	promptCacheKey?: string
 }): Agent {
 	return new Agent({
 		model: opts.model,
@@ -179,6 +181,7 @@ function createChildAgent(opts: {
 		hooks: opts.hooks,
 		stopWhen: opts.stopWhen,
 		providerOptions: opts.providerOptions,
+		promptCacheKey: opts.promptCacheKey,
 	})
 }
 
@@ -233,6 +236,7 @@ export async function createCodingSubagentTool(opts: CreateCodingSubagentToolOpt
 		hooks,
 		stopWhen,
 		providerOptions: opts.providerOptions,
+		promptCacheKey: opts.promptCacheKey,
 	})
 
 	const bashAgent = createBashSpecialistAgent({
@@ -246,6 +250,7 @@ export async function createCodingSubagentTool(opts: CreateCodingSubagentToolOpt
 		hooks,
 		stopWhen,
 		providerOptions: opts.providerOptions,
+		promptCacheKey: opts.promptCacheKey,
 	})
 
 	const implementerTools: Record<string, Tool<any, any>> = family === 'codex'
@@ -281,6 +286,7 @@ export async function createCodingSubagentTool(opts: CreateCodingSubagentToolOpt
 		hooks,
 		stopWhen,
 		providerOptions: opts.providerOptions,
+		promptCacheKey: opts.promptCacheKey,
 	})
 	const outlineImplementerAgent = createOutlineImplementerAgent({
 		model: opts.model,
@@ -289,6 +295,7 @@ export async function createCodingSubagentTool(opts: CreateCodingSubagentToolOpt
 		hooks,
 		stopWhen,
 		providerOptions: opts.outlineImplementerProviderOptions ?? opts.providerOptions,
+		promptCacheKey: opts.promptCacheKey,
 	})
 
 	const webResearcherTools: Record<string, Tool<any, any>> = {
@@ -305,6 +312,7 @@ export async function createCodingSubagentTool(opts: CreateCodingSubagentToolOpt
 		hooks,
 		stopWhen,
 		providerOptions: opts.providerOptions,
+		promptCacheKey: opts.promptCacheKey,
 	})
 
 	const libraryResearcherTools: Record<string, Tool<any, any>> = {
@@ -327,6 +335,7 @@ export async function createCodingSubagentTool(opts: CreateCodingSubagentToolOpt
 					hooks,
 					stopWhen,
 					providerOptions: opts.providerOptions,
+					promptCacheKey: opts.promptCacheKey,
 				})
 			: undefined
 
@@ -366,6 +375,7 @@ export async function createCodingSubagentTool(opts: CreateCodingSubagentToolOpt
 				hooks,
 				stopWhen,
 				providerOptions: opts.providerOptions,
+				promptCacheKey: opts.promptCacheKey,
 			}),
 		},
 		{
@@ -382,6 +392,7 @@ export async function createCodingSubagentTool(opts: CreateCodingSubagentToolOpt
 				hooks,
 				stopWhen,
 				providerOptions: opts.providerOptions,
+				promptCacheKey: opts.promptCacheKey,
 			}),
 		},
 		{
@@ -398,6 +409,7 @@ export async function createCodingSubagentTool(opts: CreateCodingSubagentToolOpt
 				hooks,
 				stopWhen,
 				providerOptions: opts.providerOptions,
+				promptCacheKey: opts.promptCacheKey,
 			}),
 		},
 		{
