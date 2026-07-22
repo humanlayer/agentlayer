@@ -6,6 +6,7 @@ import type { ModelMessage } from 'ai'
 import { z } from 'zod'
 import { Agent, type AgentEvent, defineTool, getAllPendingApprovals, startState, withApprovals } from '../src'
 import { createSubagentsTool } from '../src/tools'
+import { deriveChildPromptCacheKey } from '../src/tools/subagent'
 import {
 	assistantText,
 	assistantWithToolCall,
@@ -17,6 +18,29 @@ import {
 } from './mocks'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
+
+describe('subagent prompt cache keys', () => {
+	test('keeps UUID parents intact and derives stable distinct 28-character suffixes', async () => {
+		const parent = '019f8ace-744b-7b97-8b4f-7e5b1ac44a87'
+		const first = await deriveChildPromptCacheKey(parent, 'call-one')
+		const replay = await deriveChildPromptCacheKey(parent, 'call-one')
+		const second = await deriveChildPromptCacheKey(parent, 'call-two')
+
+		expect(first).toBe(replay)
+		expect(first).not.toBe(second)
+		expect(first.startsWith(parent)).toBe(true)
+		expect(first.slice(parent.length)).toBe('LVmC-KrzY82nW4KA9Qh5N0U0rjbx')
+		expect(first).toHaveLength(64)
+	})
+
+	test('bounds child keys for generic long parent keys', async () => {
+		for (const parent of ['', 'short', 'x'.repeat(36), 'x'.repeat(64), 'x'.repeat(200)]) {
+			const key = await deriveChildPromptCacheKey(parent, 'call-one')
+			expect(key.length).toBeLessThanOrEqual(64)
+			expect(key).toMatch(/^[A-Za-z0-9_-]+$/)
+		}
+	})
+})
 
 /** Extract all tool-result output values from messages for a given tool name. */
 function getToolResultValues(messages: ModelMessage[], toolName: string): string[] {
@@ -252,6 +276,7 @@ describe('createSubagentsTool', () => {
 	})
 
 	test('approval + re-run resumes child, preserves all messages, and completes', async () => {
+		const childCacheKeys: string[] = []
 		const childAgent = new Agent({
 			model: mockModel([
 				assistantWithToolCall('dangerous', { value: 'test' }),
@@ -260,6 +285,10 @@ describe('createSubagentsTool', () => {
 			tools: { dangerous: approvedTool },
 			hooks: {
 				approval: [(ctx) => (ctx.toolName === 'dangerous' ? ctx.ask({ message: 'Approve?' }) : ctx.next())],
+			},
+			providerOptions: ({ promptCacheKey }) => {
+				childCacheKeys.push(promptCacheKey ?? '')
+				return {}
 			},
 		})
 
@@ -307,6 +336,9 @@ describe('createSubagentsTool', () => {
 		// Second run — child resumes and completes
 		const result2 = await parentAgent.run({ state: approvedState }).result
 		expect(result2.finishReason).toBe('complete')
+		expect(childCacheKeys).toHaveLength(2)
+		expect(childCacheKeys[0]).toHaveLength(64)
+		expect(childCacheKeys[1]).toBe(childCacheKeys[0])
 
 		// The subagent tool result should contain the child's post-approval output
 		const subagentResults = getToolResultValues(result2.state.messages, 'subagent')

@@ -39,6 +39,125 @@ type CodexResponsesFetch = (
 	init?: RequestInit,
 ) => Promise<Response>
 
+export interface RawCacheUsage {
+	cacheWriteTokens?: number
+}
+
+function captureCacheUsage(value: unknown, usage: RawCacheUsage): void {
+	if (typeof value !== 'object' || value === null) return
+	const record = value as Record<string, unknown>
+	const response = typeof record.response === 'object' && record.response !== null
+		? record.response as Record<string, unknown>
+		: record
+	const rawUsage = response.usage
+	if (typeof rawUsage !== 'object' || rawUsage === null) return
+	const details = (rawUsage as Record<string, unknown>).input_tokens_details
+	if (typeof details !== 'object' || details === null) return
+	const cacheWriteTokens = (details as Record<string, unknown>).cache_write_tokens
+	if (typeof cacheWriteTokens === 'number' && Number.isFinite(cacheWriteTokens) && cacheWriteTokens >= 0) {
+		usage.cacheWriteTokens = cacheWriteTokens
+	}
+}
+
+function captureSseBlock(block: string, usage: RawCacheUsage): void {
+	const data = block.split(/\r\n|\r|\n/)
+		.filter((line) => line.startsWith('data:'))
+		.map((line) => line.slice(5).trimStart())
+		.join('\n')
+	if (data.length === 0 || data === '[DONE]') return
+	try {
+		const value = JSON.parse(data) as { type?: unknown }
+		if (value.type === 'response.completed' || value.type === 'response.incomplete' || value.type === 'response.failed') {
+			captureCacheUsage(value, usage)
+		}
+	} catch {
+		// The provider remains responsible for malformed event errors.
+	}
+}
+
+export async function captureResponseUsage(response: Response, usage: RawCacheUsage): Promise<Response> {
+	if (!response.body || !response.ok) return response
+	const contentType = response.headers.get('content-type') ?? ''
+	if (contentType.includes('application/json')) {
+		try {
+			captureCacheUsage(await response.clone().json(), usage)
+		} catch {
+			// The SDK parses and reports malformed JSON from the original response.
+		}
+		return response
+	}
+	if (!contentType.includes('text/event-stream')) return response
+
+	const decoder = new TextDecoder()
+	let line = ''
+	let eventLines: string[] = []
+	let skipLineFeed = false
+	const endLine = () => {
+		if (line.length === 0) {
+			if (eventLines.length > 0) captureSseBlock(eventLines.join('\n'), usage)
+			eventLines = []
+		} else {
+			eventLines.push(line)
+		}
+		line = ''
+	}
+	const parse = (text: string) => {
+		for (const char of text) {
+			if (skipLineFeed) {
+				skipLineFeed = false
+				if (char === '\n') continue
+			}
+			if (char === '\r') {
+				endLine()
+				skipLineFeed = true
+			} else if (char === '\n') {
+				endLine()
+			} else {
+				line += char
+			}
+		}
+	}
+	const body = response.body.pipeThrough(new TransformStream<Uint8Array, Uint8Array>({
+		transform(chunk, controller) {
+			parse(decoder.decode(chunk, { stream: true }))
+			controller.enqueue(chunk)
+		},
+		flush() {
+			parse(decoder.decode())
+			if (line.length > 0) eventLines.push(line)
+			if (eventLines.length > 0) captureSseBlock(eventLines.join('\n'), usage)
+		},
+	}))
+	return new Response(body, {
+		headers: response.headers,
+		status: response.status,
+		statusText: response.statusText,
+	})
+}
+
+function patchCacheUsage<T extends { usage: { inputTokens: { total?: number; cacheRead?: number; cacheWrite?: number; noCache?: number } } }>(
+	result: T,
+	rawUsage: RawCacheUsage,
+): T {
+	if (rawUsage.cacheWriteTokens === undefined) return result
+	const input = result.usage.inputTokens
+	const total = input.total ?? 0
+	const cacheRead = Math.min(Math.max(0, input.cacheRead ?? 0), total)
+	const cacheWrite = Math.min(Math.max(0, rawUsage.cacheWriteTokens), total - cacheRead)
+	return {
+		...result,
+		usage: {
+			...result.usage,
+			inputTokens: {
+				...input,
+				cacheWrite,
+				cacheRead,
+				noCache: total - cacheRead - cacheWrite,
+			},
+		},
+	}
+}
+
 const CODEX_OVERRIDE_ENV = {
 	baseURL: 'CODELAYER_CODEX_BASE_URL',
 	apiKey: 'CODELAYER_CODEX_API_KEY',
@@ -168,29 +287,34 @@ export function createCustomCodexResponsesModel(options: {
 	diagnostics?: CodexDiagnosticsContext
 }): LanguageModel {
 	const { override, selectedModelId } = options
-	const requestFetch = override.apiKeyHeader === undefined
-		? options.fetch
-		: async (input: string | URL | Request, init?: RequestInit) => {
+	const createDeploymentModel = (rawUsage: RawCacheUsage) => {
+		const requestFetch = async (input: string | URL | Request, init?: RequestInit) => {
 			const headers = new Headers(init?.headers)
-			headers.delete('authorization')
-			headers.set(override.apiKeyHeader!, override.apiKey)
-			return (options.fetch ?? globalThis.fetch)(input, { ...init, headers })
+			if (override.apiKeyHeader !== undefined) {
+				headers.delete('authorization')
+				headers.set(override.apiKeyHeader, override.apiKey)
+			}
+			const response = await (options.fetch ?? globalThis.fetch)(input, { ...init, headers })
+			return await captureResponseUsage(response, rawUsage)
 		}
-	const deploymentModel = createOpenAI({
+		return createOpenAI({
 		name: 'custom-openai-responses',
 		baseURL: override.baseURL,
 		apiKey: override.apiKey,
-		fetch: requestFetch as typeof globalThis.fetch | undefined,
+		fetch: requestFetch as typeof globalThis.fetch,
 	}).responses(override.wireModelId ?? selectedModelId)
+	}
+	const modelMetadata = createDeploymentModel({})
 
 	return {
-		specificationVersion: deploymentModel.specificationVersion,
+		specificationVersion: modelMetadata.specificationVersion,
 		provider: 'custom-openai-responses',
 		modelId: selectedModelId,
-		supportedUrls: deploymentModel.supportedUrls,
+		supportedUrls: modelMetadata.supportedUrls,
 		doGenerate: async (request) => {
+			const rawUsage: RawCacheUsage = {}
 			try {
-				return await deploymentModel.doGenerate(request)
+				return patchCacheUsage(await createDeploymentModel(rawUsage).doGenerate(request), rawUsage)
 			} catch (error) {
 				reportCustomResponsesError({
 					apiKey: override.apiKey,
@@ -202,8 +326,9 @@ export function createCustomCodexResponsesModel(options: {
 			}
 		},
 		doStream: async (request) => {
+			const rawUsage: RawCacheUsage = {}
 			try {
-				const result = await deploymentModel.doStream(request)
+				const result = await createDeploymentModel(rawUsage).doStream(request)
 				return {
 					...result,
 					stream: result.stream.pipeThrough(new TransformStream({
@@ -216,7 +341,7 @@ export function createCustomCodexResponsesModel(options: {
 									operation: 'stream',
 								})
 							}
-							controller.enqueue(part)
+							controller.enqueue(part.type === 'finish' ? patchCacheUsage(part, rawUsage) : part)
 						},
 					})),
 				}

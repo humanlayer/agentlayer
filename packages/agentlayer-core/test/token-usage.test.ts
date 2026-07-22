@@ -71,9 +71,56 @@ describe('TokenUsageAccumulator', () => {
 			reasoningTokens: 0,
 		})
 		const snapshot = acc.snapshot()
-		// input: 1M * 3/1M = 3.0, output: 100k * 15/1M = 1.5, cacheRead: 500k * 0.3/1M = 0.15, cacheWrite: 50k * 3.75/1M = 0.1875
-		expect(snapshot.byModel['anthropic/claude-sonnet']!.estimatedCostUsd).toBeCloseTo(4.8375)
-		expect(snapshot.totals.estimatedCostUsd).toBeCloseTo(4.8375)
+		// Inclusive input splits into 450k uncached, 500k read, and 50k write tokens.
+		expect(snapshot.byModel['anthropic/claude-sonnet']!.estimatedCostUsd).toBeCloseTo(3.1875)
+		expect(snapshot.totals.estimatedCostUsd).toBeCloseTo(3.1875)
+	})
+
+	test.each([
+		['read-only', 1_000_000, 400_000, 0, 2.92],
+		['write-only', 1_000_000, 0, 400_000, 4.3],
+		['mixed', 1_000_000, 300_000, 200_000, 3.34],
+	] as const)(
+		'uses catalog rates for %s cache input',
+		(_name, inputTokens, cacheReadTokens, cacheWriteTokens, cost) => {
+			const acc = new TokenUsageAccumulator(() => ({ input: 3, output: 10, cacheRead: 0.3, cacheWrite: 3.75 }))
+			acc.add('provider/model', {
+				inputTokens,
+				outputTokens: 100_000,
+				cacheReadTokens,
+				cacheWriteTokens,
+				reasoningTokens: 0,
+			})
+			expect(acc.snapshot().byModel['provider/model']!.estimatedCostUsd).toBeCloseTo(cost)
+		},
+	)
+
+	test('falls back to the input rate when the catalog omits cache rates', () => {
+		const acc = new TokenUsageAccumulator(() => ({ input: 2, output: 8 }))
+		acc.add('provider/model', {
+			inputTokens: 1_000_000,
+			outputTokens: 100_000,
+			cacheReadTokens: 300_000,
+			cacheWriteTokens: 200_000,
+			reasoningTokens: 0,
+		})
+		expect(acc.snapshot().byModel['provider/model']!.estimatedCostUsd).toBeCloseTo(2.8)
+	})
+
+	test('clamps uncached input when provider cache counts exceed total input', () => {
+		const acc = new TokenUsageAccumulator(() => ({ input: 3, output: 10, cacheRead: 0.3, cacheWrite: 3.75 }))
+		acc.add('provider/model', {
+			inputTokens: 100_000,
+			outputTokens: 0,
+			cacheReadTokens: 80_000,
+			cacheWriteTokens: 70_000,
+			reasoningTokens: 0,
+		})
+		const pricedCacheReadTokens = 80_000
+		const pricedCacheWriteTokens = 20_000
+		const pricedUncachedTokens = 0
+		expect(pricedCacheReadTokens + pricedCacheWriteTokens + pricedUncachedTokens).toBe(100_000)
+		expect(acc.snapshot().byModel['provider/model']!.estimatedCostUsd).toBeCloseTo(0.099)
 	})
 
 	test('unknown model has undefined cost', () => {
