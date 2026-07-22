@@ -1,12 +1,32 @@
-import { describe, expect, mock, test } from 'bun:test'
+import { afterEach, describe, expect, mock, spyOn, test } from 'bun:test'
 import type { LanguageModelV3 } from '@ai-sdk/provider'
+import { buildProviderOptions } from '../src/agent'
 import {
 	createCustomCodexResponsesModel,
 	readCodexResponsesOverride,
+	resolveModel,
 	type CodexResponsesOverride,
 } from '../src/providers'
 
 const TEST_KEY = 'phase-one-test-key'
+const overrideEnvironmentNames = [
+	'CODELAYER_CODEX_BASE_URL',
+	'CODELAYER_CODEX_API_KEY',
+	'CODELAYER_CODEX_API_KEY_HEADER',
+	'CODELAYER_CODEX_MODEL',
+] as const
+const originalOverrideEnvironment = Object.fromEntries(
+	overrideEnvironmentNames.map((name) => [name, process.env[name]]),
+) as Record<(typeof overrideEnvironmentNames)[number], string | undefined>
+
+afterEach(() => {
+	mock.restore()
+	for (const name of overrideEnvironmentNames) {
+		const value = originalOverrideEnvironment[name]
+		if (value === undefined) delete process.env[name]
+		else process.env[name] = value
+	}
+})
 
 function override(values: Partial<CodexResponsesOverride> = {}): CodexResponsesOverride {
 	return {
@@ -59,9 +79,18 @@ function errorMessage(run: () => unknown): string {
 }
 
 describe('readCodexResponsesOverride', () => {
-	test('returns no override when both required settings are absent', () => {
+	test('returns no override only when all override settings are absent', () => {
 		expect(readCodexResponsesOverride({})).toBeUndefined()
-		expect(readCodexResponsesOverride({ CODELAYER_CODEX_MODEL: 'wire-model' })).toBeUndefined()
+	})
+
+	test('rejects optional settings without the required pair', () => {
+		for (const env of [
+			{ CODELAYER_CODEX_MODEL: 'wire-model' },
+			{ CODELAYER_CODEX_API_KEY_HEADER: 'api-key' },
+		]) {
+			const message = errorMessage(() => readCodexResponsesOverride(env))
+			expect(message).toContain('CODELAYER_CODEX_BASE_URL')
+		}
 	})
 
 	test('rejects either partial setup and names only the missing setting', () => {
@@ -177,6 +206,7 @@ describe('readCodexResponsesOverride', () => {
 			wireModelId: 'azure-coding-deployment',
 		})
 	})
+
 })
 
 describe('createCustomCodexResponsesModel', () => {
@@ -238,5 +268,132 @@ describe('createCustomCodexResponsesModel', () => {
 
 		expect(model.specificationVersion).toBe('v3')
 		expect(model.supportedUrls).toBeDefined()
+	})
+
+	test('reports request failures through diagnostics without exposing the API key or response body', async () => {
+		const records: Array<{ event: string; metadata: Record<string, unknown> }> = []
+		const model = createCustomCodexResponsesModel({
+			override: override(),
+			selectedModelId: 'gpt-5.6-sol',
+			diagnostics: {
+				annotations: { sessionId: 'test-session' },
+				onEvent: (record) => records.push(record),
+			},
+			fetch: mock(async () => new Response(JSON.stringify({ error: TEST_KEY, secret: 'response-secret' }), {
+				status: 500,
+				headers: { 'content-type': 'application/json' },
+			})),
+		}) as LanguageModelV3
+
+		await expect(model.doGenerate({
+			prompt: [{ role: 'user', content: [{ type: 'text', text: 'test' }] }],
+		})).rejects.toThrow()
+
+		expect(records).toHaveLength(1)
+		expect(records[0]).toMatchObject({
+			event: 'codex.provider.custom_responses.failed',
+			metadata: {
+				operation: 'generate',
+				provider: 'custom-openai-responses',
+				statusCode: 500,
+			},
+		})
+		const serialized = JSON.stringify(records)
+		expect(serialized).not.toContain(TEST_KEY)
+		expect(serialized).not.toContain('response-secret')
+	})
+
+	test('does not let a diagnostics sink failure replace the provider error', async () => {
+		const model = createCustomCodexResponsesModel({
+			override: override(),
+			selectedModelId: 'gpt-5.6-sol',
+			diagnostics: {
+				annotations: {},
+				onEvent: () => {
+					throw new Error('sink failed')
+				},
+			},
+			fetch: mock(async () => new Response('upstream failed', { status: 502 })),
+		}) as LanguageModelV3
+
+		await expect(model.doGenerate({
+			prompt: [{ role: 'user', content: [{ type: 'text', text: 'test' }] }],
+		})).rejects.not.toThrow('sink failed')
+	})
+})
+
+describe('custom Codex Responses runtime request', () => {
+	test('reports invalid setup through the host diagnostics sink', async () => {
+		process.env.CODELAYER_CODEX_MODEL = 'azure-coding-deployment'
+		const records: Array<{ event: string; metadata: Record<string, unknown> }> = []
+
+		await expect(resolveModel('codex', 'gpt-5.6-sol', {
+			codexDiagnostics: {
+				annotations: { sessionId: 'test-session' },
+				onEvent: (record) => records.push(record),
+			},
+		})).rejects.toThrow('CODELAYER_CODEX_BASE_URL')
+
+		expect(records).toHaveLength(1)
+		expect(records[0]).toMatchObject({
+			event: 'codex.provider.custom_responses.failed',
+			metadata: { operation: 'resolve', provider: 'custom-openai-responses' },
+		})
+	})
+
+	test('resolves and streams with standard options but no fast-mode service tier', async () => {
+		process.env.CODELAYER_CODEX_BASE_URL = 'https://example.test/openai/v1/responses/'
+		process.env.CODELAYER_CODEX_API_KEY = TEST_KEY
+		process.env.CODELAYER_CODEX_API_KEY_HEADER = 'api-key'
+		process.env.CODELAYER_CODEX_MODEL = 'azure-coding-deployment'
+		const requests: Array<{ input: string | URL | Request; init?: RequestInit }> = []
+		spyOn(globalThis, 'fetch').mockImplementation((async (input, init) => {
+			requests.push({ input, init })
+			return new Response(JSON.stringify({ error: { message: 'captured request' } }), {
+				status: 400,
+				headers: { 'content-type': 'application/json' },
+			})
+		}) as typeof globalThis.fetch)
+
+		const model = await resolveModel('codex', 'gpt-5.6-sol') as LanguageModelV3
+		const providerOptions = buildProviderOptions(model, {
+			codex: {
+				reasoningEffort: 'high',
+				reasoningSummary: 'detailed',
+				fastMode: true,
+				serviceTier: 'priority',
+				promptCacheKey: 'session-custom',
+			},
+		})
+
+		try {
+			await model.doStream({
+				prompt: [{ role: 'user', content: [{ type: 'text', text: 'test' }] }],
+				providerOptions,
+			})
+		} catch {
+			// The fake endpoint returns 400 after the streaming request is captured.
+		}
+
+		expect(requests).toHaveLength(1)
+		const request = requests[0]!
+		const headers = new Headers(request.init?.headers)
+		const body = JSON.parse(request.init?.body as string)
+		expect(request.input.toString()).toBe('https://example.test/openai/v1/responses')
+		expect(request.init?.method).toBe('POST')
+		expect(headers.get('api-key')).toBe(TEST_KEY)
+		expect(headers.has('authorization')).toBe(false)
+		expect([...headers.values()].filter((value) => value.includes(TEST_KEY))).toEqual([TEST_KEY])
+		expect(model.provider).toBe('custom-openai-responses')
+		expect(model.modelId).toBe('gpt-5.6-sol')
+		expect(body).toMatchObject({
+			model: 'azure-coding-deployment',
+			stream: true,
+			store: false,
+			include: ['reasoning.encrypted_content'],
+			prompt_cache_key: 'session-custom',
+			reasoning: { effort: 'high', summary: 'detailed' },
+		})
+		expect(body).not.toHaveProperty('service_tier')
 	})
 })

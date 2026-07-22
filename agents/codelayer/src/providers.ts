@@ -103,27 +103,61 @@ export function readCodexResponsesOverride(
 ): CodexResponsesOverride | undefined {
 	const rawBaseURL = optionalEnvironmentValue(env[CODEX_OVERRIDE_ENV.baseURL])
 	const apiKey = optionalEnvironmentValue(env[CODEX_OVERRIDE_ENV.apiKey])
+	const apiKeyHeader = optionalEnvironmentValue(env[CODEX_OVERRIDE_ENV.apiKeyHeader])
+	const wireModelId = optionalEnvironmentValue(env[CODEX_OVERRIDE_ENV.wireModelId])
+	const hasAnyOverrideSetting = [rawBaseURL, apiKey, apiKeyHeader, wireModelId].some(
+		(value) => value !== undefined,
+	)
 
-	if (rawBaseURL === undefined && apiKey === undefined) return undefined
+	if (!hasAnyOverrideSetting) return undefined
 	if (rawBaseURL === undefined) {
 		throw new Error(
-			`Custom Codex endpoint configuration is incomplete: ${CODEX_OVERRIDE_ENV.baseURL} is required when ${CODEX_OVERRIDE_ENV.apiKey} is set.`,
+			`Custom Codex endpoint configuration is incomplete: ${CODEX_OVERRIDE_ENV.baseURL} is required when any CODELAYER_CODEX_* override is set.`,
 		)
 	}
 	if (apiKey === undefined) {
 		throw new Error(
-			`Custom Codex endpoint configuration is incomplete: ${CODEX_OVERRIDE_ENV.apiKey} is required when ${CODEX_OVERRIDE_ENV.baseURL} is set.`,
+			`Custom Codex endpoint configuration is incomplete: ${CODEX_OVERRIDE_ENV.apiKey} is required when any CODELAYER_CODEX_* override is set.`,
 		)
 	}
 
-	const apiKeyHeader = optionalEnvironmentValue(env[CODEX_OVERRIDE_ENV.apiKeyHeader])
 	if (apiKeyHeader !== undefined) validateHeaderName(apiKeyHeader)
 
 	return {
 		...parseCodexResponsesURL(rawBaseURL),
 		apiKey,
 		apiKeyHeader,
-		wireModelId: optionalEnvironmentValue(env[CODEX_OVERRIDE_ENV.wireModelId]),
+		wireModelId,
+	}
+}
+
+function reportCustomResponsesError(options: {
+	apiKey?: string
+	diagnostics?: CodexDiagnosticsContext
+	error: unknown
+	operation: 'generate' | 'resolve' | 'stream'
+}): void {
+	if (!options.diagnostics) return
+
+	const error = options.error instanceof Error ? options.error : new Error(String(options.error))
+	const safeMessage = options.apiKey ? error.message.replaceAll(options.apiKey, '[REDACTED]') : error.message
+	const statusCode = 'statusCode' in error && typeof error.statusCode === 'number' ? error.statusCode : undefined
+	try {
+		options.diagnostics.onEvent({
+			event: 'codex.provider.custom_responses.failed',
+			severity: 'error',
+			transport: 'aisdk_responses',
+			annotations: options.diagnostics.annotations,
+			metadata: {
+				error: safeMessage,
+				errorName: error.name,
+				operation: options.operation,
+				provider: 'custom-openai-responses',
+				statusCode,
+			},
+		})
+	} catch {
+		// Diagnostics must never replace the provider error.
 	}
 }
 
@@ -131,6 +165,7 @@ export function createCustomCodexResponsesModel(options: {
 	override: CodexResponsesOverride
 	selectedModelId: string
 	fetch?: CodexResponsesFetch
+	diagnostics?: CodexDiagnosticsContext
 }): LanguageModel {
 	const { override, selectedModelId } = options
 	const requestFetch = override.apiKeyHeader === undefined
@@ -153,8 +188,48 @@ export function createCustomCodexResponsesModel(options: {
 		provider: 'custom-openai-responses',
 		modelId: selectedModelId,
 		supportedUrls: deploymentModel.supportedUrls,
-		doGenerate: (request) => deploymentModel.doGenerate(request),
-		doStream: (request) => deploymentModel.doStream(request),
+		doGenerate: async (request) => {
+			try {
+				return await deploymentModel.doGenerate(request)
+			} catch (error) {
+				reportCustomResponsesError({
+					apiKey: override.apiKey,
+					diagnostics: options.diagnostics,
+					error,
+					operation: 'generate',
+				})
+				throw error
+			}
+		},
+		doStream: async (request) => {
+			try {
+				const result = await deploymentModel.doStream(request)
+				return {
+					...result,
+					stream: result.stream.pipeThrough(new TransformStream({
+						transform(part, controller) {
+							if (part.type === 'error') {
+								reportCustomResponsesError({
+									apiKey: override.apiKey,
+									diagnostics: options.diagnostics,
+									error: part.error,
+									operation: 'stream',
+								})
+							}
+							controller.enqueue(part)
+						},
+					})),
+				}
+			} catch (error) {
+				reportCustomResponsesError({
+					apiKey: override.apiKey,
+					diagnostics: options.diagnostics,
+					error,
+					operation: 'stream',
+				})
+				throw error
+			}
+		},
 	}
 }
 
@@ -217,6 +292,26 @@ export async function resolveModel(
 			return fireworks.chat(modelId)
 		}
 		case 'codex': {
+			let override: CodexResponsesOverride | undefined
+			try {
+				override = readCodexResponsesOverride()
+			} catch (error) {
+				reportCustomResponsesError({
+					apiKey: process.env[CODEX_OVERRIDE_ENV.apiKey],
+					diagnostics: context?.codexDiagnostics,
+					error,
+					operation: 'resolve',
+				})
+				throw error
+			}
+			if (override !== undefined) {
+				return createCustomCodexResponsesModel({
+					override,
+					selectedModelId: modelId,
+					diagnostics: context?.codexDiagnostics,
+				})
+			}
+
 			const authStore = await ensureFileAuthStore()
 			const codexMode = context?.codexProviderMode
 				?? (process.env.CODEX_PROVIDER as CodexProviderMode | undefined)

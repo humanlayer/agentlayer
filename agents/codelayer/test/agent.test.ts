@@ -28,6 +28,15 @@ let authStore = createMemoryAuthStore()
 const originalAnthropicApiKey = process.env.ANTHROPIC_API_KEY
 const originalFireworksApiKey = process.env.FIREWORKS_API_KEY
 const originalCodexProvider = process.env.CODEX_PROVIDER
+const codexOverrideEnvironmentNames = [
+	'CODELAYER_CODEX_BASE_URL',
+	'CODELAYER_CODEX_API_KEY',
+	'CODELAYER_CODEX_API_KEY_HEADER',
+	'CODELAYER_CODEX_MODEL',
+] as const
+const originalCodexOverrideEnvironment = Object.fromEntries(
+	codexOverrideEnvironmentNames.map((name) => [name, process.env[name]]),
+) as Record<(typeof codexOverrideEnvironmentNames)[number], string | undefined>
 
 beforeEach(() => {
 	authStore = createMemoryAuthStore()
@@ -36,6 +45,7 @@ beforeEach(() => {
 	delete process.env.ANTHROPIC_API_KEY
 	delete process.env.FIREWORKS_API_KEY
 	delete process.env.CODEX_PROVIDER
+	for (const name of codexOverrideEnvironmentNames) delete process.env[name]
 })
 
 afterEach(async () => {
@@ -46,6 +56,11 @@ afterEach(async () => {
 	else process.env.FIREWORKS_API_KEY = originalFireworksApiKey
 	if (originalCodexProvider === undefined) delete process.env.CODEX_PROVIDER
 	else process.env.CODEX_PROVIDER = originalCodexProvider
+	for (const name of codexOverrideEnvironmentNames) {
+		const value = originalCodexOverrideEnvironment[name]
+		if (value === undefined) delete process.env[name]
+		else process.env[name] = value
+	}
 })
 
 function createMockModel(modelId: string, provider = 'mock'): LanguageModel {
@@ -174,6 +189,56 @@ describe('provider resolution', () => {
 		expect(providerAuth.ensureFileAuthStore).toHaveBeenCalledTimes(2)
 	})
 
+	test('resolves a complete custom Codex override before auth and private provider selection', async () => {
+		process.env.CODELAYER_CODEX_BASE_URL = 'https://example.test/openai/v1'
+		process.env.CODELAYER_CODEX_API_KEY = 'custom-test-key'
+		process.env.CODELAYER_CODEX_MODEL = 'azure-coding-deployment'
+		process.env.CODEX_PROVIDER = 'websockets'
+		const sseSpy = spyOn(codexProvider, 'createCodexSseVendorProvider')
+		const responsesSpy = spyOn(codexProvider, 'createCodexResponsesProvider')
+		const websocketSpy = spyOn(codexProvider, 'createCodexEffectProvider')
+
+		const model = await resolveModel('codex', 'gpt-5.6-sol')
+
+		expect((model as { provider: string }).provider).toBe('custom-openai-responses')
+		expect((model as { modelId: string }).modelId).toBe('gpt-5.6-sol')
+		expect(providerAuth.ensureFileAuthStore).not.toHaveBeenCalled()
+		expect(sseSpy).not.toHaveBeenCalled()
+		expect(responsesSpy).not.toHaveBeenCalled()
+		expect(websocketSpy).not.toHaveBeenCalled()
+	})
+
+	test('rejects partial custom Codex settings before auth or private provider selection', async () => {
+		process.env.CODELAYER_CODEX_BASE_URL = 'https://example.test/openai/v1'
+		const sseSpy = spyOn(codexProvider, 'createCodexSseVendorProvider')
+		const responsesSpy = spyOn(codexProvider, 'createCodexResponsesProvider')
+		const websocketSpy = spyOn(codexProvider, 'createCodexEffectProvider')
+
+		await expect(resolveModel('codex', 'gpt-5.6-sol')).rejects.toThrow('CODELAYER_CODEX_API_KEY')
+		delete process.env.CODELAYER_CODEX_BASE_URL
+		process.env.CODELAYER_CODEX_API_KEY = 'custom-test-key'
+		await expect(resolveModel('codex', 'gpt-5.6-sol')).rejects.toThrow('CODELAYER_CODEX_BASE_URL')
+		expect(providerAuth.ensureFileAuthStore).not.toHaveBeenCalled()
+		expect(sseSpy).not.toHaveBeenCalled()
+		expect(responsesSpy).not.toHaveBeenCalled()
+		expect(websocketSpy).not.toHaveBeenCalled()
+	})
+
+	test('keeps every private Codex transport available when the override is absent', async () => {
+		const sseSpy = spyOn(codexProvider, 'createCodexSseVendorProvider')
+		const responsesSpy = spyOn(codexProvider, 'createCodexResponsesProvider')
+		const websocketSpy = spyOn(codexProvider, 'createCodexEffectProvider')
+
+		await resolveModel('codex', 'gpt-5.5', { codexProviderMode: 'sse' })
+		await resolveModel('codex', 'gpt-5.5', { codexProviderMode: 'aisdk_responses' })
+		await resolveModel('codex', 'gpt-5.5', { codexProviderMode: 'websockets' })
+
+		expect(providerAuth.ensureFileAuthStore).toHaveBeenCalledTimes(3)
+		expect(sseSpy).toHaveBeenCalledTimes(1)
+		expect(responsesSpy).toHaveBeenCalledTimes(1)
+		expect(websocketSpy).toHaveBeenCalledTimes(1)
+	})
+
 	test('defaults codex model resolution to the SSE provider', async () => {
 		const providerSpy = spyOn(codexProvider, 'createCodexSseVendorProvider')
 
@@ -265,6 +330,31 @@ describe('createCodelayerAgent', () => {
 			reasoningSummary: 'detailed',
 			reasoningEffort: 'medium',
 		})
+	})
+
+	test('keeps selected-model reasoning but strips fast mode and service tier for custom Responses', () => {
+		const model = createMockModel('gpt-5.6-sol', 'custom-openai-responses')
+
+		const options = buildProviderOptions(model, {
+			codex: {
+				reasoningEffort: 'high',
+				reasoningSummary: 'detailed',
+				fastMode: true,
+				serviceTier: 'priority',
+				promptCacheKey: 'session-custom',
+			},
+		}).openai
+
+		expect(options).toMatchObject({
+			store: false,
+			include: ['reasoning.encrypted_content'],
+			reasoningEffort: 'high',
+			reasoningSummary: 'detailed',
+			promptCacheKey: 'session-custom',
+			forceReasoning: true,
+		})
+		expect(options).not.toHaveProperty('fastMode')
+		expect(options).not.toHaveProperty('serviceTier')
 	})
 
 	test('uses medium reasoning for gpt-5.4 codex by default', () => {

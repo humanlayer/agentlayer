@@ -108,6 +108,7 @@ export interface CodelayerProviderOptions extends Record<string, Record<string, 
 		reasoningSummary?: ReasoningSummary
 		fastMode?: boolean
 		serviceTier?: string | null
+		forceReasoning?: boolean
 	}
 	copilot: {
 		reasoningEffort?: ReasoningEffort
@@ -208,6 +209,10 @@ export function buildProviderOptions(
 		fastMode: overrides.codex?.fastMode ?? false,
 		...overrides.codex,
 	}
+	const isCustomResponses = (model as { provider?: string }).provider === 'custom-openai-responses'
+	const openaiOptions = isCustomResponses
+		? (({ fastMode: _fastMode, serviceTier: _serviceTier, ...options }) => ({ ...options, forceReasoning: true }))(codexOptions)
+		: codexOptions
 	const copilotOptions = overrides.copilot ?? {}
 
 	return {
@@ -218,7 +223,7 @@ export function buildProviderOptions(
 		openai: {
 			store: false as const,
 			include: ['reasoning.encrypted_content'],
-			...codexOptions,
+			...openaiOptions,
 		},
 		copilot: {
 			...copilotOptions,
