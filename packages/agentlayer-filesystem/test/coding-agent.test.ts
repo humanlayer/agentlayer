@@ -52,16 +52,34 @@ describe('createSkillToolFromRepoDirs', () => {
 })
 
 describe('createAgentSystemPrompt', () => {
-	test('builds codex prompt with repo instructions and environment', async () => {
-		const repoDir = await mkdtemp(join(tmpdir(), 'agentlayer-system-prompt-'))
+	test('builds an isolated codex prompt with exact user, root, and cwd preference', async () => {
+		const fixtureRoot = await mkdtemp(join(tmpdir(), 'agentlayer-system-prompt-'))
+		const originalHome = process.env.HOME
 		try {
+			const tempHome = join(fixtureRoot, 'home')
+			const repoDir = join(fixtureRoot, 'repo')
+			await mkdir(repoDir, { recursive: true })
 			await initGitRepo(repoDir)
 			const repoRealPath = await realpath(repoDir)
 			const nestedCwd = join(repoDir, 'apps', 'demo')
 			await mkdir(nestedCwd, { recursive: true })
-			await writeFile(join(repoDir, 'AGENTS.md'), 'Root repository rules here.')
-			await writeFile(join(repoDir, 'AGENTS.local.md'), 'Root local rules here.')
-			await writeFile(join(nestedCwd, 'CLAUDE.md'), 'Repository rules here.')
+			await mkdir(join(tempHome, '.codex'), { recursive: true })
+			await mkdir(join(tempHome, '.agents'), { recursive: true })
+			await mkdir(join(tempHome, '.claude'), { recursive: true })
+			await writeFile(join(tempHome, '.codex', 'AGENTS.md'), 'PUBLIC_USER_CODEX_WINNER')
+			await writeFile(join(tempHome, '.agents', 'AGENTS.md'), 'PUBLIC_USER_AGENTS_LOSER')
+			await writeFile(join(tempHome, '.claude', 'CLAUDE.md'), 'PUBLIC_USER_CLAUDE_LOSER')
+			await writeFile(join(repoDir, 'AGENTS.md'), '  \n')
+			await writeFile(join(repoDir, 'CLAUDE.md'), 'PUBLIC_ROOT_CLAUDE_WINNER')
+			await writeFile(join(repoDir, 'AGENTS.local.md'), 'PUBLIC_ROOT_AGENTS_LOCAL_LOSER')
+			await writeFile(join(repoDir, 'CLAUDE.local.md'), 'PUBLIC_ROOT_CLAUDE_LOCAL_LOSER')
+			await writeFile(join(repoDir, 'CONTEXT.md'), 'PUBLIC_ROOT_CONTEXT_LOSER')
+			await writeFile(join(nestedCwd, 'AGENTS.md'), 'PUBLIC_CWD_AGENTS_WINNER')
+			await writeFile(join(nestedCwd, 'CLAUDE.md'), 'PUBLIC_CWD_CLAUDE_LOSER')
+			await writeFile(join(nestedCwd, 'AGENTS.local.md'), 'PUBLIC_CWD_AGENTS_LOCAL_LOSER')
+			await writeFile(join(nestedCwd, 'CLAUDE.local.md'), 'PUBLIC_CWD_CLAUDE_LOCAL_LOSER')
+			await writeFile(join(nestedCwd, 'CONTEXT.md'), 'PUBLIC_CWD_CONTEXT_LOSER')
+			process.env.HOME = tempHome
 
 			const prompt = await createAgentSystemPrompt({
 				cwd: nestedCwd,
@@ -72,25 +90,39 @@ describe('createAgentSystemPrompt', () => {
 
 			expect(prompt[0]).toBe(codexPrompt)
 			const joinedPrompt = prompt.join('\n\n')
+			const orderedMarkers = ['PUBLIC_USER_CODEX_WINNER', 'PUBLIC_ROOT_CLAUDE_WINNER', 'PUBLIC_CWD_AGENTS_WINNER']
+			const markerPositions = orderedMarkers.map((marker) => joinedPrompt.indexOf(marker))
+			for (const marker of orderedMarkers) expect(joinedPrompt).toContain(marker)
+			expect(markerPositions).toEqual([...markerPositions].sort((left, right) => left - right))
+			expect(joinedPrompt.match(/# Repository Instructions:/g)).toHaveLength(3)
+			expect(joinedPrompt).toContain('# Repository Instructions: User Global')
+			expect(joinedPrompt).toContain(`Source: ${join(tempHome, '.codex', 'AGENTS.md')}`)
 			expect(joinedPrompt).toContain('# Repository Instructions: Git Root Project')
-			expect(joinedPrompt).toContain(`Source: ${join(repoRealPath, 'AGENTS.md')}`)
-			expect(joinedPrompt).toContain('# Repository Instructions: Git Root Project Local')
-			expect(joinedPrompt).toContain(`Source: ${join(repoRealPath, 'AGENTS.local.md')}`)
+			expect(joinedPrompt).toContain(`Source: ${join(repoRealPath, 'CLAUDE.md')}`)
 			expect(joinedPrompt).toContain('# Repository Instructions: Current Directory Project')
-			expect(joinedPrompt).toContain(`Source: ${join(nestedCwd, 'CLAUDE.md')}`)
-			expect(joinedPrompt).toContain('Root repository rules here.')
-			expect(joinedPrompt).toContain('Root local rules here.')
-			expect(joinedPrompt).toContain('Repository rules here.')
+			expect(joinedPrompt).toContain(`Source: ${join(nestedCwd, 'AGENTS.md')}`)
+			const loserMarkers = [
+				'PUBLIC_USER_AGENTS_LOSER',
+				'PUBLIC_USER_CLAUDE_LOSER',
+				'PUBLIC_ROOT_AGENTS_LOCAL_LOSER',
+				'PUBLIC_ROOT_CLAUDE_LOCAL_LOSER',
+				'PUBLIC_ROOT_CONTEXT_LOSER',
+				'PUBLIC_CWD_CLAUDE_LOSER',
+				'PUBLIC_CWD_AGENTS_LOCAL_LOSER',
+				'PUBLIC_CWD_CLAUDE_LOCAL_LOSER',
+				'PUBLIC_CWD_CONTEXT_LOSER',
+			]
+			for (const marker of loserMarkers) expect(joinedPrompt).not.toContain(marker)
 			expect(joinedPrompt).toContain(`Working directory: ${nestedCwd}`)
 			expect(joinedPrompt).toContain('Extra guidance')
-			expect(joinedPrompt.indexOf('Root local rules here.')).toBeLessThan(
-				joinedPrompt.indexOf('Repository rules here.'),
-			)
 			expect(joinedPrompt.indexOf(`Working directory: ${nestedCwd}`)).toBeLessThan(
 				joinedPrompt.indexOf('Extra guidance'),
 			)
 		} finally {
-			await rm(repoDir, { recursive: true, force: true })
+			if (originalHome === undefined) delete process.env.HOME
+			else process.env.HOME = originalHome
+			expect(process.env.HOME).toBe(originalHome)
+			await rm(fixtureRoot, { recursive: true, force: true })
 		}
 	})
 
