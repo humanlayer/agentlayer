@@ -328,6 +328,55 @@ describe('file-state hooks', () => {
 		}
 	})
 
+	test('direct hooks allow rereading after an external rollback to previously read content', async () => {
+		const dir = await mkdtemp(join(tmpdir(), 'file-state-hook-test-'))
+		try {
+			const filePath = join(dir, 'external-rollback.txt')
+			const initialContent = 'initial\n'
+			const patchText = [
+				'*** Begin Patch',
+				`*** Update File: ${filePath}`,
+				'@@',
+				'-initial',
+				'+patched',
+				'*** End Patch',
+			].join('\n')
+			const harness = createDirectHookHarness()
+
+			await writeFile(filePath, initialContent)
+			await harness.recordReadObservation({ file_path: filePath }, initialContent)
+			await harness.expectMutationAllowed('apply_patch', { patch_text: patchText })
+			await writeFile(filePath, 'patched\n')
+			await harness.recordMutationVerification('apply_patch', { patch_text: patchText })
+
+			await writeFile(filePath, initialContent)
+			await harness.expectMutationBlocked('apply_patch', { patch_text: patchText }, filePath)
+			await harness.expectReadAllowed({ file_path: filePath })
+			await harness.recordReadObservation({ file_path: filePath }, initialContent)
+			await harness.expectMutationAllowed('apply_patch', { patch_text: patchText })
+		} finally {
+			await rm(dir, { recursive: true })
+		}
+	})
+
+	test('direct hooks normalize equivalent file paths to one state entry', async () => {
+		const dir = await mkdtemp(join(tmpdir(), 'file-state-hook-test-'))
+		try {
+			const filePath = join(dir, 'sample.txt')
+			const equivalentPath = `${dir}/./sample.txt`
+			await writeFile(filePath, 'initial\n')
+			const harness = createDirectHookHarness()
+
+			await harness.recordReadObservation({ file_path: equivalentPath }, await fileText(filePath))
+
+			expect(Object.keys(harness.state[FILE_READ_STATE_KEY] ?? {})).toEqual([filePath])
+			expect(Object.keys(harness.state[FILE_VERIFICATION_STATE_KEY] ?? {})).toEqual([filePath])
+			await harness.expectMutationAllowed('write', { file_path: filePath, content: 'updated\n' })
+		} finally {
+			await rm(dir, { recursive: true })
+		}
+	})
+
 	test('direct hooks advance verification across repeated mutation cycles', async () => {
 		const dir = await mkdtemp(join(tmpdir(), 'file-state-hook-test-'))
 		try {
