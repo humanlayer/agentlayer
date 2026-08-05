@@ -84,16 +84,6 @@ type OpenAIResponsesTool = Schema.Schema.Type<typeof OpenAIResponsesTool>
 
 const OpenAIResponsesInputItem = Schema.Union([
 	Schema.Struct({ role: Schema.tag('system'), content: Schema.String }),
-	Schema.Struct({
-		type: Schema.tag('message'),
-		role: Schema.tag('developer'),
-		content: Schema.Array(OpenAIResponsesInputText),
-	}),
-	Schema.Struct({
-		type: Schema.tag('additional_tools'),
-		role: Schema.tag('developer'),
-		tools: Schema.Array(OpenAIResponsesTool),
-	}),
 	Schema.Struct({ role: Schema.tag('user'), content: Schema.Array(OpenAIResponsesInputContent) }),
 	Schema.Struct({ role: Schema.tag('assistant'), content: Schema.Array(OpenAIResponsesOutputText) }),
 	OpenAIResponsesReasoningItem,
@@ -143,7 +133,6 @@ const OpenAIResponsesCoreFields = {
 		Schema.Struct({
 			effort: Schema.optional(ReasoningEffort),
 			summary: Schema.optional(Schema.String),
-			context: Schema.optional(Schema.Literal('all_turns')),
 		}),
 	),
 	parallel_tool_calls: Schema.optional(Schema.Boolean),
@@ -175,7 +164,12 @@ const encodeWebSocketMessage = Schema.encodeSync(Schema.fromJsonString(OpenAIRes
 
 const OpenAIResponsesUsage = Schema.Struct({
 	input_tokens: Schema.optional(Schema.Number),
-	input_tokens_details: optionalNull(Schema.Struct({ cached_tokens: Schema.optional(Schema.Number) })),
+	input_tokens_details: optionalNull(
+		Schema.Struct({
+			cached_tokens: Schema.optional(Schema.Number),
+			cache_write_tokens: Schema.optional(Schema.Number),
+		}),
+	),
 	output_tokens: Schema.optional(Schema.Number),
 	output_tokens_details: optionalNull(Schema.Struct({ reasoning_tokens: Schema.optional(Schema.Number) })),
 	total_tokens: Schema.optional(Schema.Number),
@@ -442,61 +436,10 @@ const lowerOptions = Effect.fn('OpenAIResponses.lowerOptions')(function* (reques
 	}
 })
 
-export const RESPONSES_LITE_MODELS = new Set(['gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna'])
-
-export const isResponsesLiteModel = (modelId: string): boolean => RESPONSES_LITE_MODELS.has(modelId)
+const GPT_5_6_MODELS = new Set(['gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna'])
 
 export const isReasoningEffortForModel = (modelId: string, effort: ReasoningEffort): boolean =>
-	OpenAIOptions.isReasoningEffort(effort) || (effort === 'max' && isResponsesLiteModel(modelId))
-
-export const prepareResponsesLiteBody = (
-	body: Record<string, unknown>,
-	sessionId?: string,
-): Record<string, unknown> => {
-	if (!Array.isArray(body.input)) throw new Error('Responses Lite requires an input array')
-	if (body.tools !== undefined && !Array.isArray(body.tools)) {
-		throw new Error('Responses Lite requires a tools array')
-	}
-	if (body.instructions !== undefined && typeof body.instructions !== 'string') {
-		throw new Error('Responses Lite requires string instructions')
-	}
-
-	const instructions = body.instructions
-	body.input = [
-		{ type: 'additional_tools', role: 'developer', tools: body.tools ?? [] },
-		...(instructions
-			? [
-					{
-						type: 'message',
-						role: 'developer',
-						content: [{ type: 'input_text', text: instructions }],
-					},
-				]
-			: []),
-		...body.input,
-	]
-	delete body.tools
-	delete body.instructions
-	body.tool_choice = 'auto'
-	body.parallel_tool_calls = false
-	if (sessionId) body.prompt_cache_key = sessionId
-	body.reasoning = {
-		...(ProviderShared.isRecord(body.reasoning) ? body.reasoning : {}),
-		context: 'all_turns',
-	}
-	stripImageDetail(body.input)
-	return body
-}
-
-const stripImageDetail = (input: unknown): void => {
-	if (Array.isArray(input)) {
-		for (const item of input) stripImageDetail(item)
-		return
-	}
-	if (!ProviderShared.isRecord(input)) return
-	if (input.type === 'input_image') delete input.detail
-	for (const value of Object.values(input)) stripImageDetail(value)
-}
+	OpenAIOptions.isReasoningEffort(effort) || (effort === 'max' && GPT_5_6_MODELS.has(modelId))
 
 const fromRequest = Effect.fn('OpenAIResponses.fromRequest')(function* (request: LLMRequest) {
 	const generation = request.generation
@@ -513,26 +456,21 @@ const fromRequest = Effect.fn('OpenAIResponses.fromRequest')(function* (request:
 	}
 })
 
-const fromHttpRequest = Effect.fn('OpenAIResponses.fromHttpRequest')(function* (request: LLMRequest) {
-	const body = yield* fromRequest(request)
-	return isResponsesLiteModel(request.model.id)
-		? prepareResponsesLiteBody(body, OpenAIOptions.promptCacheKey(request))
-		: body
-})
-
 // =============================================================================
 // Stream Parsing
 // =============================================================================
 const mapUsage = (usage: OpenAIResponsesUsage | null | undefined) => {
 	if (!usage) return undefined
-	const cached = usage.input_tokens_details?.cached_tokens
+	const cacheRead = usage.input_tokens_details?.cached_tokens
+	const cacheWrite = usage.input_tokens_details?.cache_write_tokens
 	const reasoning = usage.output_tokens_details?.reasoning_tokens
-	const nonCached = ProviderShared.subtractTokens(usage.input_tokens, cached)
+	const nonCached = ProviderShared.subtractTokens(usage.input_tokens, ProviderShared.sumTokens(cacheRead, cacheWrite))
 	return new Usage({
 		inputTokens: usage.input_tokens,
 		outputTokens: usage.output_tokens,
 		nonCachedInputTokens: nonCached,
-		cacheReadInputTokens: cached,
+		cacheReadInputTokens: cacheRead,
+		cacheWriteInputTokens: cacheWrite,
 		reasoningTokens: reasoning,
 		totalTokens: ProviderShared.totalTokens(usage.input_tokens, usage.output_tokens, usage.total_tokens),
 		providerMetadata: { openai: usage },
@@ -951,26 +889,6 @@ export const protocol = Protocol.make({
 	},
 })
 
-const httpProtocol = Protocol.make({
-	id: ADAPTER,
-	body: {
-		schema: OpenAIResponsesBody,
-		from: fromHttpRequest,
-	},
-	stream: {
-		event: Protocol.jsonEvent(OpenAIResponsesEvent),
-		initial: (request) => ({
-			hasFunctionCall: false,
-			tools: ToolStream.empty<string>(),
-			lifecycle: Lifecycle.initial(),
-			reasoningItems: {},
-			store: OpenAIOptions.store(request),
-		}),
-		step,
-		terminal: (event) => TERMINAL_TYPES.has(event.type),
-	},
-})
-
 const endpoint = Endpoint.path<OpenAIResponsesBody>(PATH, { baseURL: DEFAULT_BASE_URL })
 const auth = Auth.none
 
@@ -979,7 +897,7 @@ export const httpTransport = HttpTransport.sseJson.with<OpenAIResponsesBody>()
 export const route = Route.make({
 	id: ADAPTER,
 	provider: 'openai',
-	protocol: httpProtocol,
+	protocol,
 	endpoint,
 	auth,
 	transport: httpTransport,
