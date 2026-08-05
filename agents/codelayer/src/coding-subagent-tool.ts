@@ -57,6 +57,10 @@ export interface CreateCodingSubagentToolOptions
 	stopWhen?: AgentConfig['stopWhen']
 	providerOptions?: AgentConfig['providerOptions']
 	outlineImplementerProviderOptions?: AgentConfig['providerOptions']
+	research?: {
+		model: LanguageModel
+		providerOptions: AgentConfig['providerOptions']
+	}
 	promptCacheKey?: string
 }
 
@@ -306,12 +310,12 @@ export async function createCodingSubagentTool(opts: CreateCodingSubagentToolOpt
 	}
 	if (opts.exaApiKey) webResearcherTools.web_search = createWebSearchTool({ exaApiKey: opts.exaApiKey })
 	const webResearcherAgent = createWebSearchResearcherAgent({
-		model: opts.model,
+		model: opts.research?.model ?? opts.model,
 		tools: webResearcherTools,
 		system: baseSystem,
 		hooks,
 		stopWhen,
-		providerOptions: opts.providerOptions,
+		providerOptions: opts.research?.providerOptions ?? opts.providerOptions,
 		promptCacheKey: opts.promptCacheKey,
 	})
 
@@ -365,7 +369,7 @@ export async function createCodingSubagentTool(opts: CreateCodingSubagentToolOpt
 			name: CODEBASE_LOCATOR_NAME,
 			description: CODEBASE_LOCATOR_DESCRIPTION,
 			agent: createCodebaseLocatorAgent({
-				model: opts.model,
+				model: opts.research?.model ?? opts.model,
 				tools: {
 					bash: createBashTool({ cwd: opts.cwd, env: opts.env }),
 					read: createReadMultimodalTool({ cwd: opts.cwd, readToolModalities: CODELAYER_READ_TOOL_MODALITIES }),
@@ -374,7 +378,7 @@ export async function createCodingSubagentTool(opts: CreateCodingSubagentToolOpt
 				system: baseSystem,
 				hooks,
 				stopWhen,
-				providerOptions: opts.providerOptions,
+				providerOptions: opts.research?.providerOptions ?? opts.providerOptions,
 				promptCacheKey: opts.promptCacheKey,
 			}),
 		},
@@ -382,7 +386,7 @@ export async function createCodingSubagentTool(opts: CreateCodingSubagentToolOpt
 			name: CODEBASE_ANALYZER_NAME,
 			description: CODEBASE_ANALYZER_DESCRIPTION,
 			agent: createCodebaseAnalyzerAgent({
-				model: opts.model,
+				model: opts.research?.model ?? opts.model,
 				tools: {
 					bash: createBashTool({ cwd: opts.cwd, env: opts.env }),
 					read: createReadMultimodalTool({ cwd: opts.cwd, readToolModalities: CODELAYER_READ_TOOL_MODALITIES }),
@@ -391,7 +395,7 @@ export async function createCodingSubagentTool(opts: CreateCodingSubagentToolOpt
 				system: baseSystem,
 				hooks,
 				stopWhen,
-				providerOptions: opts.providerOptions,
+				providerOptions: opts.research?.providerOptions ?? opts.providerOptions,
 				promptCacheKey: opts.promptCacheKey,
 			}),
 		},
@@ -399,7 +403,7 @@ export async function createCodingSubagentTool(opts: CreateCodingSubagentToolOpt
 			name: CODEBASE_PATTERN_FINDER_NAME,
 			description: CODEBASE_PATTERN_FINDER_DESCRIPTION,
 			agent: createCodebasePatternFinderAgent({
-				model: opts.model,
+				model: opts.research?.model ?? opts.model,
 				tools: {
 					bash: createBashTool({ cwd: opts.cwd, env: opts.env }),
 					read: createReadMultimodalTool({ cwd: opts.cwd, readToolModalities: CODELAYER_READ_TOOL_MODALITIES }),
@@ -408,7 +412,7 @@ export async function createCodingSubagentTool(opts: CreateCodingSubagentToolOpt
 				system: baseSystem,
 				hooks,
 				stopWhen,
-				providerOptions: opts.providerOptions,
+				providerOptions: opts.research?.providerOptions ?? opts.providerOptions,
 				promptCacheKey: opts.promptCacheKey,
 			}),
 		},

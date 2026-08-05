@@ -28,6 +28,7 @@ Delegate substantial work to subagents when appropriate and keep the top-level a
 
 export interface CodelayerAgentOptions {
 	model: LanguageModel
+	researchModel?: LanguageModel
 	cwd: string
 	hooks?: AgentConfig['hooks']
 	tools?: CodelayerToolSuiteOptions
@@ -348,6 +349,7 @@ function mergeHooks(base: ReturnType<typeof createAgentFilesystemHooks>, hooks?:
 export async function createCodelayerAgent(opts: CodelayerAgentOptions): Promise<Agent> {
 	const {
 		model,
+		researchModel,
 		cwd,
 		hooks,
 		tools: toolOpts,
@@ -372,6 +374,15 @@ export async function createCodelayerAgent(opts: CodelayerAgentOptions): Promise
 		model,
 		subagentThinkingOverrides(model, providerOptionOverrides, subagentThinking),
 	)
+	const researchProviderOptions = researchModel
+		? createCodelayerProviderOptionsFactory(researchModel, {
+				...subagentThinkingOverrides(researchModel, providerOptionOverrides, 'xhigh'),
+				codex: {
+					...providerOptionOverrides?.codex,
+					reasoningEffort: 'xhigh',
+				},
+			})
+		: undefined
 	const personaPromptAdditions = [
 		...(tars ? [tarsPersona(35)] : []),
 		...systemPromptAdditions,
@@ -394,6 +405,10 @@ export async function createCodelayerAgent(opts: CodelayerAgentOptions): Promise
 			hooks,
 			providerOptions: subagentProviderOptions,
 			outlineImplementerProviderOptions: providerOptions,
+			research:
+				researchModel && researchProviderOptions
+					? { model: researchModel, providerOptions: researchProviderOptions }
+					: undefined,
 			promptCacheKey,
 			systemPromptAdditions: personaPromptAdditions,
 		}))
