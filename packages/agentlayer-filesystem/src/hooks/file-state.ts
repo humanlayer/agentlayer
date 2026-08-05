@@ -418,6 +418,11 @@ export function createWastedReadHook(opts?: FileStateHookOptions): PreToolUseHoo
 			return ctx.next()
 		}
 
+		const verificationState = ctx.getState<FileVerificationStateMap>(FILE_VERIFICATION_STATE_KEY) ?? {}
+		if (verificationState[resolvedPath]?.lastVerifiedHash !== currentHash) {
+			return ctx.next()
+		}
+
 		const wastedRead = tracked.wastedRead
 		if (!wastedRead || wastedRead.hash !== currentHash) {
 			return ctx.next()
