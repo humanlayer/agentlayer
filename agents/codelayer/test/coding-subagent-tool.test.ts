@@ -3,6 +3,13 @@ import type { Tool } from '@humanlayer/agentlayer-core'
 import { createCodingSubagentTool } from '../src/coding-subagent-tool'
 import { OUTLINE_IMPLEMENTER_AGENT_NAME } from '../src/rpi-agents'
 
+const RESEARCH_SUBAGENT_NAMES = [
+	'rpi:codebase-locator',
+	'rpi:codebase-analyzer',
+	'rpi:codebase-pattern-finder',
+	'web-search-researcher',
+]
+
 const EXPECTED_SUBAGENT_NAMES = [
 	'general-purpose',
 	'bash',
@@ -17,6 +24,10 @@ const EXPECTED_SUBAGENT_NAMES = [
 
 function getAgentTools(agent: object): Record<string, Tool<any, any>> {
 	return (agent as { tools: Record<string, Tool<any, any>> }).tools
+}
+
+function getAgentAssembly(agent: object) {
+	return agent as { model: unknown; providerOptions?: unknown }
 }
 
 describe('createCodingSubagentTool', () => {
@@ -67,5 +78,53 @@ describe('createCodingSubagentTool', () => {
 		expect(tool.subagents.map(({ name }) => name)).toEqual(EXPECTED_SUBAGENT_NAMES)
 		expect(skillTools.every(Boolean)).toBe(true)
 		expect(new Set(skillTools)).toHaveLength(1)
+	})
+
+	test('applies the grouped research override only to designated research agents', async () => {
+		const rootModel = { modelId: 'gpt-5.6-sol' } as any
+		const researchModel = { modelId: 'gpt-5.6-terra' } as any
+		const rootProviderOptions = () => ({ mock: { marker: 'root' } })
+		const outlineProviderOptions = () => ({ mock: { marker: 'outline' } })
+		const researchProviderOptions = () => ({ mock: { marker: 'research' } })
+		const tool = await createCodingSubagentTool({
+			cwd: process.cwd(),
+			model: rootModel,
+			system: 'test system prompt',
+			context7ApiKey: 'test-context7-key',
+			providerOptions: rootProviderOptions,
+			outlineImplementerProviderOptions: outlineProviderOptions,
+			research: { model: researchModel, providerOptions: researchProviderOptions },
+		})
+
+		for (const subagent of tool.subagents) {
+			const assembly = getAgentAssembly(subagent.agent)
+			if (RESEARCH_SUBAGENT_NAMES.includes(subagent.name)) {
+				expect(assembly.model, subagent.name).toBe(researchModel)
+				expect(assembly.providerOptions, subagent.name).toBe(researchProviderOptions)
+			} else if (subagent.name === OUTLINE_IMPLEMENTER_AGENT_NAME) {
+				expect(assembly.model, subagent.name).toBe(rootModel)
+				expect(assembly.providerOptions, subagent.name).toBe(outlineProviderOptions)
+			} else {
+				expect(assembly.model, subagent.name).toBe(rootModel)
+				expect(assembly.providerOptions, subagent.name).toBe(rootProviderOptions)
+			}
+		}
+	})
+
+	test('keeps every subagent on the root assembly when research override is omitted', async () => {
+		const rootModel = { modelId: 'gpt-5.5' } as any
+		const rootProviderOptions = () => ({ mock: { marker: 'root' } })
+		const tool = await createCodingSubagentTool({
+			cwd: process.cwd(),
+			model: rootModel,
+			system: 'test system prompt',
+			providerOptions: rootProviderOptions,
+		})
+
+		for (const subagent of tool.subagents) {
+			const assembly = getAgentAssembly(subagent.agent)
+			expect(assembly.model, subagent.name).toBe(rootModel)
+			expect(assembly.providerOptions, subagent.name).toBe(rootProviderOptions)
+		}
 	})
 })

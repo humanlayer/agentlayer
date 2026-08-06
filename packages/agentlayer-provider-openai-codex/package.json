@@ -42,7 +42,6 @@
 		"@humanlayer/agentlayer-core": "workspace:*",
 		"@humanlayer/agentlayer-provider-auth": "workspace:*",
 		"ai": "catalog:",
-		"effect": "4.0.0-beta.66",
-		"uuid": "14.0.1"
+		"effect": "4.0.0-beta.66"
 	}
 }

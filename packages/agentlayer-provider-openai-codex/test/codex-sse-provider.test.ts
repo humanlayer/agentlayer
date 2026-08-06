@@ -15,11 +15,18 @@
  */
 import { describe, expect, test } from 'bun:test'
 import { createMemoryAuthStore } from '@humanlayer/agentlayer-provider-auth'
+import {
+	route as httpSseRoute,
+	protocol as responsesProtocol,
+} from '@humanlayer/opencode-llm-vendor/protocols/openai-responses'
+import { Auth } from '@humanlayer/opencode-llm-vendor/route/auth'
 import { LLMClient } from '@humanlayer/opencode-llm-vendor/route/client'
 import { jsonSchema, streamText } from 'ai'
 import { Effect, Layer, Stream } from 'effect'
 import { createCodexSseVendorProvider } from '../src/providers/sse-vendor-provider'
+import { convertCallOptionsToLLMRequest } from '../src/shared/adapter'
 import { CODEX_PROVIDER_ID } from '../src/shared/constants'
+import { llmEventToStreamParts } from '../src/shared/events'
 
 // ---------------------------------------------------------------------------
 // Mock LLMClient helpers
@@ -75,6 +82,51 @@ function mockLLMClientLayer(events: unknown[]): {
  */
 function buildTestLayer(clientLayer: Layer.Layer<any>): Layer.Layer<any> {
 	return clientLayer
+}
+
+async function drainStream(stream: ReadableStream<unknown>): Promise<void> {
+	const reader = stream.getReader()
+	while (true) {
+		const { done } = await reader.read()
+		if (done) return
+	}
+}
+
+async function decodeTerminalUsage(cacheWriteTokens: number | undefined) {
+	const request = convertCallOptionsToLLMRequest(
+		'gpt-5.6-sol',
+		{ prompt: [{ role: 'user', content: [{ type: 'text', text: 'Hi' }] }] },
+		{
+			auth: Auth.bearer('test-token'),
+			baseURL: 'https://chatgpt.com/backend-api/codex',
+			route: httpSseRoute,
+		},
+	)
+	const state = responsesProtocol.stream.initial(request)
+	const inputTokensDetails = {
+		cached_tokens: 2,
+		...(cacheWriteTokens === undefined ? {} : { cache_write_tokens: cacheWriteTokens }),
+	}
+	const [, events] = await Effect.runPromise(
+		responsesProtocol.stream.step(state, {
+			type: 'response.completed',
+			response: {
+				id: 'resp_usage',
+				usage: {
+					input_tokens: 10,
+					input_tokens_details: inputTokensDetails,
+					output_tokens: 4,
+					output_tokens_details: { reasoning_tokens: 1 },
+					total_tokens: 14,
+				},
+			},
+		}),
+	)
+	const finish = events.find((event) => event.type === 'finish')
+	if (!finish) throw new Error('Expected terminal Responses event to produce finish usage')
+	const streamPart = llmEventToStreamParts(finish as Record<string, unknown> & { type: string })[0]
+	if (!streamPart || streamPart.type !== 'finish') throw new Error('Expected finish stream part')
+	return streamPart.usage
 }
 
 // ---------------------------------------------------------------------------
@@ -198,6 +250,80 @@ describe('codex SSE vendor provider (HTTP SSE transport)', () => {
 		expect(model.provider).toBe('codex-sse-vendor')
 		expect(model.modelId).toBe('gpt-5.4')
 	})
+
+	test('GPT-5.6 SSE sends regular Responses fields and normal Codex headers', async () => {
+		const { provider, streamCalls } = createTestProvider(BASIC_TEXT_EVENTS)
+		const model = provider.languageModel('gpt-5.6-sol')
+		const result = await model.doStream({
+			prompt: [
+				{ role: 'system', content: 'Use repository tools.' },
+				{ role: 'user', content: [{ type: 'text', text: 'Find the implementation.' }] },
+			],
+			tools: [
+				{
+					type: 'function',
+					name: 'search',
+					description: 'Search files',
+					inputSchema: { type: 'object', properties: { query: { type: 'string' } } },
+				},
+			],
+			toolChoice: { type: 'auto' },
+			providerOptions: {
+				openai: { reasoningEffort: 'max', promptCacheKey: 'stable-cache-key' },
+			},
+		})
+		await drainStream(result.stream)
+
+		const request = streamCalls[0]!.request as any
+		const route = request.model.route
+		const body = (await Effect.runPromise(route.body.from(request))) as Record<string, unknown>
+		const headers = (await Effect.runPromise(
+			route.auth.apply({
+				request,
+				method: 'POST',
+				url: 'https://chatgpt.com/backend-api/codex/responses',
+				body: JSON.stringify(body),
+				headers: {},
+			}),
+		)) as Record<string, string>
+
+		expect(body.instructions).toBe('Use repository tools.')
+		expect(body.tools).toHaveLength(1)
+		expect(body.tool_choice).toBe('auto')
+		expect(body.prompt_cache_key).toBe('stable-cache-key')
+		expect(body.reasoning).toEqual({ effort: 'max', summary: 'detailed' })
+		expect(body.parallel_tool_calls).toBeUndefined()
+		expect(body.input).toEqual([
+			{ role: 'user', content: [{ type: 'input_text', text: 'Find the implementation.' }] },
+		])
+
+		expect(headers.authorization).toBe('Bearer test-sse-api-key')
+		expect(headers.originator).toBe('opencode')
+		expect(headers['user-agent']).toMatch(/^opencode\//)
+		expect(headers['session-id']).toBe('test-sse-session')
+		expect(headers['thread-id']).toBeUndefined()
+		expect(headers['x-session-affinity']).toBeUndefined()
+		expect(headers.version).toBeUndefined()
+		expect(headers['x-openai-internal-codex-responses-lite']).toBeUndefined()
+	})
+
+	test.each([
+		{ label: 'present', cacheWriteTokens: 3, expectedNoCache: 5, expectedCacheWrite: 3 },
+		{ label: 'zero', cacheWriteTokens: 0, expectedNoCache: 8, expectedCacheWrite: 0 },
+		{ label: 'omitted', cacheWriteTokens: undefined, expectedNoCache: 8, expectedCacheWrite: undefined },
+	])(
+		'decodes $label cache-write usage from a raw SSE terminal event',
+		async ({ cacheWriteTokens, expectedNoCache, expectedCacheWrite }) => {
+			const usage = await decodeTerminalUsage(cacheWriteTokens)
+
+			expect(usage.inputTokens.total).toBe(10)
+			expect(usage.inputTokens.noCache).toBe(expectedNoCache)
+			expect(usage.inputTokens.cacheRead).toBe(2)
+			expect(usage.inputTokens.cacheWrite).toBe(expectedCacheWrite)
+			expect(usage.outputTokens.total).toBe(4)
+			expect(usage.outputTokens.reasoning).toBe(1)
+		},
+	)
 
 	test('doGenerate returns content from SSE events', async () => {
 		const { provider } = createTestProvider(BASIC_TEXT_EVENTS)

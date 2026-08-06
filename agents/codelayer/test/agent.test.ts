@@ -109,6 +109,7 @@ async function expectReadToolSupportsPng(readTool: unknown) {
 
 function getAgentConfig(agent: object) {
 	return agent as {
+		model?: LanguageModel
 		tools?: Record<string, unknown>
 		system?: string | string[]
 		hooks?: AgentConfig['hooks']
@@ -1045,6 +1046,65 @@ describe('subagentThinkingOverrides', () => {
 
 		expect(generalProviderOptions({ runId: 'general' }).openai.reasoningEffort).toBe('low')
 		expect(outlineProviderOptions({ runId: 'outline' }).openai.reasoningEffort).toBe('high')
+	})
+
+	test('uses an alternate research model at xhigh without changing root or other child options', async () => {
+		const rootModel = createMockModel('gpt-5.6-sol', 'codex')
+		const researchModel = createMockModel('gpt-5.6-terra', 'codex')
+		const agent = await createCodelayerAgent({
+			model: rootModel,
+			researchModel,
+			cwd: '/tmp',
+			context7ApiKey: 'context7-test-key',
+			providerOptionOverrides: {
+				codex: {
+					reasoningEffort: 'high',
+					reasoningSummary: 'detailed',
+					fastMode: true,
+					promptCacheKey: 'session-research-test',
+				},
+			},
+		})
+		const rootConfig = getAgentConfig(agent)
+		const rootOptions = (rootConfig.providerOptions as unknown as (ctx: { runId: string }) => Record<string, any>)({
+			runId: 'root',
+		})
+		const subagents = getSubagents(rootConfig.tools?.agent)
+		const researchNames = [
+			'rpi:codebase-locator',
+			'rpi:codebase-analyzer',
+			'rpi:codebase-pattern-finder',
+			'web-search-researcher',
+		]
+
+		expect(rootConfig.model).toBe(rootModel)
+		expect(rootOptions.openai).toMatchObject({
+			reasoningEffort: 'high',
+			fastMode: true,
+			promptCacheKey: 'session-research-test',
+		})
+
+		for (const subagent of subagents) {
+			const config = getAgentConfig(subagent.agent)
+			const options = (config.providerOptions as unknown as (ctx: { runId: string }) => Record<string, any>)({
+				runId: subagent.name,
+			})
+			if (researchNames.includes(subagent.name)) {
+				expect(config.model, subagent.name).toBe(researchModel)
+				expect(options.openai, subagent.name).toMatchObject({
+					reasoningEffort: 'xhigh',
+					fastMode: true,
+					promptCacheKey: 'session-research-test',
+				})
+			} else {
+				expect(config.model, subagent.name).toBe(rootModel)
+				expect(options.openai.reasoningEffort, subagent.name).toBe(
+					subagent.name === 'rpi:outline-implementer-agent' ? 'high' : 'low',
+				)
+				expect(options.openai.fastMode, subagent.name).toBe(true)
+				expect(options.openai.promptCacheKey, subagent.name).toBe('session-research-test')
+			}
+		}
 	})
 
 	test('lets the outline implementer use parent anthropic effort while other sub-agents stay throttled', async () => {

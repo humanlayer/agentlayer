@@ -182,7 +182,7 @@ const BASIC_TEXT_EVENTS = [
 			status: 'completed',
 			usage: {
 				input_tokens: 10,
-				input_tokens_details: { cached_tokens: 2 },
+				input_tokens_details: { cached_tokens: 2, cache_write_tokens: 3 },
 				output_tokens: 4,
 				output_tokens_details: { reasoning_tokens: 0 },
 			},
@@ -374,7 +374,48 @@ describe('codex effect provider (WebSocket transport)', () => {
 
 		expect(result.content).toContainEqual(expect.objectContaining({ type: 'text', text: 'Hello from WebSocket' }))
 		expect(result.finishReason).toMatchObject({ unified: 'stop' })
+		expect(result.usage.inputTokens).toEqual({ total: 10, noCache: 5, cacheRead: 2, cacheWrite: 3 })
 	})
+
+	test.each([
+		{ label: 'present', cacheWriteTokens: 3, expectedNoCache: 5, expectedCacheWrite: 3 },
+		{ label: 'zero', cacheWriteTokens: 0, expectedNoCache: 8, expectedCacheWrite: 0 },
+		{ label: 'omitted', cacheWriteTokens: undefined, expectedNoCache: 8, expectedCacheWrite: undefined },
+	])(
+		'decodes $label cache-write usage from a raw WebSocket terminal event',
+		async ({ cacheWriteTokens, expectedNoCache, expectedCacheWrite }) => {
+			const inputTokensDetails = {
+				cached_tokens: 2,
+				...(cacheWriteTokens === undefined ? {} : { cache_write_tokens: cacheWriteTokens }),
+			}
+			const { provider } = createTestProvider([
+				{
+					type: 'response.completed',
+					response: {
+						id: 'resp_ws_usage',
+						status: 'completed',
+						usage: {
+							input_tokens: 10,
+							input_tokens_details: inputTokensDetails,
+							output_tokens: 4,
+							output_tokens_details: { reasoning_tokens: 1 },
+							total_tokens: 14,
+						},
+					},
+				},
+			])
+			const result = await provider.languageModel('gpt-5.6-sol').doGenerate({
+				prompt: [{ role: 'user', content: [{ type: 'text', text: 'Hi' }] }],
+			})
+
+			expect(result.usage.inputTokens.total).toBe(10)
+			expect(result.usage.inputTokens.noCache).toBe(expectedNoCache)
+			expect(result.usage.inputTokens.cacheRead).toBe(2)
+			expect(result.usage.inputTokens.cacheWrite).toBe(expectedCacheWrite)
+			expect(result.usage.outputTokens.total).toBe(4)
+			expect(result.usage.outputTokens.reasoning).toBe(1)
+		},
+	)
 
 	test('doStream emits text events incrementally via WebSocket', async () => {
 		const { provider } = createTestProvider(BASIC_TEXT_EVENTS)

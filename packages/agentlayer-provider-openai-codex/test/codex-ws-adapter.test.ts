@@ -1,11 +1,8 @@
 import { describe, expect, test } from 'bun:test'
 import type { LanguageModelV3CallOptions, LanguageModelV3Prompt } from '@ai-sdk/provider'
-import {
-	isReasoningEffortForModel,
-	prepareResponsesLiteBody,
-	webSocketRoute,
-} from '@humanlayer/opencode-llm-vendor/protocols/openai-responses'
+import { isReasoningEffortForModel, webSocketRoute } from '@humanlayer/opencode-llm-vendor/protocols/openai-responses'
 import * as AuthModule from '@humanlayer/opencode-llm-vendor/route/auth'
+import { Effect } from 'effect'
 import {
 	type AdapterConfig,
 	buildCodexModel,
@@ -45,18 +42,45 @@ describe('GPT-5.6 max reasoning', () => {
 		expect(isReasoningEffortForModel('gpt-5.4', 'max')).toBe(false)
 	})
 
-	test('Responses Lite preserves max effort and adds all-turns context', () => {
-		const body = prepareResponsesLiteBody({
-			input: [],
-			reasoning: { effort: 'max', summary: 'detailed' },
-		})
+	test.each(['gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna'])(
+		'%s uses the regular Responses request shape',
+		async (modelId) => {
+			const request = convertCallOptionsToLLMRequest(
+				modelId,
+				makeOptions({
+					prompt: [
+						{ role: 'system', content: 'Use the repository tools.' },
+						{ role: 'user', content: [{ type: 'text', text: 'Locate the implementation.' }] },
+					],
+					tools: [
+						{
+							type: 'function',
+							name: 'search',
+							description: 'Search the repository',
+							inputSchema: { type: 'object', properties: { query: { type: 'string' } } },
+						},
+					],
+					toolChoice: { type: 'auto' },
+					providerOptions: {
+						openai: { reasoningEffort: 'max', promptCacheKey: 'cache-key' },
+					},
+				}),
+				makeConfig(),
+			)
 
-		expect(body.reasoning).toEqual({
-			effort: 'max',
-			summary: 'detailed',
-			context: 'all_turns',
-		})
-	})
+			const body = await Effect.runPromise(webSocketRoute.body.from(request))
+
+			expect(body.instructions).toBe('Use the repository tools.')
+			expect(body.tools).toHaveLength(1)
+			expect(body.tool_choice).toBe('auto')
+			expect(body.prompt_cache_key).toBe('cache-key')
+			expect(body.reasoning).toEqual({ effort: 'max', summary: 'detailed' })
+			expect(body.parallel_tool_calls).toBeUndefined()
+			expect(body.input).toEqual([
+				{ role: 'user', content: [{ type: 'input_text', text: 'Locate the implementation.' }] },
+			])
+		},
+	)
 })
 
 // ---------------------------------------------------------------------------
