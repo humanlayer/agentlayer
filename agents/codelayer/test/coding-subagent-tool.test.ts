@@ -31,6 +31,60 @@ function getAgentAssembly(agent: object) {
 }
 
 describe('createCodingSubagentTool', () => {
+	test('exposes the complete strict Codex fork tool contract with model guidance', async () => {
+		const tool = await createCodingSubagentTool({
+			cwd: process.cwd(),
+			model: 'codex-test' as any,
+			system: 'test system prompt',
+			mode: 'fork-dispatch-resume',
+		})
+		const input = tool.input as any
+		const shape = input.shape as Record<string, { description?: string }>
+
+		expect(Object.keys(shape)).toEqual([
+			'description',
+			'prompt',
+			'agent_id',
+			'fork_turns',
+			'subagent_type',
+			'skill',
+		])
+		expect(input.safeParse({ prompt: 'delegate this' }).success).toBe(true)
+		expect(input.safeParse({ prompt: 'delegate this', unknown: true }).success).toBe(false)
+		expect(shape.description?.description).toBe('Short description of the subagent task.')
+		expect(shape.prompt?.description).toBe(
+			'Task for the subagent. Custom-role tasks must be self-contained because they do not inherit the conversation.',
+		)
+		expect(shape.agent_id?.description).toBe(
+			'Reserved for terminal subagent continuation, which is not available yet. Do not set this field.',
+		)
+		expect(shape.fork_turns?.description).toBe(
+			'Conversation to inherit: "all", "none", or a positive integer string such as "3". Omitted means "all". Do not combine with agent_id or subagent_type.',
+		)
+		expect(shape.subagent_type?.description).toBe(
+			'Start a registered specialist without inheriting the calling agent conversation. Do not combine with agent_id or fork_turns.',
+		)
+		expect(shape.skill?.description).toBe('Optional skill to preload into the subagent.')
+		expect(tool.description).toContain('Omit agent_id, fork_turns, and subagent_type')
+		expect(tool.description).toContain('Set subagent_type to start a fresh registered specialist')
+		expect(tool.description).toContain('Terminal continuation is not available yet; do not set agent_id')
+		expect(tool.description).not.toContain('continue a child ID returned by an earlier result')
+	})
+
+	test('preserves the required specialist selector outside Codex fork mode', async () => {
+		const tool = await createCodingSubagentTool({
+			cwd: process.cwd(),
+			model: 'claude-test' as any,
+			system: 'test system prompt',
+			mode: 'specialists',
+		})
+
+		expect(tool.input.safeParse({ description: 'small task', prompt: 'work' }).success).toBe(false)
+		expect(
+			tool.input.safeParse({ description: 'small task', prompt: 'work', subagent_type: 'general-purpose' }).success,
+		).toBe(true)
+	})
+
 	test('includes the outline implementer sub-agent once', async () => {
 		const tool = await createCodingSubagentTool({
 			cwd: process.cwd(),

@@ -1193,6 +1193,20 @@ describe('--subagent-thinking CLI knob', () => {
 		expect(captured).toMatchObject({ subagentThinking: 'high' })
 	})
 
+	test('selects the expanded subagent contract only for the Codex CLI provider', async () => {
+		const codex = await captureCliAgentOptions(
+			['node', 'codelayer', '--provider', 'codex', '--prompt', 'hi'],
+			createMockModel('gpt-5.5'),
+		)
+		const anthropic = await captureCliAgentOptions(
+			['node', 'codelayer', '--provider', 'anthropic', '--prompt', 'hi'],
+			createMockModel('claude-sonnet-4-5'),
+		)
+
+		expect(codex).toMatchObject({ subagentMode: 'fork-dispatch-resume' })
+		expect(anthropic).toMatchObject({ subagentMode: 'specialists' })
+	})
+
 	test('rejects a subagent thinking value outside the per-model allow-list', async () => {
 		await expect(
 			captureCliAgentOptions(
@@ -1204,6 +1218,18 @@ describe('--subagent-thinking CLI knob', () => {
 })
 
 describe('createCodingSubagentTool', () => {
+	test('threads fork-dispatch-resume mode into the root agent tool', async () => {
+		const agent = await createCodelayerAgent({
+			model: createMockModel('gpt-5.5'),
+			cwd: '/tmp',
+			subagentMode: 'fork-dispatch-resume',
+		})
+		const tool = getAgentConfig(agent).tools?.agent as Tool<any, any> | undefined
+
+		expect(tool?.input.safeParse({ prompt: 'inherit and inspect' }).success).toBe(true)
+		expect(tool?.description).toContain('fork all eligible calling-agent conversation')
+	})
+
 	test('creates the standard subagent tool wrapper', async () => {
 		const tool = await createCodingSubagentTool({
 			cwd: '/tmp',

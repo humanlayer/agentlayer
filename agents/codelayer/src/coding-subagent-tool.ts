@@ -4,6 +4,7 @@ import { createWebFetchTool } from '@humanlayer/agentlayer-core'
 import type { CodeSearchInput } from '@humanlayer/agentlayer-core/interfaces'
 import { CodeSearchTool } from '@humanlayer/agentlayer-core/interfaces'
 import type { SubAgentConfig } from '@humanlayer/agentlayer-core'
+import type { SubagentToolMode } from '@humanlayer/agentlayer-core'
 import {
 	createAgentFilesystemHooks,
 	createAgentSystemPrompt,
@@ -62,6 +63,7 @@ export interface CreateCodingSubagentToolOptions
 		providerOptions: AgentConfig['providerOptions']
 	}
 	promptCacheKey?: string
+	mode?: SubagentToolMode
 }
 
 async function fetchExaCodeSearch(input: CodeSearchInput, apiKey: string, timeoutMs: number): Promise<string | null> {
@@ -431,6 +433,6 @@ export async function createCodingSubagentTool(opts: CreateCodingSubagentToolOpt
 		})
 	}
 
-	const tool = createSubagentsTool({ agents, onChildEvent: opts.onChildEvent })
+	const tool = createSubagentsTool({ agents, mode: opts.mode, onChildEvent: opts.onChildEvent })
 	return Object.assign(tool, { subagents: agents })
 }

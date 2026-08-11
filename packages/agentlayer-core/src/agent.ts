@@ -292,6 +292,25 @@ export class Agent<TTools extends Record<string, Tool<any, any>> = Record<string
 			: this.providerOptions
 	}
 
+	private createForkAgent(): Agent {
+		return new Agent({
+			model: this.model,
+			system: this.system,
+			tools: this.tools,
+			toolChoice: this.toolChoice,
+			providerOptions: this.providerOptions,
+			maxSteps: this.maxStepsLimit,
+			stopWhen: this.stopWhen,
+			modelProvider: this.modelProvider,
+			onError: this.onError,
+			onStop: this.onStop,
+			onApprovalRequested: this.onApprovalRequested,
+			contextWindowLimit: this.contextWindowLimit,
+			hooks: this.hooks,
+			promptCacheKey: this.promptCacheKey,
+		})
+	}
+
 	private async executeLoop(options: RunOptions, agentRun: AgentRun): Promise<void> {
 		// Hoist mutable state above try/catch so the error path can capture progress
 		const allMessages: ModelMessage[] = [...options.state.messages]
@@ -361,6 +380,14 @@ export class Agent<TTools extends Record<string, Tool<any, any>> = Record<string
 				promptCacheKey,
 				getContextWindowTokens: () => contextWindowTokens,
 				getContextWindowLimit: () => this.contextWindowLimit,
+				createSubAgentFork: () => ({
+					agent: this.createForkAgent(),
+					state: structuredClone({
+						messages: allMessages,
+						...((inputApprovalHistory?.length ?? 0) > 0 ? { approvalHistory: inputApprovalHistory } : {}),
+					}),
+				}),
+				createSubAgentForkAgent: () => this.createForkAgent(),
 			}
 
 			// ── preamble: handle incoming message state ──────────────────────────

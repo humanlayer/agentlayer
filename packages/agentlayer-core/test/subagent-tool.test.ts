@@ -4,16 +4,27 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { ModelMessage } from 'ai'
 import { z } from 'zod'
-import { Agent, type AgentEvent, defineTool, getAllPendingApprovals, startState, withApprovals } from '../src'
+import {
+	Agent,
+	type AgentEvent,
+	type AgentState,
+	defineTool,
+	getAllPendingApprovals,
+	startState,
+	withApprovals,
+} from '../src'
 import { createSubagentsTool } from '../src/tools'
-import { deriveChildPromptCacheKey } from '../src/tools/subagent'
+import { deriveChildPromptCacheKey, parseSubagentCommand, subagentInputForkDispatchResume } from '../src/tools/subagent'
+import { createForkState, projectForkMessages } from '../src/tools/subagent-fork'
 import {
 	assistantText,
 	assistantWithToolCall,
 	assistantWithToolCalls,
 	getToolResults,
+	mockDynamicStreamingModel,
 	mockModel,
 	outputValue,
+	toolResultMessage,
 	userMessage,
 } from './mocks'
 
@@ -705,5 +716,257 @@ describe('createSubagentsTool', () => {
 		// State is clean
 		expect(result3.state.pendingToolCalls).toBeUndefined()
 		expect(result3.state.subAgents).toBeUndefined()
+	})
+})
+
+describe('fork-dispatch-resume subagent mode', () => {
+	test('exposes the strict flat schema and parses one command before execution', () => {
+		expect(subagentInputForkDispatchResume.safeParse({ prompt: 'inspect it' }).success).toBe(true)
+		expect(subagentInputForkDispatchResume.safeParse({ prompt: 'inspect it', extra: true }).success).toBe(false)
+		expect(parseSubagentCommand({ prompt: ' inspect it ' })).toEqual({
+			type: 'fork',
+			prompt: 'inspect it',
+			turns: 'all',
+		})
+		expect(parseSubagentCommand({ prompt: 'inspect it', fork_turns: '3' })).toEqual({
+			type: 'fork',
+			prompt: 'inspect it',
+			turns: 3,
+		})
+		expect(parseSubagentCommand({ prompt: 'inspect it', subagent_type: 'worker' })).toEqual({
+			type: 'dispatch-role',
+			prompt: 'inspect it',
+			subagentType: 'worker',
+		})
+		expect(() =>
+			parseSubagentCommand({ prompt: 'inspect it', fork_turns: 'all', subagent_type: 'worker' }),
+		).toThrow('mutually exclusive')
+		expect(() => parseSubagentCommand({ prompt: '   ' })).toThrow('prompt must not be blank')
+		expect(() => parseSubagentCommand({ prompt: 'inspect it', agent_id: '' })).toThrow('agent_id must not be blank')
+		expect(() => parseSubagentCommand({ prompt: 'inspect it', fork_turns: '' })).toThrow('fork_turns')
+		expect(() => parseSubagentCommand({ prompt: 'inspect it', subagent_type: '' })).toThrow(
+			'subagent_type must not be blank',
+		)
+		expect(() => parseSubagentCommand({ prompt: 'inspect it', fork_turns: '0' })).toThrow('fork_turns')
+	})
+
+	test('projects only completed eligible turns and removes the triggering user plus invoking assistant', () => {
+		const messages: ModelMessage[] = [
+			{ role: 'user', content: 'old request' },
+			{ role: 'assistant', content: [{ type: 'text', text: 'settled answer' }] },
+			{ role: 'assistant', content: [{ type: 'reasoning', text: 'private reasoning' }] },
+			{
+				role: 'assistant',
+				content: [{ type: 'tool-call', toolCallId: 'old-call', toolName: 'echo', input: { text: 'x' } }],
+			},
+			toolResultMessage('old-call', 'echo', 'old result'),
+			{ role: 'user', content: 'current request' },
+			{
+				role: 'assistant',
+				content: [
+					{ type: 'text', text: 'intermediate text' },
+					{ type: 'tool-call', toolCallId: 'spawn-call', toolName: 'subagent', input: { prompt: 'work' } },
+					{ type: 'tool-call', toolCallId: 'sibling-call', toolName: 'subagent', input: { prompt: 'other' } },
+				],
+			},
+		]
+
+		expect(projectForkMessages(messages, 'all', 'spawn-call')).toEqual([
+			{ role: 'user', content: 'old request' },
+			{ role: 'assistant', content: [{ type: 'text', text: 'settled answer' }] },
+		])
+		expect(projectForkMessages(messages, 1, 'spawn-call')).toEqual([
+			{ role: 'user', content: 'old request' },
+			{ role: 'assistant', content: [{ type: 'text', text: 'settled answer' }] },
+		])
+		expect(projectForkMessages(messages, 'none', 'spawn-call')).toEqual([])
+	})
+
+	test('constructs isolated fork state without caller tool, pending, child, or context state', () => {
+		const caller: AgentState = {
+			messages: [{ role: 'user', content: { nested: ['original'] } } as any],
+			pendingToolCalls: [{ type: 'stopped', toolCallId: 'pending', toolName: 'echo', input: {} }],
+			toolState: { mutable: { value: 1 } },
+			subAgents: { existing: startState([{ role: 'user', content: 'child' }]) },
+			contextWindowTokens: 1234,
+			approvalHistory: [
+				{
+					toolCallId: 'approved',
+					toolName: 'echo',
+					input: { nested: { value: 1 } },
+					approval: { id: 'approved', toolCallId: 'approved', toolName: 'echo', input: {} },
+					decision: { toolCallId: 'approved', approved: true },
+				},
+			],
+		}
+		const fork = createForkState(caller, 'all', 'spawn-call', 'delegated task')
+
+		expect(fork.messages.at(-1)).toEqual({ role: 'user', content: 'delegated task' })
+		expect(fork.pendingToolCalls).toBeUndefined()
+		expect(fork.toolState).toBeUndefined()
+		expect(fork.subAgents).toBeUndefined()
+		expect(fork.contextWindowTokens).toBeUndefined()
+		expect(fork.messages).not.toBe(caller.messages)
+		expect(fork.approvalHistory).not.toBe(caller.approvalHistory)
+	})
+
+	test('defaults an omitted selector to an inherited-runtime all-history fork', async () => {
+		const requestViews: ModelMessage[][] = []
+		const marker = defineTool({
+			name: 'marker',
+			description: 'Inherited runtime marker',
+			input: z.object({}),
+			execute: async () => 'inherited marker ran',
+		})
+		const sharedModel = mockModel([
+			assistantWithToolCall('subagent', { prompt: 'delegated task' }),
+			assistantWithToolCall('marker', {}),
+			assistantText('fork child complete'),
+			assistantText('parent complete'),
+		])
+		const specialist = new Agent({ model: mockModel([assistantText('specialist')]), tools: {} })
+		const subagent = createSubagentsTool({
+			mode: 'fork-dispatch-resume',
+			agents: [{ name: 'worker', description: 'Fresh worker', agent: specialist }],
+		})
+		const parent = new Agent({
+			model: sharedModel,
+			tools: { marker, subagent },
+			hooks: {
+				preRequest: [
+					(ctx) => {
+						requestViews.push(structuredClone([...ctx.messages]))
+						return ctx.next()
+					},
+				],
+			},
+		})
+
+		const result = await parent.run({
+			state: startState([
+				userMessage('My name is Megan and there is always money in the banana stand.'),
+				{ role: 'assistant', content: [{ type: 'text', text: 'I will remember that.' }] },
+				userMessage('parent request'),
+			]),
+		}).result
+		expect(result.finishReason).toBe('complete')
+		const forkResult = getToolResultValues(result.state.messages, 'subagent')[0]!
+		expect(forkResult).toContain('fork child complete')
+		expect(forkResult).not.toContain('agent_id')
+		expect(forkResult).not.toContain('task_id')
+		const childFirstRequest = requestViews.find(
+			(messages) => messages.at(-1)?.role === 'user' && messages.at(-1)?.content === 'delegated task',
+		)
+		expect(childFirstRequest).toEqual([
+			{ role: 'user', content: 'My name is Megan and there is always money in the banana stand.' },
+			{ role: 'assistant', content: [{ type: 'text', text: 'I will remember that.' }] },
+			{ role: 'user', content: 'delegated task' },
+		])
+	})
+
+	test('does not recursively redispatch when the triggering parent instruction asks for a subagent', async () => {
+		const triggeringInstruction = 'call a subagent to investigate this problem'
+		const delegatedPrompt = 'Inspect the fork request and report what you find.'
+		const requestViews: ModelMessage[][] = []
+		const shouldRedispatch = (messages: ModelMessage[]) =>
+			messages.some((message) => message.role === 'user' && message.content === triggeringInstruction)
+		let childDecision: boolean | undefined
+		let modelCalls = 0
+
+		const model = mockDynamicStreamingModel((callIndex) => {
+			modelCalls += 1
+			if (callIndex === 0) return assistantWithToolCall('subagent', { prompt: delegatedPrompt })
+			if (callIndex === 1) {
+				childDecision = shouldRedispatch(requestViews.at(-1) ?? [])
+				return childDecision
+					? assistantWithToolCall('subagent', { prompt: 'recursive child dispatch' })
+					: assistantText('child completed without redispatch')
+			}
+			return assistantText('root completed')
+		})
+		const subagent = createSubagentsTool({ mode: 'fork-dispatch-resume', agents: [] })
+		const root = new Agent({
+			model,
+			tools: { subagent },
+			hooks: {
+				preRequest: [
+					(ctx) => {
+						requestViews.push(structuredClone([...ctx.messages]))
+						return ctx.next()
+					},
+				],
+			},
+		})
+
+		const legacyChildRequest = [userMessage(triggeringInstruction), userMessage(delegatedPrompt)]
+		expect(shouldRedispatch(legacyChildRequest)).toBe(true)
+
+		const result = await root.run({ state: startState([userMessage(triggeringInstruction)]) }).result
+		expect(result.finishReason).toBe('complete')
+		expect(childDecision).toBe(false)
+		expect(modelCalls).toBe(3)
+		expect(requestViews[1]).toEqual([userMessage(delegatedPrompt)])
+		expect(JSON.stringify(result.state.messages)).not.toContain('recursive child dispatch')
+	})
+
+	test('dispatches a selected specialist with only the self-contained prompt', async () => {
+		const specialistViews: ModelMessage[][] = []
+		const specialist = new Agent({
+			model: mockModel([assistantText('specialist complete')]),
+			tools: {},
+			hooks: {
+				preRequest: [
+					(ctx) => {
+						specialistViews.push(structuredClone([...ctx.messages]))
+						return ctx.next()
+					},
+				],
+			},
+		})
+		const subagent = createSubagentsTool({
+			mode: 'fork-dispatch-resume',
+			agents: [{ name: 'worker', description: 'Fresh worker', agent: specialist }],
+		})
+		const parent = new Agent({
+			model: mockModel([
+				assistantWithToolCall('subagent', { prompt: 'self-contained task', subagent_type: 'worker' }),
+				assistantText('parent complete'),
+			]),
+			tools: { subagent },
+		})
+
+		await parent.run({ state: startState([userMessage('private parent context')]) }).result
+		expect(specialistViews[0]).toEqual([{ role: 'user', content: 'self-contained task' }])
+	})
+
+	test('rejects reserved agent_id without starting or looking up a terminal child', async () => {
+		let childCalls = 0
+		const specialist = new Agent({
+			model: mockDynamicStreamingModel(() => {
+				childCalls += 1
+				return assistantText('unexpected child run')
+			}),
+			tools: {},
+		})
+		const subagent = createSubagentsTool({
+			mode: 'fork-dispatch-resume',
+			agents: [{ name: 'worker', description: 'Fresh worker', agent: specialist }],
+		})
+		const parent = new Agent({
+			model: mockModel([
+				assistantWithToolCall('subagent', { prompt: 'continue', agent_id: 'child-123' }),
+				assistantText('parent complete'),
+			]),
+			tools: { subagent },
+		})
+
+		const result = await parent.run({ state: startState([userMessage('try continuation')]) }).result
+		const toolResult = getToolResultValues(result.state.messages, 'subagent')[0]!
+
+		expect(toolResult).toBe(
+			'Error: agent_id continuation is not available yet. Start a new subagent without agent_id.',
+		)
+		expect(childCalls).toBe(0)
+		expect(result.state.toolState).toBeUndefined()
 	})
 })

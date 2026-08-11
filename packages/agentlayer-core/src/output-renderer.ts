@@ -17,11 +17,18 @@ export interface OutputRenderer {
 }
 
 type LiveToolInputState = {
+	toolCallId: string
 	toolName: string
 	lineOpen: boolean
 	hasWrittenArgs: boolean
+	hasRenderedInvocation: boolean
 	rawInput: string
+	agentId?: string
+	parentToolCallId?: string
+	agentDepth?: number
 }
+
+type AgentIdentity = Pick<AgentEvent, 'agentId' | 'parentToolCallId' | 'agentDepth'>
 
 const MAX_INPUT_VAL = 120
 
@@ -121,7 +128,7 @@ export function createOutputRenderer(options: OutputRendererOptions): OutputRend
 	const startedTextBlocks = new Set<string>()
 	const startedThinkingBlocks = new Set<string>()
 	const sawLiveAssistantContentByScope = new Set<string>()
-	const sawLiveToolInputByScope = new Set<string>()
+	const renderedToolCallIds = new Set<string>()
 	const output = options.output
 	const includeToolResults = options.includeToolResults ?? false
 	const includeTokenUsage = options.includeTokenUsage ?? false
@@ -145,14 +152,27 @@ export function createOutputRenderer(options: OutputRendererOptions): OutputRend
 		return color.dim(color.italic(line.replace(/\r$/, '')))
 	}
 
-	const formatToolLabel = (toolName: string): string => {
-		const colorFn = TOOL_COLORS[toolName.toLowerCase()] ?? color.blue
-		return colorFn(`[Tool] ${toolName}`)
+	const formatAgentIdentity = (event: AgentIdentity): string => {
+		if (!event.agentId) return 'agent=root depth=0'
+		return `agent=child:${event.agentId} depth=${event.agentDepth ?? 1}${event.parentToolCallId ? ` parent_call=${event.parentToolCallId}` : ''}`
 	}
 
-	const formatToolCall = (toolName: string, input: unknown): string => {
-		return `${formatToolLabel(toolName)}${compactInput(input)}`
+	const formatToolLabel = (toolName: string, toolCallId: string, event: AgentIdentity): string => {
+		const colorFn = TOOL_COLORS[toolName.toLowerCase()] ?? color.blue
+		return colorFn(`[Tool] ${toolName} call_id=${toolCallId} ${formatAgentIdentity(event)}`)
 	}
+
+	const formatToolCall = (toolName: string, toolCallId: string, input: unknown, event: AgentIdentity): string => {
+		return `${formatToolLabel(toolName, toolCallId, event)}${compactInput(input)}`
+	}
+
+	const formatToolResultLabel = (
+		toolName: string,
+		toolCallId: string,
+		isError: boolean,
+		event: AgentIdentity,
+	): string =>
+		`${color.dim('[Tool Result]')} ${toolName} call_id=${toolCallId} ${formatAgentIdentity(event)} status=${isError ? 'error' : 'ok'}`
 
 	const formatAssistantStartLine = (line: string): string => {
 		return `${color.green('[Assistant]')} ${line.replace(/\r$/, '')}`
@@ -170,29 +190,43 @@ export function createOutputRenderer(options: OutputRendererOptions): OutputRend
 		return [parts.agentId ?? 'root', parts.parentToolCallId ?? 'root'].join(':')
 	}
 
-	const ensureToolInputState = (toolCallId: string, toolName: string): LiveToolInputState => {
+	const ensureToolInputState = (toolCallId: string, toolName: string, event: AgentIdentity): LiveToolInputState => {
 		const existing = liveToolInputs.get(toolCallId)
 		if (existing) {
 			existing.toolName = toolName
+			existing.agentId = event.agentId
+			existing.parentToolCallId = event.parentToolCallId
+			existing.agentDepth = event.agentDepth
 			return existing
 		}
 		const created: LiveToolInputState = {
+			toolCallId,
 			toolName,
 			lineOpen: false,
 			hasWrittenArgs: false,
+			hasRenderedInvocation: false,
 			rawInput: '',
+			agentId: event.agentId,
+			parentToolCallId: event.parentToolCallId,
+			agentDepth: event.agentDepth,
 		}
 		liveToolInputs.set(toolCallId, created)
 		return created
 	}
 
-	const activateToolLine = (toolCallId: string, toolName: string): LiveToolInputState => {
+	const activateToolLine = (toolCallId: string, toolName: string, event: AgentIdentity): LiveToolInputState => {
 		if (activeToolLineId && activeToolLineId !== toolCallId) {
 			flushActiveToolLine()
 		}
-		const state = ensureToolInputState(toolCallId, toolName)
+		const state = ensureToolInputState(toolCallId, toolName, event)
 		if (!state.lineOpen) {
-			write(formatToolLabel(toolName))
+			write(
+				state.hasRenderedInvocation
+					? color.dim(`[Tool Args] id=${toolCallId}`)
+					: formatToolLabel(toolName, toolCallId, event),
+			)
+			state.hasRenderedInvocation = true
+			renderedToolCallIds.add(toolCallId)
 			state.lineOpen = true
 			activeToolLineId = toolCallId
 		}
@@ -218,7 +252,14 @@ export function createOutputRenderer(options: OutputRendererOptions): OutputRend
 	const flushToolInputLine = (toolCallId: string): void => {
 		const state = liveToolInputs.get(toolCallId)
 		if (!state) return
-		activateToolLine(toolCallId, state.toolName)
+		if (!streamToolArgs) {
+			if (!renderedToolCallIds.has(toolCallId)) {
+				writeLine(formatToolCall(state.toolName, toolCallId, state.rawInput, state))
+				renderedToolCallIds.add(toolCallId)
+			}
+			return
+		}
+		activateToolLine(toolCallId, state.toolName, state)
 		flushActiveToolLine()
 	}
 
@@ -271,8 +312,10 @@ export function createOutputRenderer(options: OutputRendererOptions): OutputRend
 		buffers.delete(key)
 	}
 
-	const emitToolInputDelta = (toolCallId: string, delta: string): void => {
-		const state = activateToolLine(toolCallId, liveToolInputs.get(toolCallId)?.toolName ?? 'tool')
+	const emitToolInputDelta = (toolCallId: string, delta: string, event: AgentIdentity): void => {
+		const state = streamToolArgs
+			? activateToolLine(toolCallId, liveToolInputs.get(toolCallId)?.toolName ?? 'tool', event)
+			: ensureToolInputState(toolCallId, liveToolInputs.get(toolCallId)?.toolName ?? 'tool', event)
 		state.rawInput += delta
 		if (!streamToolArgs) return
 		if (!state.hasWrittenArgs) {
@@ -326,9 +369,7 @@ export function createOutputRenderer(options: OutputRendererOptions): OutputRend
 
 		if (message.role === 'assistant' && Array.isArray(message.content)) {
 			const skipFinalAssistantText = sawLiveAssistantContentByScope.has(currentScope)
-			const skipFinalToolCalls = sawLiveToolInputByScope.has(currentScope)
 			sawLiveAssistantContentByScope.delete(currentScope)
-			sawLiveToolInputByScope.delete(currentScope)
 
 			for (const part of message.content) {
 				if (part.type === 'text') {
@@ -352,8 +393,9 @@ export function createOutputRenderer(options: OutputRendererOptions): OutputRend
 				}
 
 				if (part.type === 'tool-call') {
-					if (!skipFinalToolCalls) {
-						writeLine(formatToolCall(part.toolName, part.input))
+					if (!renderedToolCallIds.has(part.toolCallId)) {
+						writeLine(formatToolCall(part.toolName, part.toolCallId, part.input, event))
+						renderedToolCallIds.add(part.toolCallId)
 					}
 				}
 			}
@@ -361,10 +403,17 @@ export function createOutputRenderer(options: OutputRendererOptions): OutputRend
 		}
 
 		if (message.role === 'tool' && Array.isArray(message.content)) {
-			if (!includeToolResults) return
 			for (const part of message.content) {
 				if (part.type !== 'tool-result') continue
-				writeLine(formatToolLabel(part.toolName))
+				writeLine(
+					formatToolResultLabel(
+						part.toolName,
+						part.toolCallId,
+						(part as typeof part & { isError?: boolean }).isError === true,
+						event,
+					),
+				)
+				if (!includeToolResults) continue
 
 				const outputText = renderToolResultOutput(part.output)
 				for (const line of outputText.split('\n')) {
@@ -417,15 +466,13 @@ export function createOutputRenderer(options: OutputRendererOptions): OutputRend
 					startedTextBlocks.delete(streamKey(event))
 					return
 				case 'toolInputStart':
-					activateToolLine(event.id, event.toolName)
-					sawLiveToolInputByScope.add(scopeKey(event))
+					if (streamToolArgs) activateToolLine(event.id, event.toolName, event)
+					else ensureToolInputState(event.id, event.toolName, event)
 					return
 				case 'toolInputDelta':
-					sawLiveToolInputByScope.add(scopeKey(event))
-					emitToolInputDelta(event.id, event.delta)
+					emitToolInputDelta(event.id, event.delta, event)
 					return
 				case 'toolInputEnd':
-					sawLiveToolInputByScope.add(scopeKey(event))
 					flushToolInputLine(event.id)
 					liveToolInputs.delete(event.id)
 					return

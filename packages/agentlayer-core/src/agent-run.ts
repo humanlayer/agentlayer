@@ -9,6 +9,7 @@ import type { TokenUsageEvent } from './token-usage'
 type AgentEventMeta = {
 	agentId?: string
 	parentToolCallId?: string
+	agentDepth?: number
 }
 
 export type AgentEvent =

@@ -28,6 +28,9 @@ export interface ExecuteToolCallContext {
 	getContextWindowTokens?: () => number
 	/** Returns the context window token limit for the current model. */
 	getContextWindowLimit?: () => number | undefined
+	/** Capture an isolated caller state and equivalent runtime for a fork child. */
+	createSubAgentFork?: (toolCallId: string) => { agent: import('./agent').Agent; state: AgentState }
+	createSubAgentForkAgent?: () => import('./agent').Agent
 }
 
 export interface ToolCallResult {
@@ -105,6 +108,8 @@ export async function executeToolCall(tc: ToolCallRef, ctx: ExecuteToolCallConte
 		getSubAgentState: (agentId: string): AgentState | undefined => {
 			return ctx.subAgents?.[agentId]
 		},
+		...(ctx.createSubAgentFork ? { createSubAgentFork: () => ctx.createSubAgentFork!(tc.toolCallId) } : {}),
+		...(ctx.createSubAgentForkAgent ? { createSubAgentForkAgent: ctx.createSubAgentForkAgent } : {}),
 	}
 
 	// Wire awaitSubAgent if we have a parent AgentRun
@@ -125,6 +130,7 @@ export async function executeToolCall(tc: ToolCallRef, ctx: ExecuteToolCallConte
 						...childEvent,
 						agentId: childEvent.agentId ?? agentId,
 						parentToolCallId: childEvent.parentToolCallId ?? parentToolCallId,
+						agentDepth: (childEvent.agentDepth ?? 0) + 1,
 					})
 				}
 			})()

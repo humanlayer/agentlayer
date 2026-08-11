@@ -64,6 +64,37 @@ export function mockStreamingModel(responses: MockResponse[]): LanguageModelV3 {
 	})
 }
 
+export function mockDynamicStreamingModel(nextResponse: (callIndex: number) => MockResponse): LanguageModelV3 {
+	let index = 0
+	return new MockLanguageModelV3({
+		provider: 'mock',
+		modelId: 'mock-model',
+		supportedUrls: {},
+		doStream: async (): Promise<LanguageModelV3StreamResult> => {
+			const response = nextResponse(index++)
+			const hasToolCalls = response.content.some((content) => content.type === 'tool-call')
+			return {
+				stream: simulateReadableStream<LanguageModelV3StreamPart>({
+					chunks: [
+						{ type: 'stream-start', warnings: [] },
+						...response.content.flatMap((part) => toStreamParts(part)),
+						{
+							type: 'finish',
+							finishReason: {
+								unified: hasToolCalls ? 'tool-calls' : 'stop',
+								raw: hasToolCalls ? 'tool_use' : 'stop',
+							},
+							usage: response.usage ?? MOCK_USAGE,
+						},
+					],
+					initialDelayInMs: null,
+					chunkDelayInMs: null,
+				}),
+			}
+		},
+	})
+}
+
 function toStreamParts(part: LanguageModelV3Content): LanguageModelV3StreamPart[] {
 	switch (part.type) {
 		case 'text': {

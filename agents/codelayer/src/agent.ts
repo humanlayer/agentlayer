@@ -43,6 +43,8 @@ export interface CodelayerAgentOptions {
 	subagentTool?: Tool<any, any>
 	providerOptionOverrides?: CodelayerProviderOptionOverrides
 	subagentThinking?: string
+	/** Select the legacy specialist roster or Codex-style fork/dispatch/resume contract. */
+	subagentMode?: 'specialists' | 'fork-dispatch-resume'
 	environment?: CodelayerEnvironmentOptions
 	/**
 	 * Extra environment variables to inject into the bash tool's child processes for
@@ -364,6 +366,7 @@ export async function createCodelayerAgent(opts: CodelayerAgentOptions): Promise
 		subagentTool,
 		providerOptionOverrides,
 		subagentThinking = 'low',
+		subagentMode = 'specialists',
 		environment,
 		shellEnv,
 	} = opts
@@ -410,6 +413,7 @@ export async function createCodelayerAgent(opts: CodelayerAgentOptions): Promise
 					? { model: researchModel, providerOptions: researchProviderOptions }
 					: undefined,
 			promptCacheKey,
+			mode: subagentMode,
 			systemPromptAdditions: personaPromptAdditions,
 		}))
 
