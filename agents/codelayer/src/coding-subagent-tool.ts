@@ -4,7 +4,7 @@ import { createWebFetchTool } from '@humanlayer/agentlayer-core'
 import type { CodeSearchInput } from '@humanlayer/agentlayer-core/interfaces'
 import { CodeSearchTool } from '@humanlayer/agentlayer-core/interfaces'
 import type { SubAgentConfig } from '@humanlayer/agentlayer-core'
-import type { SubagentToolMode } from '@humanlayer/agentlayer-core'
+import type { SubagentDispatchContract } from '@humanlayer/agentlayer-core'
 import {
 	createAgentFilesystemHooks,
 	createAgentSystemPrompt,
@@ -63,7 +63,7 @@ export interface CreateCodingSubagentToolOptions
 		providerOptions: AgentConfig['providerOptions']
 	}
 	promptCacheKey?: string
-	mode?: SubagentToolMode
+	dispatchContract?: SubagentDispatchContract
 }
 
 async function fetchExaCodeSearch(input: CodeSearchInput, apiKey: string, timeoutMs: number): Promise<string | null> {
@@ -434,7 +434,13 @@ export async function createCodingSubagentTool(opts: CreateCodingSubagentToolOpt
 	}
 
 	const configuredAgents: SubAgentConfig[] =
-		opts.mode === 'fork-dispatch-resume' ? agents.map((agent) => ({ ...agent, resumable: true as const })) : agents
-	const tool = createSubagentsTool({ agents: configuredAgents, mode: opts.mode, onChildEvent: opts.onChildEvent })
+		opts.dispatchContract === 'fork-and-specialist'
+			? agents.map((agent) => ({ ...agent, resumable: true as const }))
+			: agents
+	const tool = createSubagentsTool({
+		agents: configuredAgents,
+		dispatchContract: opts.dispatchContract,
+		onChildEvent: opts.onChildEvent,
+	})
 	return Object.assign(tool, { subagents: configuredAgents })
 }

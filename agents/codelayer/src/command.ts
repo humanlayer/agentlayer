@@ -201,7 +201,7 @@ Provider options:
 				skillTool,
 				providerOptionOverrides,
 				subagentThinking,
-				subagentMode: provider === 'codex' ? 'fork-dispatch-resume' : 'specialists',
+				subagentDispatchContract: provider === 'codex' ? 'fork-and-specialist' : 'specialist-only',
 			})
 
 			console.log(`codelayer - provider: ${provider}, model: ${modelId}${opts.rlm ? ' (RLM mode)' : ''}${opts.rpi ? ' +rpi' : ''}${opts.tars ? ' +tars' : ''}`)

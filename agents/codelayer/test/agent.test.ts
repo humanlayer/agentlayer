@@ -1203,8 +1203,8 @@ describe('--subagent-thinking CLI knob', () => {
 			createMockModel('claude-sonnet-4-5'),
 		)
 
-		expect(codex).toMatchObject({ subagentMode: 'fork-dispatch-resume' })
-		expect(anthropic).toMatchObject({ subagentMode: 'specialists' })
+		expect(codex).toMatchObject({ subagentDispatchContract: 'fork-and-specialist' })
+		expect(anthropic).toMatchObject({ subagentDispatchContract: 'specialist-only' })
 	})
 
 	test('rejects a subagent thinking value outside the per-model allow-list', async () => {
@@ -1218,11 +1218,11 @@ describe('--subagent-thinking CLI knob', () => {
 })
 
 describe('createCodingSubagentTool', () => {
-	test('threads fork-dispatch-resume mode into the root agent tool', async () => {
+	test('threads the fork-and-specialist dispatch contract into the root agent tool', async () => {
 		const agent = await createCodelayerAgent({
 			model: createMockModel('gpt-5.5'),
 			cwd: '/tmp',
-			subagentMode: 'fork-dispatch-resume',
+			subagentDispatchContract: 'fork-and-specialist',
 		})
 		const tool = getAgentConfig(agent).tools?.agent as Tool<any, any> | undefined
 

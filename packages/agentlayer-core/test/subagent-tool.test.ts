@@ -14,7 +14,7 @@ import {
 	withApprovals,
 } from '../src'
 import { createSubagentsTool } from '../src/tools'
-import { deriveChildPromptCacheKey, parseSubagentCommand, subagentInputForkDispatchResume } from '../src/tools/subagent'
+import { deriveChildPromptCacheKey, parseSubagentCommand, subagentInputForkAndSpecialist } from '../src/tools/subagent'
 import { createForkState, projectForkMessages } from '../src/tools/subagent-fork'
 import {
 	assistantText,
@@ -719,10 +719,10 @@ describe('createSubagentsTool', () => {
 	})
 })
 
-describe('fork-dispatch-resume subagent mode', () => {
+describe('fork-and-specialist subagent dispatch contract', () => {
 	test('exposes the strict flat schema and parses one command before execution', () => {
-		expect(subagentInputForkDispatchResume.safeParse({ prompt: 'inspect it' }).success).toBe(true)
-		expect(subagentInputForkDispatchResume.safeParse({ prompt: 'inspect it', extra: true }).success).toBe(false)
+		expect(subagentInputForkAndSpecialist.safeParse({ prompt: 'inspect it' }).success).toBe(true)
+		expect(subagentInputForkAndSpecialist.safeParse({ prompt: 'inspect it', extra: true }).success).toBe(false)
 		expect(parseSubagentCommand({ prompt: ' inspect it ' })).toEqual({
 			type: 'fork',
 			prompt: 'inspect it',
@@ -826,7 +826,7 @@ describe('fork-dispatch-resume subagent mode', () => {
 		])
 		const specialist = new Agent({ model: mockModel([assistantText('specialist')]), tools: {} })
 		const subagent = createSubagentsTool({
-			mode: 'fork-dispatch-resume',
+			dispatchContract: 'fork-and-specialist',
 			agents: [{ name: 'worker', description: 'Fresh worker', agent: specialist }],
 		})
 		const parent = new Agent({
@@ -924,7 +924,7 @@ describe('fork-dispatch-resume subagent mode', () => {
 			}
 			return assistantText('root completed')
 		})
-		const subagent = createSubagentsTool({ mode: 'fork-dispatch-resume', agents: [] })
+		const subagent = createSubagentsTool({ dispatchContract: 'fork-and-specialist', agents: [] })
 		const root = new Agent({
 			model,
 			tools: { subagent },
@@ -964,7 +964,7 @@ describe('fork-dispatch-resume subagent mode', () => {
 			},
 		})
 		const subagent = createSubagentsTool({
-			mode: 'fork-dispatch-resume',
+			dispatchContract: 'fork-and-specialist',
 			agents: [{ name: 'worker', description: 'Fresh worker', agent: specialist }],
 		})
 		const parent = new Agent({
@@ -989,7 +989,7 @@ describe('fork-dispatch-resume subagent mode', () => {
 			tools: {},
 		})
 		const subagent = createSubagentsTool({
-			mode: 'fork-dispatch-resume',
+			dispatchContract: 'fork-and-specialist',
 			agents: [{ name: 'worker', description: 'Fresh worker', agent: specialist }],
 		})
 		const parent = new Agent({
@@ -1048,7 +1048,7 @@ describe('fork-dispatch-resume subagent mode', () => {
 				},
 			})
 			const subagent = createSubagentsTool({
-				mode: 'fork-dispatch-resume',
+				dispatchContract: 'fork-and-specialist',
 				agents: [{ name: 'worker', description: 'Fresh worker', agent: specialist }],
 			})
 			const firstParent = new Agent({

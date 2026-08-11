@@ -36,7 +36,7 @@ describe('createCodingSubagentTool', () => {
 			cwd: process.cwd(),
 			model: 'codex-test' as any,
 			system: 'test system prompt',
-			mode: 'fork-dispatch-resume',
+			dispatchContract: 'fork-and-specialist',
 		})
 		const input = tool.input as any
 		const shape = input.shape as Record<string, { description?: string }>
@@ -77,7 +77,7 @@ describe('createCodingSubagentTool', () => {
 			cwd: process.cwd(),
 			model: 'claude-test' as any,
 			system: 'test system prompt',
-			mode: 'specialists',
+			dispatchContract: 'specialist-only',
 		})
 
 		expect(tool.input.safeParse({ description: 'small task', prompt: 'work' }).success).toBe(false)
