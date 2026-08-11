@@ -532,6 +532,50 @@ describe('automatic loop compaction', () => {
 		}
 	})
 
+	test('consumes bare and instructed compact commands as no-ops when the full conversation fits the retained tail', async () => {
+		for (const command of ['/compact', '/compact Preserve verification commands.']) {
+			const calls: LanguageModelV3CallOptions[] = []
+			const events: AgentEvent[] = []
+			const priorMessages = [
+				userMessage('Short completed request.'),
+				{ role: 'assistant' as const, content: 'Short completed answer.' },
+			]
+			const run = new Agent({
+				model: scriptedModel([{ text: 'normal answer' }], calls),
+				tools: {},
+			}).run({
+				state: startState([...priorMessages, userMessage(command)]),
+				stream: true,
+			})
+			for await (const event of run) events.push(event)
+			const result = await run.result
+
+			expect(result.finishReason).toBe('complete')
+			expect(calls).toHaveLength(1)
+			expect(callContains(calls[0]!, '/compact')).toBe(false)
+			expect(callContains(calls[0]!, 'Short completed request.')).toBe(true)
+			expect(events.filter((event) => event.type === 'compaction')).toHaveLength(0)
+			expect(result.state.compaction).toBeUndefined()
+			expect(result.state.messages.slice(0, -1)).toEqual(priorMessages)
+			expect(result.state.messages.at(-1)).toMatchObject({
+				role: 'assistant',
+				content: [{ type: 'text', text: 'normal answer' }],
+			})
+		}
+	})
+
+	test('keeps the coherent-prefix error for a compact command without prior conversation', async () => {
+		const calls: LanguageModelV3CallOptions[] = []
+		const result = await new Agent({
+			model: scriptedModel([], calls),
+			tools: {},
+		}).run({ state: startState([userMessage('/compact')]) }).result
+
+		expect(result.finishReason).toBe('error')
+		expect(result.error?.message).toBe('Compaction requires a coherent message prefix to summarize.')
+		expect(calls).toHaveLength(0)
+	})
+
 	test('compacts and retries exactly once after context overflow', async () => {
 		const calls: LanguageModelV3CallOptions[] = []
 		const events: AgentEvent[] = []
