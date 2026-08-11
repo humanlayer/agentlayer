@@ -1,6 +1,13 @@
 import type { LanguageModel, JSONValue } from 'ai'
 import { createHash } from 'node:crypto'
-import { Agent, doomLoop, tarsPersona, type AgentConfig, type ProviderOptionsFactory, type Tool } from '@humanlayer/agentlayer-core'
+import {
+	Agent,
+	doomLoop,
+	tarsPersona,
+	type AgentConfig,
+	type ProviderOptionsFactory,
+	type Tool,
+} from '@humanlayer/agentlayer-core'
 import {
 	createAgentFilesystemHooks,
 	createAgentSystemPrompt,

@@ -2,7 +2,6 @@ export function strictifySchema(schema: Record<string, unknown>): void {
 	delete schema.format
 	const props = schema.properties as Record<string, Record<string, unknown>> | undefined
 	if (props) {
-		schema.required = Object.keys(props)
 		schema.additionalProperties = false
 		for (const prop of Object.values(props)) {
 			strictifySchema(prop)

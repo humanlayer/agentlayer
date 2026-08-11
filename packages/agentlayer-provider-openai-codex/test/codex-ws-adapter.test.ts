@@ -88,10 +88,11 @@ describe('GPT-5.6 max reasoning', () => {
 // ---------------------------------------------------------------------------
 
 describe('strictifySchema', () => {
-	test('adds required, additionalProperties, and removes format', () => {
+	test('preserves required, adds additionalProperties, and removes format', () => {
 		const schema: Record<string, unknown> = {
 			type: 'object',
 			format: 'custom',
+			required: ['name'],
 			properties: {
 				name: { type: 'string', format: 'email' },
 				age: { type: 'number' },
@@ -100,7 +101,7 @@ describe('strictifySchema', () => {
 		strictifySchema(schema)
 
 		expect(schema.format).toBeUndefined()
-		expect(schema.required).toEqual(['name', 'age'])
+		expect(schema.required).toEqual(['name'])
 		expect(schema.additionalProperties).toBe(false)
 		// Nested format should also be removed
 		const props = schema.properties as Record<string, Record<string, unknown>>
@@ -120,7 +121,7 @@ describe('strictifySchema', () => {
 		strictifySchema(schema)
 
 		const items = schema.items as Record<string, unknown>
-		expect(items.required).toEqual(['value'])
+		expect(items.required).toBeUndefined()
 		expect(items.additionalProperties).toBe(false)
 	})
 
@@ -134,8 +135,8 @@ describe('strictifySchema', () => {
 		strictifySchema(schema)
 
 		const anyOf = schema.anyOf as Record<string, unknown>[]
-		expect(anyOf[0]!.required).toEqual(['a'])
-		expect(anyOf[1]!.required).toEqual(['b'])
+		expect(anyOf[0]!.required).toBeUndefined()
+		expect(anyOf[1]!.required).toBeUndefined()
 	})
 
 	test('handles oneOf', () => {
@@ -145,7 +146,7 @@ describe('strictifySchema', () => {
 		strictifySchema(schema)
 
 		const oneOf = schema.oneOf as Record<string, unknown>[]
-		expect(oneOf[0]!.required).toEqual(['x'])
+		expect(oneOf[0]!.required).toBeUndefined()
 		expect(oneOf[0]!.additionalProperties).toBe(false)
 	})
 })
@@ -417,18 +418,21 @@ describe('convertPromptMessages', () => {
 // ---------------------------------------------------------------------------
 
 describe('convertTools', () => {
-	test('converts function tools with schema strictification', () => {
+	test('converts function tools without making optional fields required', () => {
 		const tools: LanguageModelV3CallOptions['tools'] = [
 			{
 				type: 'function',
-				name: 'search',
-				description: 'Search for files',
+				name: 'subagent',
+				description: 'Dispatch a subagent',
 				inputSchema: {
 					type: 'object',
 					properties: {
-						query: { type: 'string', format: 'custom' },
-						limit: { type: 'number' },
+						prompt: { type: 'string', description: 'Task or follow-up for the subagent.' },
+						agent_id: { type: 'string', description: 'Continue an existing subagent.' },
+						fork_turns: { type: 'string', description: 'Conversation to inherit.' },
+						subagent_type: { type: 'string', description: 'Start a registered specialist.' },
 					},
+					required: ['prompt'],
 				},
 			},
 		]
@@ -436,14 +440,15 @@ describe('convertTools', () => {
 		const result = convertTools(tools)
 
 		expect(result).toHaveLength(1)
-		expect(result[0]!.name).toBe('search')
-		expect(result[0]!.description).toBe('Search for files')
-		// strictifySchema should have set required and additionalProperties
-		expect(result[0]!.inputSchema.required).toEqual(['query', 'limit'])
+		expect(result[0]!.name).toBe('subagent')
+		expect(result[0]!.description).toBe('Dispatch a subagent')
+		expect(result[0]!.inputSchema.required).toEqual(['prompt'])
 		expect(result[0]!.inputSchema.additionalProperties).toBe(false)
-		// format should be removed from the query property
 		const props = result[0]!.inputSchema.properties as Record<string, Record<string, unknown>>
-		expect(props.query!.format).toBeUndefined()
+		expect(props.prompt!.description).toBe('Task or follow-up for the subagent.')
+		expect(props.agent_id!.description).toBe('Continue an existing subagent.')
+		expect(props.fork_turns!.description).toBe('Conversation to inherit.')
+		expect(props.subagent_type!.description).toBe('Start a registered specialist.')
 	})
 
 	test('returns empty array for undefined tools', () => {

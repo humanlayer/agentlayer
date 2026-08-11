@@ -1,5 +1,12 @@
 import type { LanguageModel } from 'ai'
-import { Agent, createSubagentsTool, doomLoop, TodoWriteTool, type AgentConfig, type Tool } from '@humanlayer/agentlayer-core'
+import {
+	Agent,
+	createForkingSubagentsTool,
+	doomLoop,
+	TodoWriteTool,
+	type AgentConfig,
+	type Tool,
+} from '@humanlayer/agentlayer-core'
 import { createWebFetchTool } from '@humanlayer/agentlayer-core'
 import type { CodeSearchInput } from '@humanlayer/agentlayer-core/interfaces'
 import { CodeSearchTool } from '@humanlayer/agentlayer-core/interfaces'
@@ -431,6 +438,10 @@ export async function createCodingSubagentTool(opts: CreateCodingSubagentToolOpt
 		})
 	}
 
-	const tool = createSubagentsTool({ agents, onChildEvent: opts.onChildEvent })
-	return Object.assign(tool, { subagents: agents })
+	const configuredAgents: SubAgentConfig[] = agents.map((agent) => ({ ...agent, resumable: true as const }))
+	const tool = createForkingSubagentsTool({
+		agents: configuredAgents,
+		onChildEvent: opts.onChildEvent,
+	})
+	return Object.assign(tool, { subagents: configuredAgents })
 }

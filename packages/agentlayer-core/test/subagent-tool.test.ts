@@ -4,16 +4,27 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { ModelMessage } from 'ai'
 import { z } from 'zod'
-import { Agent, type AgentEvent, defineTool, getAllPendingApprovals, startState, withApprovals } from '../src'
-import { createSubagentsTool } from '../src/tools'
-import { deriveChildPromptCacheKey } from '../src/tools/subagent'
+import {
+	Agent,
+	type AgentEvent,
+	type AgentState,
+	defineTool,
+	getAllPendingApprovals,
+	startState,
+	withApprovals,
+} from '../src'
+import { createForkingSubagentsTool, createSubagentsTool } from '../src/tools'
+import { deriveChildPromptCacheKey, forkingSubagentInput, parseSubagentCommand } from '../src/tools/subagent'
+import { createForkState, projectForkMessages } from '../src/tools/subagent-fork'
 import {
 	assistantText,
 	assistantWithToolCall,
 	assistantWithToolCalls,
 	getToolResults,
+	mockDynamicStreamingModel,
 	mockModel,
 	outputValue,
+	toolResultMessage,
 	userMessage,
 } from './mocks'
 
@@ -706,4 +717,390 @@ describe('createSubagentsTool', () => {
 		expect(result3.state.pendingToolCalls).toBeUndefined()
 		expect(result3.state.subAgents).toBeUndefined()
 	})
+})
+
+describe('forking subagent tool', () => {
+	test('exposes the strict flat schema and parses one command before execution', () => {
+		expect(forkingSubagentInput.safeParse({ prompt: 'inspect it' }).success).toBe(true)
+		expect(forkingSubagentInput.safeParse({ prompt: 'inspect it', extra: true }).success).toBe(false)
+		expect(parseSubagentCommand({ prompt: ' inspect it ' })).toEqual({
+			type: 'fork',
+			prompt: 'inspect it',
+			turns: 'all',
+		})
+		expect(parseSubagentCommand({ prompt: 'inspect it', fork_turns: '3' })).toEqual({
+			type: 'fork',
+			prompt: 'inspect it',
+			turns: 3,
+		})
+		expect(parseSubagentCommand({ prompt: 'inspect it', subagent_type: 'worker' })).toEqual({
+			type: 'dispatch-role',
+			prompt: 'inspect it',
+			subagentType: 'worker',
+		})
+		expect(() =>
+			parseSubagentCommand({ prompt: 'inspect it', fork_turns: 'all', subagent_type: 'worker' }),
+		).toThrow('mutually exclusive')
+		expect(() => parseSubagentCommand({ prompt: '   ' })).toThrow('prompt must not be blank')
+		expect(() => parseSubagentCommand({ prompt: 'inspect it', agent_id: '' })).toThrow('agent_id must not be blank')
+		expect(() => parseSubagentCommand({ prompt: 'inspect it', fork_turns: '' })).toThrow('fork_turns')
+		expect(() => parseSubagentCommand({ prompt: 'inspect it', subagent_type: '' })).toThrow(
+			'subagent_type must not be blank',
+		)
+		expect(() => parseSubagentCommand({ prompt: 'inspect it', fork_turns: '0' })).toThrow('fork_turns')
+	})
+
+	test('projects only completed eligible turns and removes the triggering user plus invoking assistant', () => {
+		const messages: ModelMessage[] = [
+			{ role: 'user', content: 'old request' },
+			{ role: 'assistant', content: [{ type: 'text', text: 'settled answer' }] },
+			{ role: 'assistant', content: [{ type: 'reasoning', text: 'private reasoning' }] },
+			{
+				role: 'assistant',
+				content: [{ type: 'tool-call', toolCallId: 'old-call', toolName: 'echo', input: { text: 'x' } }],
+			},
+			toolResultMessage('old-call', 'echo', 'old result'),
+			{ role: 'user', content: 'current request' },
+			{
+				role: 'assistant',
+				content: [
+					{ type: 'text', text: 'intermediate text' },
+					{ type: 'tool-call', toolCallId: 'spawn-call', toolName: 'subagent', input: { prompt: 'work' } },
+					{ type: 'tool-call', toolCallId: 'sibling-call', toolName: 'subagent', input: { prompt: 'other' } },
+				],
+			},
+		]
+
+		expect(projectForkMessages(messages, 'all', 'spawn-call')).toEqual([
+			{ role: 'user', content: 'old request' },
+			{ role: 'assistant', content: [{ type: 'text', text: 'settled answer' }] },
+		])
+		expect(projectForkMessages(messages, 1, 'spawn-call')).toEqual([
+			{ role: 'user', content: 'old request' },
+			{ role: 'assistant', content: [{ type: 'text', text: 'settled answer' }] },
+		])
+		expect(projectForkMessages(messages, 'none', 'spawn-call')).toEqual([])
+	})
+
+	test('constructs isolated fork state without caller tool, pending, child, or context state', () => {
+		const caller: AgentState = {
+			messages: [{ role: 'user', content: { nested: ['original'] } } as any],
+			pendingToolCalls: [{ type: 'stopped', toolCallId: 'pending', toolName: 'echo', input: {} }],
+			toolState: { mutable: { value: 1 } },
+			subAgents: { existing: startState([{ role: 'user', content: 'child' }]) },
+			contextWindowTokens: 1234,
+			approvalHistory: [
+				{
+					toolCallId: 'approved',
+					toolName: 'echo',
+					input: { nested: { value: 1 } },
+					approval: { id: 'approved', toolCallId: 'approved', toolName: 'echo', input: {} },
+					decision: { toolCallId: 'approved', approved: true },
+				},
+			],
+		}
+		const fork = createForkState(caller, 'all', 'spawn-call', 'delegated task')
+
+		expect(fork.messages.at(-1)).toEqual({ role: 'user', content: 'delegated task' })
+		expect(fork.pendingToolCalls).toBeUndefined()
+		expect(fork.toolState).toBeUndefined()
+		expect(fork.subAgents).toBeUndefined()
+		expect(fork.contextWindowTokens).toBeUndefined()
+		expect(fork.messages).not.toBe(caller.messages)
+		expect(fork.approvalHistory).not.toBe(caller.approvalHistory)
+	})
+
+	test('defaults an omitted selector to an inherited-runtime all-history fork', async () => {
+		const requestViews: ModelMessage[][] = []
+		const marker = defineTool({
+			name: 'marker',
+			description: 'Inherited runtime marker',
+			input: z.object({}),
+			execute: async () => 'inherited marker ran',
+		})
+		const sharedModel = mockModel([
+			assistantWithToolCall('subagent', { prompt: 'delegated task' }),
+			assistantWithToolCall('marker', {}),
+			assistantText('fork child complete'),
+			assistantText('parent complete'),
+		])
+		const specialist = new Agent({ model: mockModel([assistantText('specialist')]), tools: {} })
+		const subagent = createForkingSubagentsTool({
+			agents: [{ name: 'worker', description: 'Fresh worker', agent: specialist }],
+		})
+		const parent = new Agent({
+			model: sharedModel,
+			tools: { marker, subagent },
+			hooks: {
+				preRequest: [
+					(ctx) => {
+						requestViews.push(structuredClone([...ctx.messages]))
+						return ctx.next()
+					},
+				],
+			},
+		})
+
+		const result = await parent.run({
+			state: startState([
+				userMessage('My name is Megan and there is always money in the banana stand.'),
+				{ role: 'assistant', content: [{ type: 'text', text: 'I will remember that.' }] },
+				userMessage('parent request'),
+			]),
+		}).result
+		expect(result.finishReason).toBe('complete')
+		const forkResult = getToolResultValues(result.state.messages, 'subagent')[0]!
+		expect(forkResult).toContain('fork child complete')
+		expect(forkResult).toContain('agent_id:')
+		expect(forkResult).toContain('outcome: complete')
+		expect(forkResult).toContain('completed_turns: 1')
+		expect(forkResult).not.toContain('task_id')
+		const childFirstRequest = requestViews.find(
+			(messages) => messages.at(-1)?.role === 'user' && messages.at(-1)?.content === 'delegated task',
+		)
+		expect(childFirstRequest).toEqual([
+			{ role: 'user', content: 'My name is Megan and there is always money in the banana stand.' },
+			{ role: 'assistant', content: [{ type: 'text', text: 'I will remember that.' }] },
+			{ role: 'user', content: 'delegated task' },
+		])
+
+		const [agentId] = Object.keys(result.state.terminalChildren ?? {})
+		const resumedRequestViews: ModelMessage[][] = []
+		const resumedParent = new Agent({
+			model: mockModel([
+				assistantWithToolCall('subagent', { prompt: 'continue fork work', agent_id: agentId }),
+				assistantText('resumed fork child complete'),
+				assistantText('resumed parent complete'),
+			]),
+			tools: { marker, subagent },
+			hooks: {
+				preRequest: [
+					(ctx) => {
+						resumedRequestViews.push(structuredClone([...ctx.messages]))
+						return ctx.next()
+					},
+				],
+			},
+		})
+		const resumed = await resumedParent.run({
+			state: {
+				...result.state,
+				messages: [...result.state.messages, userMessage('new parent-only context')],
+			},
+		}).result
+		const resumedChildRequest = resumedRequestViews.find(
+			(messages) => messages.at(-1)?.role === 'user' && messages.at(-1)?.content === 'continue fork work',
+		)
+		expect(resumedChildRequest).toEqual([
+			...result.state.terminalChildren![agentId!]!.state.messages,
+			userMessage('continue fork work'),
+		])
+		expect(JSON.stringify(resumedChildRequest)).not.toContain('new parent-only context')
+		expect(resumed.state.terminalChildren?.[agentId!]).toMatchObject({
+			lastOutcome: 'complete',
+			completedTurns: 2,
+			runtime: { type: 'fork' },
+		})
+	})
+
+	test('does not recursively redispatch when the triggering parent instruction asks for a subagent', async () => {
+		const triggeringInstruction = 'call a subagent to investigate this problem'
+		const delegatedPrompt = 'Inspect the fork request and report what you find.'
+		const requestViews: ModelMessage[][] = []
+		const shouldRedispatch = (messages: ModelMessage[]) =>
+			messages.some((message) => message.role === 'user' && message.content === triggeringInstruction)
+		let childDecision: boolean | undefined
+		let modelCalls = 0
+
+		const model = mockDynamicStreamingModel((callIndex) => {
+			modelCalls += 1
+			if (callIndex === 0) return assistantWithToolCall('subagent', { prompt: delegatedPrompt })
+			if (callIndex === 1) {
+				childDecision = shouldRedispatch(requestViews.at(-1) ?? [])
+				return childDecision
+					? assistantWithToolCall('subagent', { prompt: 'recursive child dispatch' })
+					: assistantText('child completed without redispatch')
+			}
+			return assistantText('root completed')
+		})
+		const subagent = createForkingSubagentsTool({ agents: [] })
+		const root = new Agent({
+			model,
+			tools: { subagent },
+			hooks: {
+				preRequest: [
+					(ctx) => {
+						requestViews.push(structuredClone([...ctx.messages]))
+						return ctx.next()
+					},
+				],
+			},
+		})
+
+		const legacyChildRequest = [userMessage(triggeringInstruction), userMessage(delegatedPrompt)]
+		expect(shouldRedispatch(legacyChildRequest)).toBe(true)
+
+		const result = await root.run({ state: startState([userMessage(triggeringInstruction)]) }).result
+		expect(result.finishReason).toBe('complete')
+		expect(childDecision).toBe(false)
+		expect(modelCalls).toBe(3)
+		expect(requestViews[1]).toEqual([userMessage(delegatedPrompt)])
+		expect(JSON.stringify(result.state.messages)).not.toContain('recursive child dispatch')
+	})
+
+	test('dispatches a selected specialist with only the self-contained prompt', async () => {
+		const specialistViews: ModelMessage[][] = []
+		const specialist = new Agent({
+			model: mockModel([assistantText('specialist complete')]),
+			tools: {},
+			hooks: {
+				preRequest: [
+					(ctx) => {
+						specialistViews.push(structuredClone([...ctx.messages]))
+						return ctx.next()
+					},
+				],
+			},
+		})
+		const subagent = createForkingSubagentsTool({
+			agents: [{ name: 'worker', description: 'Fresh worker', agent: specialist }],
+		})
+		const parent = new Agent({
+			model: mockModel([
+				assistantWithToolCall('subagent', { prompt: 'self-contained task', subagent_type: 'worker' }),
+				assistantText('parent complete'),
+			]),
+			tools: { subagent },
+		})
+
+		await parent.run({ state: startState([userMessage('private parent context')]) }).result
+		expect(specialistViews[0]).toEqual([{ role: 'user', content: 'self-contained task' }])
+	})
+
+	test('rejects an unknown agent_id without starting a child', async () => {
+		let childCalls = 0
+		const specialist = new Agent({
+			model: mockDynamicStreamingModel(() => {
+				childCalls += 1
+				return assistantText('unexpected child run')
+			}),
+			tools: {},
+		})
+		const subagent = createForkingSubagentsTool({
+			agents: [{ name: 'worker', description: 'Fresh worker', agent: specialist }],
+		})
+		const parent = new Agent({
+			model: mockModel([
+				assistantWithToolCall('subagent', { prompt: 'continue', agent_id: 'child-123' }),
+				assistantText('parent complete'),
+			]),
+			tools: { subagent },
+		})
+
+		const result = await parent.run({ state: startState([userMessage('try continuation')]) }).result
+		const toolResult = getToolResultValues(result.state.messages, 'subagent')[0]!
+
+		expect(toolResult).toContain('No terminal subagent found for agent_id "child-123"')
+		expect(childCalls).toBe(0)
+		expect(result.state.toolState).toBeUndefined()
+	})
+
+	for (const initialOutcome of ['complete', 'error', 'interrupted'] as const) {
+		test(`continues a ${initialOutcome} specialist by stable agent_id without re-forking`, async () => {
+			const childRequests: ModelMessage[][] = []
+			const childCacheKeys: string[] = []
+			const firstController = new AbortController()
+			let childCall = 0
+			const childModel = mockDynamicStreamingModel(() => {
+				const call = childCall++
+				if (call === 0 && initialOutcome === 'error') throw new Error('scripted child failure')
+				if (call === 0 && initialOutcome === 'interrupted') {
+					return assistantWithToolCall('abort-child', {})
+				}
+				return assistantText(call === 0 ? 'first child answer' : 'resumed child answer')
+			})
+			const abortChild = defineTool({
+				name: 'abort-child',
+				description: 'Abort the child run',
+				input: z.object({}),
+				execute: async () => {
+					firstController.abort()
+					return 'aborted'
+				},
+			})
+			const specialist = new Agent({
+				model: childModel,
+				tools: { 'abort-child': abortChild },
+				hooks: {
+					preRequest: [
+						(ctx) => {
+							childRequests.push(structuredClone([...ctx.messages]))
+							return ctx.next()
+						},
+					],
+				},
+				providerOptions: ({ promptCacheKey }) => {
+					childCacheKeys.push(promptCacheKey ?? '')
+					return {}
+				},
+			})
+			const subagent = createForkingSubagentsTool({
+				agents: [{ name: 'worker', description: 'Fresh worker', agent: specialist }],
+			})
+			const firstParent = new Agent({
+				model: mockModel([
+					assistantWithToolCall('subagent', {
+						prompt: 'initial child task',
+						subagent_type: 'worker',
+					}),
+					assistantText('first parent answer'),
+				]),
+				tools: { subagent },
+				promptCacheKey: 'parent-cache',
+			})
+
+			const firstResult = await firstParent.run({
+				state: startState([userMessage('private parent snapshot')]),
+				signal: firstController.signal,
+			}).result
+			const [agentId] = Object.keys(firstResult.state.terminalChildren ?? {})
+			expect(agentId).toBeDefined()
+			const firstRecord = firstResult.state.terminalChildren?.[agentId!]
+			expect(firstRecord).toMatchObject({
+				lastOutcome: initialOutcome,
+				completedTurns: initialOutcome === 'complete' ? 1 : 0,
+				runtime: { type: 'specialist', subagentType: 'worker' },
+			})
+			const firstToolResult = getToolResultValues(firstResult.state.messages, 'subagent')[0]!
+			expect(firstToolResult).toContain(`agent_id: ${agentId}`)
+			expect(firstToolResult).toContain(`outcome: ${initialOutcome}`)
+			expect(firstToolResult).toContain(`completed_turns: ${initialOutcome === 'complete' ? 1 : 0}`)
+
+			const secondParent = new Agent({
+				model: mockModel([
+					assistantWithToolCall('subagent', { prompt: 'follow-up child task', agent_id: agentId }),
+					assistantText('second parent answer'),
+				]),
+				tools: { subagent },
+				promptCacheKey: 'parent-cache',
+			})
+			const secondResult = await secondParent.run({
+				state: {
+					...firstResult.state,
+					messages: [...firstResult.state.messages, userMessage('continue the same child')],
+				},
+			}).result
+			const secondRecord = secondResult.state.terminalChildren?.[agentId!]
+			expect(secondRecord).toMatchObject({
+				lastOutcome: 'complete',
+				completedTurns: initialOutcome === 'complete' ? 2 : 1,
+			})
+			expect(secondRecord?.state.messages.at(-2)).toEqual(userMessage('follow-up child task'))
+			expect(secondRecord?.state.messages.at(-1)?.role).toBe('assistant')
+			expect(childRequests.at(-1)?.at(-1)).toEqual(userMessage('follow-up child task'))
+			expect(JSON.stringify(childRequests)).not.toContain('private parent snapshot')
+			expect(childCacheKeys).toHaveLength(2)
+			expect(new Set(childCacheKeys)).toHaveLength(1)
+		})
+	}
 })

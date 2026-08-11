@@ -307,6 +307,43 @@ describe('codex SSE vendor provider (HTTP SSE transport)', () => {
 		expect(headers['x-openai-internal-codex-responses-lite']).toBeUndefined()
 	})
 
+	test('sends the optional agent schema non-strictly without disabling parallel dispatches', async () => {
+		const { provider, streamCalls } = createTestProvider(BASIC_TEXT_EVENTS)
+		const model = provider.languageModel('gpt-5.6-sol')
+		const result = await model.doStream({
+			prompt: [{ role: 'user', content: [{ type: 'text', text: 'Delegate one task.' }] }],
+			tools: [
+				{
+					type: 'function',
+					name: 'agent',
+					description: 'Dispatch an agent',
+					inputSchema: {
+						type: 'object',
+						properties: {
+							prompt: { type: 'string' },
+							fork_turns: { type: 'string' },
+							subagent_type: { type: 'string' },
+						},
+						required: ['prompt'],
+					},
+				},
+			],
+		})
+		await drainStream(result.stream)
+
+		const request = streamCalls[0]!.request as any
+		const body = (await Effect.runPromise(request.model.route.body.from(request))) as {
+			parallel_tool_calls?: boolean
+			tools?: Array<{ strict?: boolean; parameters: Record<string, unknown> }>
+		}
+
+		expect(body.parallel_tool_calls).toBeUndefined()
+		expect(body.tools).toHaveLength(1)
+		expect(body.tools![0]!.strict).toBe(false)
+		expect(body.tools![0]!.parameters.required).toEqual(['prompt'])
+		expect(body.tools![0]!.parameters.additionalProperties).toBe(false)
+	})
+
 	test.each([
 		{ label: 'present', cacheWriteTokens: 3, expectedNoCache: 5, expectedCacheWrite: 3 },
 		{ label: 'zero', cacheWriteTokens: 0, expectedNoCache: 8, expectedCacheWrite: 0 },
@@ -395,6 +432,72 @@ describe('codex SSE vendor provider (HTTP SSE transport)', () => {
 		expect(parts.map((p) => p.type)).toContain('tool-call')
 		expect(await result.toolCalls).toMatchObject([
 			{ type: 'tool-call', toolCallId: 'call_sse_1', toolName: 'read', input: { filePath: 'README.md' } },
+		])
+	})
+
+	test('preserves distinct API call IDs across interleaved raw Responses tool events', async () => {
+		const request = convertCallOptionsToLLMRequest(
+			'gpt-5.6-sol',
+			{ prompt: [{ role: 'user', content: [{ type: 'text', text: 'Delegate in parallel.' }] }] },
+			{
+				auth: Auth.bearer('test-token'),
+				baseURL: 'https://chatgpt.com/backend-api/codex',
+				route: httpSseRoute,
+			},
+		)
+		let state = responsesProtocol.stream.initial(request)
+		const emitted: Array<Record<string, unknown> & { type: string }> = []
+		const rawEvents = [
+			{
+				type: 'response.output_item.added',
+				output_index: 0,
+				item: { type: 'function_call', id: 'fc_api_1', call_id: 'call_api_1', name: 'agent' },
+			},
+			{
+				type: 'response.output_item.added',
+				output_index: 1,
+				item: { type: 'function_call', id: 'fc_api_2', call_id: 'call_api_2', name: 'agent' },
+			},
+			{ type: 'response.function_call_arguments.delta', item_id: 'fc_api_1', delta: '{"prompt":"first"}' },
+			{ type: 'response.function_call_arguments.delta', item_id: 'fc_api_2', delta: '{"prompt":"second"}' },
+			{
+				type: 'response.output_item.done',
+				output_index: 0,
+				item: {
+					type: 'function_call',
+					id: 'fc_api_1',
+					call_id: 'call_api_1',
+					name: 'agent',
+					arguments: '{"prompt":"first"}',
+				},
+			},
+			{
+				type: 'response.output_item.done',
+				output_index: 1,
+				item: {
+					type: 'function_call',
+					id: 'fc_api_2',
+					call_id: 'call_api_2',
+					name: 'agent',
+					arguments: '{"prompt":"second"}',
+				},
+			},
+		]
+
+		for (const rawEvent of rawEvents) {
+			const [nextState, events] = await Effect.runPromise(responsesProtocol.stream.step(state, rawEvent))
+			state = nextState
+			emitted.push(...(events as ReadonlyArray<Record<string, unknown> & { type: string }>))
+		}
+
+		const parts = emitted.flatMap(llmEventToStreamParts)
+		expect(parts.filter((part) => part.type === 'tool-input-start').map((part) => part.id)).toEqual([
+			'call_api_1',
+			'call_api_2',
+		])
+		expect(parts.filter((part) => part.type === 'tool-call').map((part) => part.toolCallId)).toEqual([
+			'call_api_1',
+			'call_api_2',
 		])
 	})
 

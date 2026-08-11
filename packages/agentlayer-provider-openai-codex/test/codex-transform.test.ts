@@ -154,6 +154,7 @@ describe('buildCodexRequestBody', () => {
 					properties: { patch_text: { type: 'string' } },
 					required: ['patch_text'],
 				},
+				strict: false,
 			},
 		])
 	})

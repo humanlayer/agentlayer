@@ -1,7 +1,8 @@
 import type { ModelMessage, ToolResultPart } from 'ai'
 import { z } from 'zod'
+import type { Agent } from './agent'
 import type { HookStopResult, StopOptions } from './hooks'
-import type { AgentState } from './state'
+import type { AgentState, TerminalChildRecord } from './state'
 
 /**
  * Context provided to every tool during execution.
@@ -122,6 +123,20 @@ export interface ToolContext {
 	 * Only available when the agent has sub-agent support configured.
 	 */
 	getSubAgentState?: (agentId: string) => AgentState | undefined
+
+	/** Retrieve a terminal child continuation record by stable ID. */
+	getTerminalChild?: (agentId: string) => TerminalChildRecord | undefined
+	/** Persist a terminal child continuation record under its stable ID. */
+	setTerminalChild?: (agentId: string, record: TerminalChildRecord) => void
+
+	/**
+	 * Capture an isolated snapshot of the calling agent and create a child with
+	 * the same runtime configuration. The snapshot is taken once per call and
+	 * contains no mutable references to the caller.
+	 */
+	createSubAgentFork?: () => { agent: Agent; state: AgentState }
+	/** Create an equivalent fork runtime without capturing or projecting caller state. */
+	createSubAgentForkAgent?: () => Agent
 
 	/**
 	 * Await a child agent run, handling event forwarding and activeChildren registration.

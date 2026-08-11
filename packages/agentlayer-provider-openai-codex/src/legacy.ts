@@ -385,7 +385,7 @@ export function buildCodexTools(options: LanguageModelV3CallOptions): Pick<Codex
 			name: tool.name,
 			...(tool.description ? { description: tool.description } : {}),
 			parameters: tool.inputSchema,
-			...(tool.strict !== undefined ? { strict: tool.strict } : {}),
+			strict: tool.strict ?? false,
 		}
 	})
 

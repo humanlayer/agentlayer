@@ -870,14 +870,18 @@ describe('codex effect provider (WebSocket transport)', () => {
 		})
 		expect(hasToolMessage).toBe(true)
 
-		// Verify schema was strictified (format removed, required added)
+		// Verify the non-strict schema preserves optional fields while removing unsupported format metadata.
 		const toolMessage = sentMessages.find((msg) => {
 			const body = JSON.parse(msg) as Record<string, unknown>
 			return Array.isArray(body.tools) && body.tools.length > 0
 		})
-		const toolBody = JSON.parse(toolMessage!) as { tools: Array<{ parameters: Record<string, unknown> }> }
-		const toolSchema = toolBody.tools[0]!.parameters
-		expect(toolSchema.required).toEqual(['filePath'])
+		const toolBody = JSON.parse(toolMessage!) as {
+			tools: Array<{ parameters: Record<string, unknown>; strict?: boolean }>
+		}
+		const serializedTool = toolBody.tools[0]!
+		const toolSchema = serializedTool.parameters
+		expect(serializedTool.strict).toBe(false)
+		expect(toolSchema.required).toBeUndefined()
 		expect(toolSchema.additionalProperties).toBe(false)
 		const props = toolSchema.properties as Record<string, Record<string, unknown>>
 		expect(props.filePath!.format).toBeUndefined()

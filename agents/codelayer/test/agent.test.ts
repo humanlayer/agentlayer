@@ -1204,6 +1204,17 @@ describe('--subagent-thinking CLI knob', () => {
 })
 
 describe('createCodingSubagentTool', () => {
+	test('always exposes fork, specialist, and resume through the root agent tool', async () => {
+		const agent = await createCodelayerAgent({
+			model: createMockModel('claude-sonnet-4-5'),
+			cwd: '/tmp',
+		})
+		const tool = getAgentConfig(agent).tools?.agent as Tool<any, any> | undefined
+
+		expect(tool?.input.safeParse({ prompt: 'inherit and inspect' }).success).toBe(true)
+		expect(tool?.description).toContain('fork all eligible calling-agent conversation')
+	})
+
 	test('creates the standard subagent tool wrapper', async () => {
 		const tool = await createCodingSubagentTool({
 			cwd: '/tmp',
