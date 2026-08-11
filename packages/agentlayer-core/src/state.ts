@@ -43,6 +43,20 @@ export interface ApprovalHistoryEntry {
  */
 export type AgentPath = string[]
 
+export type TerminalChildOutcome = 'complete' | 'error' | 'interrupted'
+
+export type TerminalChildRuntime = { type: 'fork' } | { type: 'specialist'; subagentType: string }
+
+/** Serializable continuation record for a child that reached a terminal outcome. */
+export interface TerminalChildRecord {
+	state: AgentState
+	lastOutcome: TerminalChildOutcome
+	completedTurns: number
+	runtime: TerminalChildRuntime
+}
+
+export type TerminalChildMap = Record<string, TerminalChildRecord>
+
 // ── AgentState ────────────────────────────────────────────────────────────────
 
 /**
@@ -66,6 +80,8 @@ export interface AgentState {
 	 * Each value is a nested AgentState capturing the sub-agent's conversation.
 	 */
 	subAgents?: Record<string, AgentState>
+	/** Terminal child states that can be continued by stable agent ID. */
+	terminalChildren?: TerminalChildMap
 	/** Estimated tokens in context window after the most recent streamText call (input + output). */
 	contextWindowTokens?: number
 }
@@ -188,6 +204,14 @@ export function sanitizeStateForPersistence(state: AgentState): AgentState {
 				]),
 			),
 		}),
+		...(state.terminalChildren && {
+			terminalChildren: Object.fromEntries(
+				Object.entries(state.terminalChildren).map(([agentId, record]) => [
+					agentId,
+					{ ...record, state: sanitizeStateForPersistence(record.state) },
+				]),
+			),
+		}),
 	}
 }
 
@@ -195,7 +219,7 @@ export function sanitizeStateForPersistence(state: AgentState): AgentState {
  * Traverse the sub-agent tree to find the AgentState at the given path.
  *
  * - Empty path (`[]`) returns the root state itself.
- * - Each element of path is an agentId key in `state.subAgents`.
+ * - Each element is an agentId in paused or terminal child state.
  * - Returns `undefined` if any segment is missing.
  *
  * @example
@@ -207,7 +231,7 @@ export function sanitizeStateForPersistence(state: AgentState): AgentState {
 export function getAgentState(state: AgentState, path: AgentPath): AgentState | undefined {
 	if (path.length === 0) return state
 	const [head, ...rest] = path
-	const child = state.subAgents?.[head!]
+	const child = state.subAgents?.[head!] ?? state.terminalChildren?.[head!]?.state
 	if (child === undefined) return undefined
 	return getAgentState(child, rest)
 }
@@ -242,6 +266,9 @@ export function getAllPendingApprovals(state: AgentState): Array<{ path: AgentPa
 		// Recurse into sub-agents
 		for (const [agentId, childState] of Object.entries(current.subAgents ?? {})) {
 			collect(childState, [...currentPath, agentId])
+		}
+		for (const [agentId, record] of Object.entries(current.terminalChildren ?? {})) {
+			collect(record.state, [...currentPath, agentId])
 		}
 	}
 
@@ -352,6 +379,19 @@ export function withApprovals(state: AgentState, decisions: ApprovalDecision[]):
 			newSubAgents = state.subAgents
 		}
 	}
+	let newTerminalChildren: TerminalChildMap | undefined
+	if (state.terminalChildren !== undefined && Object.keys(state.terminalChildren).length > 0) {
+		if (remainingDecisions.length > 0) {
+			newTerminalChildren = Object.fromEntries(
+				Object.entries(state.terminalChildren).map(([agentId, record]) => [
+					agentId,
+					{ ...record, state: withApprovals(record.state, remainingDecisions) },
+				]),
+			)
+		} else {
+			newTerminalChildren = state.terminalChildren
+		}
+	}
 
 	return {
 		messages: newMessages,
@@ -359,5 +399,7 @@ export function withApprovals(state: AgentState, decisions: ApprovalDecision[]):
 		...(newHistory.length > 0 ? { approvalHistory: newHistory } : {}),
 		...(state.toolState !== undefined ? { toolState: state.toolState } : {}),
 		...(newSubAgents !== undefined ? { subAgents: newSubAgents } : {}),
+		...(newTerminalChildren !== undefined ? { terminalChildren: newTerminalChildren } : {}),
+		...(state.contextWindowTokens !== undefined ? { contextWindowTokens: state.contextWindowTokens } : {}),
 	}
 }

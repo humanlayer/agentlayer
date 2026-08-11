@@ -504,6 +504,23 @@ describe('AgentState JSON round-trip', () => {
 		expect(restored.pendingToolCalls).toBeUndefined()
 		expect(restored.approvalHistory).toBeUndefined()
 	})
+
+	test('terminal child outcome and completed turns survive round-trip', () => {
+		const state: AgentState = {
+			messages: [userMessage('root')],
+			terminalChildren: {
+				'child-1': {
+					state: startState([userMessage('child')]),
+					lastOutcome: 'error',
+					completedTurns: 3,
+					runtime: { type: 'specialist', subagentType: 'worker' },
+				},
+			},
+		}
+
+		const restored = JSON.parse(JSON.stringify(state)) as AgentState
+		expect(restored.terminalChildren?.['child-1']).toEqual(state.terminalChildren?.['child-1'])
+	})
 })
 
 // ─── sanitizeStateForPersistence() ────────────────────────────────────────────
@@ -639,6 +656,38 @@ describe('sanitizeStateForPersistence()', () => {
 		expect(childState).toBeDefined()
 		const childMsg = childState!.messages[0] as any
 		expect(childMsg.providerOptions?.openai?.itemId).toBeUndefined()
+	})
+
+	test('recursively sanitizes terminal child records without changing their metadata', () => {
+		const state: AgentState = {
+			messages: [userMessage('parent')],
+			terminalChildren: {
+				'child-1': {
+					state: {
+						messages: [
+							{
+								role: 'assistant',
+								content: [{ type: 'text', text: 'child response' }],
+								providerOptions: { openai: { itemId: 'terminal_item', keep: 'yes' } },
+							},
+						],
+					},
+					lastOutcome: 'interrupted',
+					completedTurns: 2,
+					runtime: { type: 'fork' },
+				},
+			},
+		}
+
+		const sanitized = sanitizeStateForPersistence(state)
+		const record = sanitized.terminalChildren?.['child-1']
+		expect((record?.state.messages[0] as any).providerOptions?.openai?.itemId).toBeUndefined()
+		expect((record?.state.messages[0] as any).providerOptions?.openai?.keep).toBe('yes')
+		expect(record).toMatchObject({
+			lastOutcome: 'interrupted',
+			completedTurns: 2,
+			runtime: { type: 'fork' },
+		})
 	})
 
 	test('returns new state object (immutable)', () => {

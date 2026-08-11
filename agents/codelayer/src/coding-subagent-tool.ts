@@ -433,6 +433,8 @@ export async function createCodingSubagentTool(opts: CreateCodingSubagentToolOpt
 		})
 	}
 
-	const tool = createSubagentsTool({ agents, mode: opts.mode, onChildEvent: opts.onChildEvent })
-	return Object.assign(tool, { subagents: agents })
+	const configuredAgents: SubAgentConfig[] =
+		opts.mode === 'fork-dispatch-resume' ? agents.map((agent) => ({ ...agent, resumable: true as const })) : agents
+	const tool = createSubagentsTool({ agents: configuredAgents, mode: opts.mode, onChildEvent: opts.onChildEvent })
+	return Object.assign(tool, { subagents: configuredAgents })
 }

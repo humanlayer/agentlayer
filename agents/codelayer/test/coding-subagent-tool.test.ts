@@ -56,7 +56,7 @@ describe('createCodingSubagentTool', () => {
 			'Task for the subagent. Custom-role tasks must be self-contained because they do not inherit the conversation.',
 		)
 		expect(shape.agent_id?.description).toBe(
-			'Reserved for terminal subagent continuation, which is not available yet. Do not set this field.',
+			'Continue an existing subagent using an ID from an earlier result. Do not combine with fork_turns or subagent_type.',
 		)
 		expect(shape.fork_turns?.description).toBe(
 			'Conversation to inherit: "all", "none", or a positive integer string such as "3". Omitted means "all". Do not combine with agent_id or subagent_type.',
@@ -67,8 +67,9 @@ describe('createCodingSubagentTool', () => {
 		expect(shape.skill?.description).toBe('Optional skill to preload into the subagent.')
 		expect(tool.description).toContain('Omit agent_id, fork_turns, and subagent_type')
 		expect(tool.description).toContain('Set subagent_type to start a fresh registered specialist')
-		expect(tool.description).toContain('Terminal continuation is not available yet; do not set agent_id')
-		expect(tool.description).not.toContain('continue a child ID returned by an earlier result')
+		expect(tool.description).toContain('Every terminal result returns an agent_id')
+		expect(tool.description).toContain('completion, error, or interruption')
+		expect(tool.subagents.every((agent) => agent.resumable === true)).toBe(true)
 	})
 
 	test('preserves the required specialist selector outside Codex fork mode', async () => {

@@ -22,7 +22,7 @@ import {
 import { type AgentLayerToolOutput, buildToolResultMessage } from './messages'
 import { type ModelKey, ModelProvider } from './models'
 import { sanitizeTextForModelState, sanitizeToolOutputForModelState } from './sanitize-text'
-import type { AgentState, ApprovalDecision, ApprovalHistoryEntry } from './state'
+import type { AgentState, ApprovalDecision, ApprovalHistoryEntry, TerminalChildMap } from './state'
 import type { Step, StepToolResult, StopResult, StopTiming, StopWhen } from './stop-conditions'
 import { shouldStop } from './stop-conditions'
 import { extractUsage, getModelKey, type TokenUsage, TokenUsageAccumulator } from './token-usage'
@@ -322,6 +322,7 @@ export class Agent<TTools extends Record<string, Tool<any, any>> = Record<string
 		const toolState: Record<string, unknown> = { ...(options.state.toolState ?? {}) }
 		// Mutable sub-agent state map — updated when sub-agents pause/resume
 		const subAgents: Record<string, AgentState> = { ...(options.state.subAgents ?? {}) }
+		const terminalChildren: TerminalChildMap = { ...(options.state.terminalChildren ?? {}) }
 		const sink = new MessageSink(allMessages, newMessages, agentRun)
 		const promptCacheKey = options.promptCacheKey ?? this.promptCacheKey
 		const providerOptions = this.resolveProviderOptions(crypto.randomUUID(), promptCacheKey)
@@ -362,6 +363,7 @@ export class Agent<TTools extends Record<string, Tool<any, any>> = Record<string
 				...(mergedHistory.length > 0 ? { approvalHistory: mergedHistory } : {}),
 				...(Object.keys(toolState).length > 0 ? { toolState } : {}),
 				...(Object.keys(effectiveSubAgents).length > 0 ? { subAgents: effectiveSubAgents } : {}),
+				...(Object.keys(terminalChildren).length > 0 ? { terminalChildren } : {}),
 				...(contextWindowTokens > 0 ? { contextWindowTokens } : {}),
 			}
 		}
@@ -376,6 +378,7 @@ export class Agent<TTools extends Record<string, Tool<any, any>> = Record<string
 				signal,
 				toolState,
 				subAgents,
+				terminalChildren,
 				agentRun,
 				promptCacheKey,
 				getContextWindowTokens: () => contextWindowTokens,

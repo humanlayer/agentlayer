@@ -4,7 +4,7 @@ import type { SubAgentPauseResult, SubAgentResult, SubAgentRunHandle, Tool, Tool
 import type { HookStopResult, StopOptions } from './hooks'
 import { type AgentLayerToolOutput, buildToolResultMessage, isToolResultOutput } from './messages'
 import { sanitizeTextForModelState, sanitizeToolOutputForModelState } from './sanitize-text'
-import type { AgentState } from './state'
+import type { AgentState, TerminalChildMap } from './state'
 
 export interface ToolCallRef {
 	toolCallId: string
@@ -20,6 +20,8 @@ export interface ExecuteToolCallContext {
 	toolState?: Record<string, unknown>
 	/** Parent's sub-agent states — used by getSubAgentState on ToolContext. */
 	subAgents?: Record<string, AgentState>
+	/** Terminal child continuation records owned by the parent state. */
+	terminalChildren?: TerminalChildMap
 	/** The parent AgentRun — used for wiring awaitSubAgent (event forwarding + activeChildren). */
 	agentRun?: AgentRun
 	/** Stable cache scope inherited by child agents. */
@@ -107,6 +109,10 @@ export async function executeToolCall(tc: ToolCallRef, ctx: ExecuteToolCallConte
 		},
 		getSubAgentState: (agentId: string): AgentState | undefined => {
 			return ctx.subAgents?.[agentId]
+		},
+		getTerminalChild: (agentId) => ctx.terminalChildren?.[agentId],
+		setTerminalChild: (agentId, record) => {
+			if (ctx.terminalChildren) ctx.terminalChildren[agentId] = record
 		},
 		...(ctx.createSubAgentFork ? { createSubAgentFork: () => ctx.createSubAgentFork!(tc.toolCallId) } : {}),
 		...(ctx.createSubAgentForkAgent ? { createSubAgentForkAgent: ctx.createSubAgentForkAgent } : {}),

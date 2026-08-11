@@ -4,7 +4,7 @@ import type { Agent, RunResult } from '../agent'
 import { defineTool } from '../define-tool'
 import { extractLastAssistantText } from '../messages'
 import { SUBAGENT_DESCRIPTION_TEMPLATE } from '../prompts'
-import type { AgentState } from '../state'
+import type { AgentState, TerminalChildOutcome, TerminalChildRecord, TerminalChildRuntime } from '../state'
 import { startState } from '../state'
 import { createForkState, type ForkTurns } from './subagent-fork'
 
@@ -17,12 +17,12 @@ export const subagentInputBase = z
 	.strict()
 
 export const subagentInputResumable = subagentInputBase.extend({
-	task_id: z
+	agent_id: z
 		.string()
 		.optional()
 		.describe(
 			'This should only be set if you mean to resume a previous task ' +
-				'(you can pass a prior task_id and the task will continue the same ' +
+				'(you can pass a prior agent_id and the task will continue the same ' +
 				'subagent session as before instead of creating a fresh one)',
 		),
 })
@@ -39,7 +39,7 @@ export const subagentInputForkDispatchResume = z
 			.string()
 			.optional()
 			.describe(
-				'Reserved for terminal subagent continuation, which is not available yet. Do not set this field.',
+				'Continue an existing subagent using an ID from an earlier result. Do not combine with fork_turns or subagent_type.',
 			),
 		fork_turns: z
 			.string()
@@ -133,7 +133,7 @@ export type SubAgentConfig = ResumableSubAgentConfig | EphemeralSubAgentConfig
 export type SubagentToolMode = 'specialists' | 'fork-dispatch-resume'
 
 const subagentStateSchema = z.record(z.string(), z.any())
-type SubagentStateMap = Record<string, AgentState>
+type LegacySubagentStateMap = Record<string, AgentState>
 
 const CHILD_CACHE_SUFFIX_LENGTH = 28
 const MAX_PROMPT_CACHE_KEY_LENGTH = 64
@@ -156,7 +156,7 @@ export async function deriveChildPromptCacheKey(parentKey: string, toolCallId: s
 function expandedDescription(agentList: string): string {
 	return `Launch an isolated subagent.
 
-Omit agent_id, fork_turns, and subagent_type to fork all eligible calling-agent conversation into a new child. Set fork_turns to "all", "none", or a positive integer string to control inherited conversation. Set subagent_type to start a fresh registered specialist with no inherited conversation. Terminal continuation is not available yet; do not set agent_id.
+Omit agent_id, fork_turns, and subagent_type to fork all eligible calling-agent conversation into a new child. Set fork_turns to "all", "none", or a positive integer string to control inherited conversation. Set subagent_type to start a fresh registered specialist with no inherited conversation. Every terminal result returns an agent_id; pass it with a follow-up prompt to continue that exact child after completion, error, or interruption.
 
 Registered specialists:
 ${agentList}`
@@ -196,6 +196,8 @@ export function createSubagentsTool(opts: {
 			let childState: AgentState
 			let agentId: string
 			let resumable = false
+			let childRuntime: TerminalChildRuntime | undefined
+			let priorTerminalRecord: TerminalChildRecord | undefined
 
 			if (mode === 'fork-dispatch-resume') {
 				let command: SubagentCommand
@@ -214,9 +216,31 @@ export function createSubagentsTool(opts: {
 					childAgent = config.agent
 					childState =
 						ctx.getSubAgentState?.(agentId) ?? startState([{ role: 'user', content: command.prompt }])
-					resumable = config.resumable === true
+					resumable = true
+					childRuntime = { type: 'specialist', subagentType: command.subagentType }
 				} else if (command.type === 'resume') {
-					return 'Error: agent_id continuation is not available yet. Start a new subagent without agent_id.'
+					priorTerminalRecord = ctx.getTerminalChild?.(command.agentId)
+					if (!priorTerminalRecord) {
+						return `Error: No terminal subagent found for agent_id "${command.agentId}". Start a new subagent by omitting agent_id.`
+					}
+					agentId = command.agentId
+					childRuntime = priorTerminalRecord.runtime
+					if (childRuntime.type === 'fork') {
+						if (!ctx.createSubAgentForkAgent)
+							return 'Error: Fork runtime is unavailable in this tool context.'
+						childAgent = ctx.createSubAgentForkAgent()
+					} else {
+						config = agentMap.get(childRuntime.subagentType)
+						if (!config) {
+							return `Error: Registered specialist "${childRuntime.subagentType}" for agent_id "${agentId}" is unavailable.`
+						}
+						childAgent = config.agent
+					}
+					childState = {
+						...priorTerminalRecord.state,
+						messages: [...priorTerminalRecord.state.messages, { role: 'user', content: command.prompt }],
+					}
+					resumable = true
 				} else {
 					agentId = ctx.toolCallId ?? crypto.randomUUID()
 					const pausedState = ctx.getSubAgentState?.(agentId)
@@ -225,6 +249,7 @@ export function createSubagentsTool(opts: {
 							return 'Error: Fork runtime is unavailable in this tool context.'
 						childAgent = ctx.createSubAgentForkAgent()
 						childState = pausedState
+						childRuntime = { type: 'fork' }
 					} else {
 						if (!ctx.createSubAgentFork || !ctx.toolCallId) {
 							return 'Error: Forking is unavailable in this tool context.'
@@ -232,7 +257,9 @@ export function createSubagentsTool(opts: {
 						const fork = ctx.createSubAgentFork()
 						childAgent = fork.agent
 						childState = createForkState(fork.state, command.turns, ctx.toolCallId, command.prompt)
+						childRuntime = { type: 'fork' }
 					}
+					resumable = true
 				}
 			} else {
 				const input = rawInput as SubagentInputResumable
@@ -240,21 +267,23 @@ export function createSubagentsTool(opts: {
 				if (!config) {
 					return `Error: Unknown agent type "${input.subagent_type}". Available types: ${opts.agents.map((agent) => agent.name).join(', ')}`
 				}
-				const taskId = input.task_id
-				if (taskId && !config.resumable) {
-					return `Error: Agent "${config.name}" does not support resumption. Do not pass task_id for this agent type.`
+				const requestedAgentId = input.agent_id
+				if (requestedAgentId && !config.resumable) {
+					return `Error: Agent "${config.name}" does not support resumption. Do not pass agent_id for this agent type.`
 				}
-				agentId = taskId ?? ctx.toolCallId ?? crypto.randomUUID()
+				agentId = requestedAgentId ?? ctx.toolCallId ?? crypto.randomUUID()
 				childAgent = config.agent
 				resumable = config.resumable === true
+				childRuntime = { type: 'specialist', subagentType: config.name }
 				const pausedState = ctx.getSubAgentState?.(agentId)
 				if (pausedState) {
 					childState = pausedState
-				} else if (taskId && resumable) {
-					const stateMap = (ctx.getToolState() as SubagentStateMap | undefined) ?? {}
-					const stored = stateMap[taskId]
+				} else if (requestedAgentId && resumable) {
+					priorTerminalRecord = ctx.getTerminalChild?.(requestedAgentId)
+					const legacyStateMap = (ctx.getToolState() as LegacySubagentStateMap | undefined) ?? {}
+					const stored = priorTerminalRecord?.state ?? legacyStateMap[requestedAgentId]
 					if (!stored) {
-						return `Error: No previous session found for task_id "${taskId}". Start a new session by omitting task_id.`
+						return `Error: No previous session found for agent_id "${requestedAgentId}". Start a new session by omitting agent_id.`
 					}
 					childState = {
 						...stored,
@@ -265,10 +294,9 @@ export function createSubagentsTool(opts: {
 				}
 			}
 
-			const promptCacheKey =
-				ctx.promptCacheKey && ctx.toolCallId
-					? await deriveChildPromptCacheKey(ctx.promptCacheKey, ctx.toolCallId)
-					: undefined
+			const promptCacheKey = ctx.promptCacheKey
+				? await deriveChildPromptCacheKey(ctx.promptCacheKey, agentId)
+				: undefined
 			const childRun = childAgent.run({
 				state: childState,
 				signal: ctx.signal,
@@ -290,16 +318,33 @@ export function createSubagentsTool(opts: {
 				return ctx.pauseForSubAgent(agentId, result.state)
 			}
 
-			if (resumable) {
-				ctx.updateToolState((current: SubagentStateMap | undefined) => ({
-					...(current ?? {}),
-					[agentId]: result.state,
-				}))
+			const terminalOutcome: TerminalChildOutcome | undefined =
+				result.finishReason === 'complete' ||
+				result.finishReason === 'error' ||
+				result.finishReason === 'interrupted'
+					? result.finishReason
+					: undefined
+			const completedTurns =
+				(priorTerminalRecord?.completedTurns ?? 0) + (result.finishReason === 'complete' ? 1 : 0)
+
+			if (resumable && terminalOutcome && childRuntime) {
+				ctx.setTerminalChild?.(agentId, {
+					state: result.state,
+					lastOutcome: terminalOutcome,
+					completedTurns,
+					runtime: childRuntime,
+				})
 			}
 
 			const outputParts: string[] = []
-			if (resumable) {
-				outputParts.push(`task_id: ${agentId} (for resuming to continue this agent's work if needed)`, '')
+			if (resumable && terminalOutcome) {
+				outputParts.push(
+					`agent_id: ${agentId}`,
+					`outcome: ${terminalOutcome}`,
+					`completed_turns: ${completedTurns}`,
+					'Pass agent_id with a follow-up prompt to continue this exact subagent.',
+					'',
+				)
 			}
 			outputParts.push('<agent_result>', extractLastAssistantText(result), '</agent_result>')
 			if (result.finishReason === 'error') {

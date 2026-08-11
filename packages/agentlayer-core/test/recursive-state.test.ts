@@ -684,3 +684,40 @@ describe('AgentState with subAgents — JSON round-trip', () => {
 		expect(gcPending.type).toBe('approval')
 	})
 })
+
+describe('mixed paused and terminal descendants', () => {
+	test('approval discovery and application traverse both descendant stores', () => {
+		const paused = makeState({ pending: [makeApprovalPending('paused-call', 'paused-tool')] })
+		const terminalState = makeState({ pending: [makeApprovalPending('terminal-call', 'terminal-tool')] })
+		const root: AgentState = {
+			messages: [userMessage('root')],
+			subAgents: { paused },
+			terminalChildren: {
+				terminal: {
+					state: terminalState,
+					lastOutcome: 'complete',
+					completedTurns: 1,
+					runtime: { type: 'fork' },
+				},
+			},
+		}
+
+		expect(getAllPendingApprovals(root).map(({ pending }) => pending.toolCallId)).toEqual([
+			'paused-call',
+			'terminal-call',
+		])
+		expect(getAgentState(root, ['terminal'])).toBe(terminalState)
+
+		const updated = withApprovals(root, [
+			{ toolCallId: 'paused-call', approved: true },
+			{ toolCallId: 'terminal-call', approved: false, denialReason: 'no' },
+		])
+		expect(updated.subAgents?.paused?.pendingToolCalls).toBeUndefined()
+		expect(updated.terminalChildren?.terminal?.state.pendingToolCalls).toBeUndefined()
+		expect(updated.terminalChildren?.terminal?.state.messages.at(-1)?.role).toBe('tool')
+		expect(updated.terminalChildren?.terminal).toMatchObject({
+			lastOutcome: 'complete',
+			completedTurns: 1,
+		})
+	})
+})

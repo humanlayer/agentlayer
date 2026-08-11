@@ -852,7 +852,9 @@ describe('fork-dispatch-resume subagent mode', () => {
 		expect(result.finishReason).toBe('complete')
 		const forkResult = getToolResultValues(result.state.messages, 'subagent')[0]!
 		expect(forkResult).toContain('fork child complete')
-		expect(forkResult).not.toContain('agent_id')
+		expect(forkResult).toContain('agent_id:')
+		expect(forkResult).toContain('outcome: complete')
+		expect(forkResult).toContain('completed_turns: 1')
 		expect(forkResult).not.toContain('task_id')
 		const childFirstRequest = requestViews.find(
 			(messages) => messages.at(-1)?.role === 'user' && messages.at(-1)?.content === 'delegated task',
@@ -862,6 +864,44 @@ describe('fork-dispatch-resume subagent mode', () => {
 			{ role: 'assistant', content: [{ type: 'text', text: 'I will remember that.' }] },
 			{ role: 'user', content: 'delegated task' },
 		])
+
+		const [agentId] = Object.keys(result.state.terminalChildren ?? {})
+		const resumedRequestViews: ModelMessage[][] = []
+		const resumedParent = new Agent({
+			model: mockModel([
+				assistantWithToolCall('subagent', { prompt: 'continue fork work', agent_id: agentId }),
+				assistantText('resumed fork child complete'),
+				assistantText('resumed parent complete'),
+			]),
+			tools: { marker, subagent },
+			hooks: {
+				preRequest: [
+					(ctx) => {
+						resumedRequestViews.push(structuredClone([...ctx.messages]))
+						return ctx.next()
+					},
+				],
+			},
+		})
+		const resumed = await resumedParent.run({
+			state: {
+				...result.state,
+				messages: [...result.state.messages, userMessage('new parent-only context')],
+			},
+		}).result
+		const resumedChildRequest = resumedRequestViews.find(
+			(messages) => messages.at(-1)?.role === 'user' && messages.at(-1)?.content === 'continue fork work',
+		)
+		expect(resumedChildRequest).toEqual([
+			...result.state.terminalChildren![agentId!]!.state.messages,
+			userMessage('continue fork work'),
+		])
+		expect(JSON.stringify(resumedChildRequest)).not.toContain('new parent-only context')
+		expect(resumed.state.terminalChildren?.[agentId!]).toMatchObject({
+			lastOutcome: 'complete',
+			completedTurns: 2,
+			runtime: { type: 'fork' },
+		})
 	})
 
 	test('does not recursively redispatch when the triggering parent instruction asks for a subagent', async () => {
@@ -939,7 +979,7 @@ describe('fork-dispatch-resume subagent mode', () => {
 		expect(specialistViews[0]).toEqual([{ role: 'user', content: 'self-contained task' }])
 	})
 
-	test('rejects reserved agent_id without starting or looking up a terminal child', async () => {
+	test('rejects an unknown agent_id without starting a child', async () => {
 		let childCalls = 0
 		const specialist = new Agent({
 			model: mockDynamicStreamingModel(() => {
@@ -963,10 +1003,108 @@ describe('fork-dispatch-resume subagent mode', () => {
 		const result = await parent.run({ state: startState([userMessage('try continuation')]) }).result
 		const toolResult = getToolResultValues(result.state.messages, 'subagent')[0]!
 
-		expect(toolResult).toBe(
-			'Error: agent_id continuation is not available yet. Start a new subagent without agent_id.',
-		)
+		expect(toolResult).toContain('No terminal subagent found for agent_id "child-123"')
 		expect(childCalls).toBe(0)
 		expect(result.state.toolState).toBeUndefined()
 	})
+
+	for (const initialOutcome of ['complete', 'error', 'interrupted'] as const) {
+		test(`continues a ${initialOutcome} specialist by stable agent_id without re-forking`, async () => {
+			const childRequests: ModelMessage[][] = []
+			const childCacheKeys: string[] = []
+			const firstController = new AbortController()
+			let childCall = 0
+			const childModel = mockDynamicStreamingModel(() => {
+				const call = childCall++
+				if (call === 0 && initialOutcome === 'error') throw new Error('scripted child failure')
+				if (call === 0 && initialOutcome === 'interrupted') {
+					return assistantWithToolCall('abort-child', {})
+				}
+				return assistantText(call === 0 ? 'first child answer' : 'resumed child answer')
+			})
+			const abortChild = defineTool({
+				name: 'abort-child',
+				description: 'Abort the child run',
+				input: z.object({}),
+				execute: async () => {
+					firstController.abort()
+					return 'aborted'
+				},
+			})
+			const specialist = new Agent({
+				model: childModel,
+				tools: { 'abort-child': abortChild },
+				hooks: {
+					preRequest: [
+						(ctx) => {
+							childRequests.push(structuredClone([...ctx.messages]))
+							return ctx.next()
+						},
+					],
+				},
+				providerOptions: ({ promptCacheKey }) => {
+					childCacheKeys.push(promptCacheKey ?? '')
+					return {}
+				},
+			})
+			const subagent = createSubagentsTool({
+				mode: 'fork-dispatch-resume',
+				agents: [{ name: 'worker', description: 'Fresh worker', agent: specialist }],
+			})
+			const firstParent = new Agent({
+				model: mockModel([
+					assistantWithToolCall('subagent', {
+						prompt: 'initial child task',
+						subagent_type: 'worker',
+					}),
+					assistantText('first parent answer'),
+				]),
+				tools: { subagent },
+				promptCacheKey: 'parent-cache',
+			})
+
+			const firstResult = await firstParent.run({
+				state: startState([userMessage('private parent snapshot')]),
+				signal: firstController.signal,
+			}).result
+			const [agentId] = Object.keys(firstResult.state.terminalChildren ?? {})
+			expect(agentId).toBeDefined()
+			const firstRecord = firstResult.state.terminalChildren?.[agentId!]
+			expect(firstRecord).toMatchObject({
+				lastOutcome: initialOutcome,
+				completedTurns: initialOutcome === 'complete' ? 1 : 0,
+				runtime: { type: 'specialist', subagentType: 'worker' },
+			})
+			const firstToolResult = getToolResultValues(firstResult.state.messages, 'subagent')[0]!
+			expect(firstToolResult).toContain(`agent_id: ${agentId}`)
+			expect(firstToolResult).toContain(`outcome: ${initialOutcome}`)
+			expect(firstToolResult).toContain(`completed_turns: ${initialOutcome === 'complete' ? 1 : 0}`)
+
+			const secondParent = new Agent({
+				model: mockModel([
+					assistantWithToolCall('subagent', { prompt: 'follow-up child task', agent_id: agentId }),
+					assistantText('second parent answer'),
+				]),
+				tools: { subagent },
+				promptCacheKey: 'parent-cache',
+			})
+			const secondResult = await secondParent.run({
+				state: {
+					...firstResult.state,
+					messages: [...firstResult.state.messages, userMessage('continue the same child')],
+				},
+			}).result
+			const secondRecord = secondResult.state.terminalChildren?.[agentId!]
+			expect(secondRecord).toMatchObject({
+				lastOutcome: 'complete',
+				completedTurns: initialOutcome === 'complete' ? 2 : 1,
+			})
+			expect(secondRecord?.state.messages.at(-2)).toEqual(userMessage('follow-up child task'))
+			expect(secondRecord?.state.messages.at(-1)?.role).toBe('assistant')
+			expect(childRequests.at(-1)?.at(-1)).toEqual(userMessage('follow-up child task'))
+			expect(JSON.stringify(childRequests)).not.toContain('private parent snapshot')
+			expect(childCacheKeys).toHaveLength(2)
+			expect(new Set(childCacheKeys)).toHaveLength(1)
+		})
+	}
 })

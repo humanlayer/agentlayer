@@ -104,6 +104,10 @@ export {
 	getAllPendingApprovals,
 	sanitizeStateForPersistence,
 	startState,
+	type TerminalChildMap,
+	type TerminalChildOutcome,
+	type TerminalChildRecord,
+	type TerminalChildRuntime,
 	withApprovals,
 } from './state'
 export {
