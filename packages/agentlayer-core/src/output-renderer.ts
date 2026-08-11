@@ -25,10 +25,9 @@ type LiveToolInputState = {
 	rawInput: string
 	agentId?: string
 	parentToolCallId?: string
-	agentDepth?: number
 }
 
-type AgentIdentity = Pick<AgentEvent, 'agentId' | 'parentToolCallId' | 'agentDepth'>
+type AgentIdentity = Pick<AgentEvent, 'agentId' | 'parentToolCallId'>
 
 const MAX_INPUT_VAL = 120
 
@@ -129,6 +128,7 @@ export function createOutputRenderer(options: OutputRendererOptions): OutputRend
 	const startedThinkingBlocks = new Set<string>()
 	const sawLiveAssistantContentByScope = new Set<string>()
 	const renderedToolCallIds = new Set<string>()
+	const toolCallDepths = new Map<string, number>()
 	const output = options.output
 	const includeToolResults = options.includeToolResults ?? false
 	const includeTokenUsage = options.includeTokenUsage ?? false
@@ -152,9 +152,18 @@ export function createOutputRenderer(options: OutputRendererOptions): OutputRend
 		return color.dim(color.italic(line.replace(/\r$/, '')))
 	}
 
+	const getAgentDepth = (event: AgentIdentity): number => {
+		if (!event.agentId) return 0
+		return event.parentToolCallId === undefined ? 1 : (toolCallDepths.get(event.parentToolCallId) ?? 0) + 1
+	}
+
+	const recordToolCallDepth = (toolCallId: string, event: AgentIdentity): void => {
+		toolCallDepths.set(toolCallId, getAgentDepth(event))
+	}
+
 	const formatAgentIdentity = (event: AgentIdentity): string => {
 		if (!event.agentId) return 'agent=root depth=0'
-		return `agent=child:${event.agentId} depth=${event.agentDepth ?? 1}${event.parentToolCallId ? ` parent_call=${event.parentToolCallId}` : ''}`
+		return `agent=child:${event.agentId} depth=${getAgentDepth(event)}${event.parentToolCallId ? ` parent_call=${event.parentToolCallId}` : ''}`
 	}
 
 	const formatToolLabel = (toolName: string, toolCallId: string, event: AgentIdentity): string => {
@@ -191,12 +200,12 @@ export function createOutputRenderer(options: OutputRendererOptions): OutputRend
 	}
 
 	const ensureToolInputState = (toolCallId: string, toolName: string, event: AgentIdentity): LiveToolInputState => {
+		recordToolCallDepth(toolCallId, event)
 		const existing = liveToolInputs.get(toolCallId)
 		if (existing) {
 			existing.toolName = toolName
 			existing.agentId = event.agentId
 			existing.parentToolCallId = event.parentToolCallId
-			existing.agentDepth = event.agentDepth
 			return existing
 		}
 		const created: LiveToolInputState = {
@@ -208,7 +217,6 @@ export function createOutputRenderer(options: OutputRendererOptions): OutputRend
 			rawInput: '',
 			agentId: event.agentId,
 			parentToolCallId: event.parentToolCallId,
-			agentDepth: event.agentDepth,
 		}
 		liveToolInputs.set(toolCallId, created)
 		return created
@@ -393,6 +401,7 @@ export function createOutputRenderer(options: OutputRendererOptions): OutputRend
 				}
 
 				if (part.type === 'tool-call') {
+					recordToolCallDepth(part.toolCallId, event)
 					if (!renderedToolCallIds.has(part.toolCallId)) {
 						writeLine(formatToolCall(part.toolName, part.toolCallId, part.input, event))
 						renderedToolCallIds.add(part.toolCallId)

@@ -1,10 +1,16 @@
 import type { LanguageModel } from 'ai'
-import { Agent, createSubagentsTool, doomLoop, TodoWriteTool, type AgentConfig, type Tool } from '@humanlayer/agentlayer-core'
+import {
+	Agent,
+	createForkingSubagentsTool,
+	doomLoop,
+	TodoWriteTool,
+	type AgentConfig,
+	type Tool,
+} from '@humanlayer/agentlayer-core'
 import { createWebFetchTool } from '@humanlayer/agentlayer-core'
 import type { CodeSearchInput } from '@humanlayer/agentlayer-core/interfaces'
 import { CodeSearchTool } from '@humanlayer/agentlayer-core/interfaces'
 import type { SubAgentConfig } from '@humanlayer/agentlayer-core'
-import type { SubagentDispatchContract } from '@humanlayer/agentlayer-core'
 import {
 	createAgentFilesystemHooks,
 	createAgentSystemPrompt,
@@ -63,7 +69,6 @@ export interface CreateCodingSubagentToolOptions
 		providerOptions: AgentConfig['providerOptions']
 	}
 	promptCacheKey?: string
-	dispatchContract?: SubagentDispatchContract
 }
 
 async function fetchExaCodeSearch(input: CodeSearchInput, apiKey: string, timeoutMs: number): Promise<string | null> {
@@ -433,13 +438,9 @@ export async function createCodingSubagentTool(opts: CreateCodingSubagentToolOpt
 		})
 	}
 
-	const configuredAgents: SubAgentConfig[] =
-		opts.dispatchContract === 'fork-and-specialist'
-			? agents.map((agent) => ({ ...agent, resumable: true as const }))
-			: agents
-	const tool = createSubagentsTool({
+	const configuredAgents: SubAgentConfig[] = agents.map((agent) => ({ ...agent, resumable: true as const }))
+	const tool = createForkingSubagentsTool({
 		agents: configuredAgents,
-		dispatchContract: opts.dispatchContract,
 		onChildEvent: opts.onChildEvent,
 	})
 	return Object.assign(tool, { subagents: configuredAgents })

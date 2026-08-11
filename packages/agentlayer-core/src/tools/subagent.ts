@@ -27,7 +27,7 @@ export const subagentInputResumable = subagentInputBase.extend({
 		),
 })
 
-export const subagentInputForkAndSpecialist = z
+export const forkingSubagentInput = z
 	.object({
 		description: z.string().optional().describe('Short description of the subagent task.'),
 		prompt: z
@@ -59,8 +59,8 @@ export const subagentInputForkAndSpecialist = z
 
 export type SubagentInputBase = z.infer<typeof subagentInputBase>
 export type SubagentInputResumable = z.infer<typeof subagentInputResumable>
-export type SubagentInputForkAndSpecialist = z.infer<typeof subagentInputForkAndSpecialist>
-export type SubagentInput = SubagentInputBase | SubagentInputResumable | SubagentInputForkAndSpecialist
+export type ForkingSubagentInput = z.infer<typeof forkingSubagentInput>
+export type SubagentInput = SubagentInputBase | SubagentInputResumable | ForkingSubagentInput
 
 export type SubagentCommand =
 	| { type: 'fork'; prompt: string; turns: ForkTurns; description?: string; skill?: string }
@@ -82,7 +82,7 @@ function parseForkTurns(value: string | undefined): ForkTurns {
 	throw new Error('fork_turns must be "all", "none", or a positive integer string such as "3".')
 }
 
-export function parseSubagentCommand(input: SubagentInputForkAndSpecialist): SubagentCommand {
+export function parseSubagentCommand(input: ForkingSubagentInput): SubagentCommand {
 	const prompt = input.prompt.trim()
 	if (!prompt) throw new Error('prompt must not be blank.')
 
@@ -130,15 +130,6 @@ export interface EphemeralSubAgentConfig extends BaseSubAgentConfig {
 }
 
 export type SubAgentConfig = ResumableSubAgentConfig | EphemeralSubAgentConfig
-/**
- * Selects the model-facing subagent dispatch contract.
- *
- * Both contracts can expose every registered specialist. `specialist-only`
- * requires the model to name one, while `fork-and-specialist` also allows an
- * omitted or explicit `fork_turns` selector to fork the caller and an
- * `agent_id` selector to resume a terminal child.
- */
-export type SubagentDispatchContract = 'specialist-only' | 'fork-and-specialist'
 
 const subagentStateSchema = z.record(z.string(), z.any())
 type LegacySubagentStateMap = Record<string, AgentState>
@@ -170,27 +161,42 @@ Registered specialists:
 ${agentList}`
 }
 
-export function createSubagentsTool(opts: {
+interface CreateSubagentsToolOptions {
 	agents: SubAgentConfig[]
-	dispatchContract?: SubagentDispatchContract
 	onChildEvent?: (event: AgentEvent) => void
-}) {
-	const dispatchContract = opts.dispatchContract ?? 'specialist-only'
+}
+
+/**
+ * Creates the original specialist-only subagent tool. This remains available
+ * for generic AgentLayer callers that require every new child to name a
+ * registered specialist.
+ */
+export function createSubagentsTool(opts: CreateSubagentsToolOptions) {
+	return createSubagentsToolImplementation(opts, false)
+}
+
+/**
+ * Creates a subagent tool that defaults to an isolated caller fork and also
+ * supports explicit fork selection, fresh specialists, and terminal resume.
+ */
+export function createForkingSubagentsTool(opts: CreateSubagentsToolOptions) {
+	return createSubagentsToolImplementation(opts, true)
+}
+
+function createSubagentsToolImplementation(opts: CreateSubagentsToolOptions, supportsForking: boolean) {
 	const agentMap = new Map(opts.agents.map((agent) => [agent.name, agent]))
 	const hasAnyResumable = opts.agents.some((agent) => agent.resumable === true)
 	const agentList = opts.agents
 		.map((agent) => `- ${agent.name}: ${agent.description}${agent.resumable ? ' (resumable)' : ''}`)
 		.join('\n')
-	const description =
-		dispatchContract === 'fork-and-specialist'
-			? expandedDescription(agentList)
-			: SUBAGENT_DESCRIPTION_TEMPLATE.replace('{agents}', agentList)
-	const inputSchema =
-		dispatchContract === 'fork-and-specialist'
-			? subagentInputForkAndSpecialist
-			: hasAnyResumable
-				? subagentInputResumable
-				: subagentInputBase
+	const description = supportsForking
+		? expandedDescription(agentList)
+		: SUBAGENT_DESCRIPTION_TEMPLATE.replace('{agents}', agentList)
+	const inputSchema = supportsForking
+		? forkingSubagentInput
+		: hasAnyResumable
+			? subagentInputResumable
+			: subagentInputBase
 
 	return defineTool({
 		name: 'subagent',
@@ -207,10 +213,10 @@ export function createSubagentsTool(opts: {
 			let childRuntime: TerminalChildRuntime | undefined
 			let priorTerminalRecord: TerminalChildRecord | undefined
 
-			if (dispatchContract === 'fork-and-specialist') {
+			if (supportsForking) {
 				let command: SubagentCommand
 				try {
-					command = parseSubagentCommand(rawInput as SubagentInputForkAndSpecialist)
+					command = parseSubagentCommand(rawInput as ForkingSubagentInput)
 				} catch (error) {
 					return `Error: ${error instanceof Error ? error.message : String(error)}`
 				}

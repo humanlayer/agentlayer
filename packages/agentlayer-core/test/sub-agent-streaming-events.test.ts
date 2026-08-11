@@ -112,7 +112,6 @@ describe('sub-agent streaming events', () => {
 		const childParentToolCallIds = new Set(childEvents.map((event) => event.parentToolCallId))
 		expect(childAgentIds.size).toBe(1)
 		expect(childParentToolCallIds.size).toBe(1)
-		expect(new Set(childEvents.map((event) => event.agentDepth))).toEqual(new Set([1]))
 
 		const childStepStarts = events.filter(
 			(event): event is Extract<AgentEvent, { type: 'stepStart' }> =>
@@ -344,8 +343,6 @@ describe('sub-agent streaming events', () => {
 		expect(childTextDelta?.agentId).toBeDefined()
 		expect(grandchildTextDelta?.agentId).toBeDefined()
 		expect(grandchildTextDelta?.agentId).not.toBe(childTextDelta?.agentId)
-		expect(childTextDelta?.agentDepth).toBe(1)
-		expect(grandchildTextDelta?.agentDepth).toBe(2)
 
 		const nestedGrandchildEvents = events.filter((event) => event.agentId === grandchildTextDelta?.agentId)
 		expect(new Set(nestedGrandchildEvents.map((event) => event.parentToolCallId))).toEqual(
@@ -434,7 +431,6 @@ describe('sub-agent streaming events', () => {
 		expect(new Set(childTextDeltas.map((event) => event.parentToolCallId))).toEqual(
 			new Set(['parent-subagent-call-a', 'parent-subagent-call-b']),
 		)
-		expect(new Set(childTextDeltas.map((event) => event.agentDepth))).toEqual(new Set([1]))
 
 		const lastChildEventIndex = events.reduce(
 			(lastIndex, event, index) => (event.agentId !== undefined ? index : lastIndex),

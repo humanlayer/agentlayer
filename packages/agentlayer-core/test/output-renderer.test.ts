@@ -56,12 +56,21 @@ describe('output renderer tool arguments', () => {
 	test('labels nested tool calls with stable child identity, depth, and immediate parent call', () => {
 		const lines: string[] = []
 		const renderer = createOutputRenderer({ writeLine: (line) => lines.push(line) })
-		const childMeta = { agentId: 'child-call', agentDepth: 1, parentToolCallId: 'root-call' } as const
+		const childMeta = { agentId: 'child-call', parentToolCallId: 'root-call' } as const
 		const grandchildMeta = {
 			agentId: 'grandchild-call',
-			agentDepth: 2,
 			parentToolCallId: 'child-agent-call',
 		} as const
+		renderer.onEvent({ type: 'toolInputStart', id: 'root-call', toolName: 'agent', stepIndex: 0 })
+		renderer.onEvent({ type: 'toolInputEnd', id: 'root-call', stepIndex: 0 })
+		renderer.onEvent({
+			type: 'toolInputStart',
+			id: 'child-agent-call',
+			toolName: 'agent',
+			stepIndex: 0,
+			...childMeta,
+		})
+		renderer.onEvent({ type: 'toolInputEnd', id: 'child-agent-call', stepIndex: 0, ...childMeta })
 
 		for (const [id, meta] of [
 			['child-tool', childMeta],

@@ -31,12 +31,11 @@ function getAgentAssembly(agent: object) {
 }
 
 describe('createCodingSubagentTool', () => {
-	test('exposes the complete strict Codex fork tool contract with model guidance', async () => {
+	test('exposes one complete strict fork and specialist contract', async () => {
 		const tool = await createCodingSubagentTool({
 			cwd: process.cwd(),
 			model: 'codex-test' as any,
 			system: 'test system prompt',
-			dispatchContract: 'fork-and-specialist',
 		})
 		const input = tool.input as any
 		const shape = input.shape as Record<string, { description?: string }>
@@ -72,18 +71,20 @@ describe('createCodingSubagentTool', () => {
 		expect(tool.subagents.every((agent) => agent.resumable === true)).toBe(true)
 	})
 
-	test('preserves the required specialist selector outside Codex fork mode', async () => {
+	test('exposes the same fork, specialist, and resume schema for non-Codex models', async () => {
 		const tool = await createCodingSubagentTool({
 			cwd: process.cwd(),
 			model: 'claude-test' as any,
 			system: 'test system prompt',
-			dispatchContract: 'specialist-only',
 		})
 
-		expect(tool.input.safeParse({ description: 'small task', prompt: 'work' }).success).toBe(false)
+		expect(tool.input.safeParse({ description: 'small task', prompt: 'work' }).success).toBe(true)
 		expect(
 			tool.input.safeParse({ description: 'small task', prompt: 'work', subagent_type: 'general-purpose' }).success,
 		).toBe(true)
+		expect(tool.input.safeParse({ prompt: 'continue', agent_id: 'prior-child' }).success).toBe(true)
+		expect(tool.description).toContain('Omit agent_id, fork_turns, and subagent_type')
+		expect(tool.subagents.every((agent) => agent.resumable === true)).toBe(true)
 	})
 
 	test('includes the outline implementer sub-agent once', async () => {

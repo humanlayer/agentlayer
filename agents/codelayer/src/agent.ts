@@ -6,7 +6,6 @@ import {
 	tarsPersona,
 	type AgentConfig,
 	type ProviderOptionsFactory,
-	type SubagentDispatchContract,
 	type Tool,
 } from '@humanlayer/agentlayer-core'
 import {
@@ -51,23 +50,6 @@ export interface CodelayerAgentOptions {
 	subagentTool?: Tool<any, any>
 	providerOptionOverrides?: CodelayerProviderOptionOverrides
 	subagentThinking?: string
-	/**
-	 * Selects the model-facing contract for dispatching subagents. This does not
-	 * control which specialists are registered: every configured specialist is
-	 * available under both contracts.
-	 *
-	 * - `specialist-only` requires every new child call to name a
-	 *   `subagent_type`. The child starts with the specialist's runtime and the
-	 *   delegated prompt, without inheriting the caller's conversation.
-	 * - `fork-and-specialist` adds Codex-style branching and continuation. An
-	 *   omitted selector defaults to a filtered caller fork, `fork_turns`
-	 *   explicitly selects all, none, or bounded inherited history,
-	 *   `subagent_type` can still select any registered specialist, and
-	 *   `agent_id` resumes a terminal child.
-	 *
-	 * Defaults to `specialist-only`.
-	 */
-	subagentDispatchContract?: SubagentDispatchContract
 	environment?: CodelayerEnvironmentOptions
 	/**
 	 * Extra environment variables to inject into the bash tool's child processes for
@@ -389,7 +371,6 @@ export async function createCodelayerAgent(opts: CodelayerAgentOptions): Promise
 		subagentTool,
 		providerOptionOverrides,
 		subagentThinking = 'low',
-		subagentDispatchContract = 'specialist-only',
 		environment,
 		shellEnv,
 	} = opts
@@ -436,7 +417,6 @@ export async function createCodelayerAgent(opts: CodelayerAgentOptions): Promise
 					? { model: researchModel, providerOptions: researchProviderOptions }
 					: undefined,
 			promptCacheKey,
-			dispatchContract: subagentDispatchContract,
 			systemPromptAdditions: personaPromptAdditions,
 		}))
 

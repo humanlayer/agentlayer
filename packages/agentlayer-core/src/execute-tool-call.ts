@@ -136,7 +136,6 @@ export async function executeToolCall(tc: ToolCallRef, ctx: ExecuteToolCallConte
 						...childEvent,
 						agentId: childEvent.agentId ?? agentId,
 						parentToolCallId: childEvent.parentToolCallId ?? parentToolCallId,
-						agentDepth: (childEvent.agentDepth ?? 0) + 1,
 					})
 				}
 			})()
