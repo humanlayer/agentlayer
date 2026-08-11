@@ -173,6 +173,7 @@ function mergeHooks(
 		preToolUse: [...base.preToolUse, ...(hooks?.preToolUse ?? [])],
 		postToolUse: [...saneDefaultOutputTruncationHooks, ...fileStatePostHooks, ...(hooks?.postToolUse ?? [])],
 		preRequest: [...base.preRequest, ...(hooks?.preRequest ?? [])],
+		compaction: [...base.compaction, ...(hooks?.compaction ?? [])],
 	}
 }
 

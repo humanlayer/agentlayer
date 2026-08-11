@@ -12,6 +12,7 @@ import {
 } from '@humanlayer/agentlayer-core'
 import { z } from 'zod'
 import {
+	createFileStateCompactionHook,
 	createFileStateTrackingHook,
 	createReadBeforeWriteHook,
 	createReadBeforeWriteHooks,
@@ -156,6 +157,59 @@ function createDirectHookHarness(cwd?: string): DirectHookHarness {
 }
 
 describe('file-state hooks', () => {
+	test('compaction clears stale file evidence and permits a required reread', async () => {
+		const dir = await mkdtemp(join(tmpdir(), 'file-state-hook-test-'))
+		try {
+			const filePath = join(dir, 'compacted-read.txt')
+			const content = 'important context\n'
+			await writeFile(filePath, content)
+			const tracked = createDirectHookHarness()
+			await tracked.recordReadObservation({ file_path: filePath }, content)
+			let readExecuted = 0
+			const readTool = defineTool({
+				name: 'read',
+				description: 'Read file',
+				input: z.object({ file_path: z.string() }),
+				output: z.string(),
+				execute: async () => {
+					readExecuted += 1
+					return content
+				},
+			})
+			const result = await new Agent({
+				model: mockModel([
+					assistantText('summary'),
+					assistantWithToolCall('read', { file_path: filePath }),
+					assistantText('done'),
+				]),
+				tools: { read: readTool },
+				autoCompact: { thresholdTokens: 1, keepRecentTokens: 2 },
+				hooks: {
+					compaction: [createFileStateCompactionHook()],
+					preToolUse: [createWastedReadHook()],
+					postToolUse: [createFileStateTrackingHook()],
+				},
+			}).run({
+				state: {
+					messages: [
+						userMessage('old read request'),
+						{ role: 'assistant', content: 'old read complete' },
+						userMessage('continue'),
+					],
+					toolState: { ...tracked.state, durable: 'keep' },
+					contextWindowTokens: 2,
+				},
+			}).result
+
+			expect(result.finishReason).toBe('complete')
+			expect(readExecuted).toBe(1)
+			expect(result.state.toolState?.durable).toBe('keep')
+			expect(result.state.toolState?.[FILE_READ_STATE_KEY]).toBeDefined()
+		} finally {
+			await rm(dir, { recursive: true })
+		}
+	})
+
 	test('direct hook harness records read state and gates mutations', async () => {
 		const dir = await mkdtemp(join(tmpdir(), 'file-state-hook-test-'))
 		try {

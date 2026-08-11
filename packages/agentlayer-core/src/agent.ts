@@ -1,31 +1,47 @@
 import type { FinishReason as AiSdkFinishReason, LanguageModel, ModelMessage, TextStreamPart, ToolChoice } from 'ai'
 import { streamText, tool as toAiSdkTool } from 'ai'
 import { type AgentEvent, AgentRun } from './agent-run'
+import {
+	type AutoCompactConfig,
+	buildCompactionRequestText,
+	buildTurnPrefixCompactionRequestText,
+	COMPACTION_SYSTEM_PROMPT,
+	type CompactionTrigger,
+	compactionSummaryMessage,
+	isContextOverflowError,
+	parseCompactCommand,
+	planCompaction,
+	resolveCompactionMaxOutputTokens,
+	resolveCompactionPolicy,
+	shouldCompactForThreshold,
+} from './compaction'
 import type { Tool } from './define-tool'
 import { AgentError, InvalidMessagesError } from './errors'
 import { type ExecuteToolCallContext, executeToolCall, type ToolCallResult } from './execute-tool-call'
 import {
 	type ApprovalHook,
 	type ApprovalRequest,
+	type CompactionHook,
 	type HookStateOperation,
 	type PendingToolCall,
 	type PostToolUseHook,
 	type PreRequestHook,
 	type PreToolUseHook,
 	runApprovalHooks,
+	runCompactionHooks,
 	runPostToolUseHooks,
 	runPreRequestHooks,
 	runPreToolUseHooks,
 	type StopOptions,
 	type ToolInfo,
 } from './hooks'
-import { type AgentLayerToolOutput, buildToolResultMessage } from './messages'
+import { type AgentLayerToolOutput, buildToolResultMessage, userMessage } from './messages'
 import { type ModelKey, ModelProvider } from './models'
 import { sanitizeTextForModelState, sanitizeToolOutputForModelState } from './sanitize-text'
 import type { AgentState, ApprovalDecision, ApprovalHistoryEntry, TerminalChildMap } from './state'
 import type { Step, StepToolResult, StopResult, StopTiming, StopWhen } from './stop-conditions'
 import { shouldStop } from './stop-conditions'
-import { extractUsage, getModelKey, type TokenUsage, TokenUsageAccumulator } from './token-usage'
+import { extractUsage, getModelKey, type ModelTokenUsage, type TokenUsage, TokenUsageAccumulator } from './token-usage'
 
 export type ProviderOptions = Parameters<typeof streamText>[0]['providerOptions']
 export type ProviderOptionsFactory = (ctx: { runId: string; promptCacheKey?: string }) => ProviderOptions
@@ -76,6 +92,8 @@ export interface AgentConfig<TTools extends Record<string, Tool<any, any>> = Rec
 	onStop?: (result: RunResult) => void | Promise<void>
 	/** Explicit context window limit override. When not set, resolved from models.dev if available. */
 	contextWindowLimit?: number
+	/** Provider-neutral compaction policy. Omitted means enabled with defaults. */
+	autoCompact?: AutoCompactConfig
 	/** Called when an approval is requested. Fires before the event is pushed to the iterator. Observe-only, errors swallowed. */
 	onApprovalRequested?: (
 		approval: ApprovalRequest,
@@ -88,6 +106,7 @@ export interface AgentConfig<TTools extends Record<string, Tool<any, any>> = Rec
 		preToolUse?: PreToolUseHook[]
 		postToolUse?: PostToolUseHook[]
 		preRequest?: PreRequestHook[]
+		compaction?: CompactionHook[]
 	}
 }
 
@@ -113,6 +132,18 @@ export interface RunOptions {
 	signal?: AbortSignal
 	stream?: boolean
 	promptCacheKey?: string
+}
+
+export interface CompactOptions {
+	state: AgentState
+	signal?: AbortSignal
+	stream?: boolean
+	promptCacheKey?: string
+	additionalInstructions?: string
+	/** Used by loop integrations; direct calls default to manual. */
+	trigger?: CompactionTrigger
+	/** Override native-tail retention for this explicit checkpoint. */
+	keepRecentTokens?: number
 }
 
 function convertTools(tools: Record<string, Tool<any, any>>) {
@@ -228,6 +259,12 @@ interface ExecutedModelStep {
 	usage: Awaited<StreamTextResult['usage']>
 }
 
+interface PerformedCompaction {
+	state: AgentState
+	inferenceMessages: ModelMessage[]
+	event: Extract<AgentEvent, { type: 'compaction' }>
+}
+
 function classifyOutcomes(outcomes: ToolOutcome[]): ClassifiedOutcomes {
 	return {
 		asks: outcomes.filter((o): o is ToolOutcome & { kind: 'ask' } => o.kind === 'ask'),
@@ -258,6 +295,7 @@ export class Agent<TTools extends Record<string, Tool<any, any>> = Record<string
 	private onApprovalRequested: AgentConfig['onApprovalRequested']
 	private contextWindowLimit: number | undefined
 	private promptCacheKey: string
+	private autoCompact: AutoCompactConfig | undefined
 
 	private modelProvider: ModelProvider
 
@@ -275,6 +313,7 @@ export class Agent<TTools extends Record<string, Tool<any, any>> = Record<string
 		this.onStop = config.onStop
 		this.onApprovalRequested = config.onApprovalRequested
 		this.contextWindowLimit = config.contextWindowLimit
+		this.autoCompact = config.autoCompact
 		this.hooks = config.hooks
 		this.modelProvider = config.modelProvider ?? new ModelProvider()
 	}
@@ -283,6 +322,14 @@ export class Agent<TTools extends Record<string, Tool<any, any>> = Record<string
 		const agentRun = new AgentRun()
 		agentRun.stream = options.stream === true
 		this.executeLoop(options, agentRun)
+		return agentRun
+	}
+
+	/** Create one explicit compaction checkpoint without entering the normal tool loop. */
+	compact(options: CompactOptions): AgentRun {
+		const agentRun = new AgentRun()
+		agentRun.stream = options.stream === true
+		this.executeCompaction(options, agentRun)
 		return agentRun
 	}
 
@@ -308,7 +355,209 @@ export class Agent<TTools extends Record<string, Tool<any, any>> = Record<string
 			contextWindowLimit: this.contextWindowLimit,
 			hooks: this.hooks,
 			promptCacheKey: this.promptCacheKey,
+			autoCompact: this.autoCompact,
 		})
+	}
+
+	private async executeCompaction(options: CompactOptions, agentRun: AgentRun): Promise<void> {
+		const accumulator = new TokenUsageAccumulator((modelKey) => this.modelProvider.getModelPricing(modelKey))
+		try {
+			if (options.signal?.aborted) {
+				this.finishRun(agentRun, {
+					state: options.state,
+					newMessages: [],
+					finishReason: 'interrupted',
+					tokenUsage: accumulator.snapshot(),
+					contextWindowLimit: this.contextWindowLimit,
+				})
+				return
+			}
+
+			const performed = await this.performCompaction(options, (model, usage) => accumulator.add(model, usage))
+			for (const message of performed.inferenceMessages) agentRun.push(message)
+			agentRun.pushEvent(performed.event)
+			this.finishRun(agentRun, {
+				state: performed.state,
+				newMessages: performed.inferenceMessages,
+				finishReason: 'complete',
+				tokenUsage: accumulator.snapshot(),
+				contextWindowLimit: this.contextWindowLimit,
+			})
+		} catch (error) {
+			if (options.signal?.aborted && error instanceof Error && error.name === 'AbortError') {
+				this.finishRun(agentRun, {
+					state: options.state,
+					newMessages: [],
+					finishReason: 'interrupted',
+					tokenUsage: accumulator.snapshot(),
+					contextWindowLimit: this.contextWindowLimit,
+				})
+				return
+			}
+			const agentError =
+				error instanceof AgentError
+					? error
+					: new AgentError('unexpected_error', error instanceof Error ? error.message : String(error))
+			this.finishRun(agentRun, {
+				state: options.state,
+				newMessages: [],
+				finishReason: 'error',
+				error: agentError,
+				tokenUsage: accumulator.snapshot(),
+				contextWindowLimit: this.contextWindowLimit,
+			})
+		}
+	}
+
+	private async performCompaction(
+		options: CompactOptions,
+		onUsage?: (model: string, usage: Omit<ModelTokenUsage, 'estimatedCostUsd'>) => void,
+	): Promise<PerformedCompaction> {
+		const modelKey = getModelKey(this.model)
+		const modelLimits = this.modelProvider.getModelLimits(modelKey as ModelKey)
+		if (this.contextWindowLimit === undefined && modelLimits) this.contextWindowLimit = modelLimits.context
+
+		const trigger = options.trigger ?? 'manual'
+		const policy = resolveCompactionPolicy(this.autoCompact)
+		const activeMessages = options.state.compaction ? options.state.messages.slice(1) : options.state.messages
+		const requiredToolCallIds = new Set((options.state.pendingToolCalls ?? []).map((pending) => pending.toolCallId))
+		const plan = planCompaction(activeMessages, {
+			keepRecentTokens: options.keepRecentTokens ?? policy.keepRecentTokens,
+			requiredToolCallIds,
+		})
+		if (
+			plan === null ||
+			(!plan.isSplitTurn && plan.conversationText.trim().length === 0) ||
+			(plan.isSplitTurn && !plan.turnPrefixConversationText?.trim())
+		) {
+			throw new AgentError('unexpected_error', 'Compaction requires a coherent message prefix to summarize.')
+		}
+
+		const providerOptions = this.resolveProviderOptions(
+			crypto.randomUUID(),
+			options.promptCacheKey ?? this.promptCacheKey,
+		)
+		const summaryUsage: Omit<ModelTokenUsage, 'estimatedCostUsd'> = {
+			inputTokens: 0,
+			outputTokens: 0,
+			cacheReadTokens: 0,
+			cacheWriteTokens: 0,
+			reasoningTokens: 0,
+		}
+		const inferenceMessages: ModelMessage[] = []
+		const summarize = async (requestText: string, turnPrefix: boolean): Promise<string> => {
+			const requestMessage = userMessage(requestText)
+			const result = streamText({
+				model: this.model,
+				providerOptions,
+				messages: [requestMessage],
+				system: COMPACTION_SYSTEM_PROMPT,
+				maxOutputTokens: resolveCompactionMaxOutputTokens({
+					reserveTokens: policy.reserveTokens,
+					modelOutputLimit: modelLimits?.output,
+					turnPrefix,
+				}),
+				abortSignal: options.signal ?? new AbortController().signal,
+			})
+
+			let streamError: unknown
+			for await (const part of result.fullStream) {
+				if (part.type === 'error') streamError = part.error
+			}
+			if (streamError) throw streamError
+			const [response, usage] = await Promise.all([result.response, result.usage])
+			const callUsage = extractUsage(usage)
+			onUsage?.(modelKey, callUsage)
+			for (const key of [
+				'inputTokens',
+				'outputTokens',
+				'cacheReadTokens',
+				'cacheWriteTokens',
+				'reasoningTokens',
+			] as const) {
+				summaryUsage[key] += callUsage[key]
+			}
+			const responseMessages = response.messages.filter((message) => message.role !== 'tool')
+			const summary = responseMessages
+				.filter((message) => message.role === 'assistant')
+				.flatMap((message) =>
+					typeof message.content === 'string'
+						? [message.content]
+						: message.content.filter((part) => part.type === 'text').map((part) => part.text),
+				)
+				.join('\n')
+				.trim()
+			if (summary.length === 0)
+				throw new AgentError('unexpected_error', 'Compaction summarizer returned an empty summary.')
+			inferenceMessages.push(requestMessage, ...responseMessages)
+			return summary
+		}
+
+		let historySummary = 'No prior history.'
+		if (plan.conversationText.trim() || options.state.compaction) {
+			historySummary = await summarize(
+				buildCompactionRequestText({
+					conversationText: plan.conversationText,
+					...(options.state.compaction ? { previousSummary: options.state.compaction.summary } : {}),
+					...(policy.compactionPrompt ? { compactionPrompt: policy.compactionPrompt } : {}),
+					...(policy.compactionUpdatePrompt ? { compactionUpdatePrompt: policy.compactionUpdatePrompt } : {}),
+					...(options.additionalInstructions
+						? { additionalInstructions: options.additionalInstructions }
+						: {}),
+				}),
+				false,
+			)
+		}
+		const summary = plan.isSplitTurn
+			? `${historySummary}\n\n---\n\n**Turn Context (split turn):**\n\n${await summarize(
+					buildTurnPrefixCompactionRequestText(plan.turnPrefixConversationText!),
+					true,
+				)}`
+			: historySummary
+
+		const priorCheckpoint = options.state.compaction
+		const replacedMessageCount = plan.replacedMessages.length + (priorCheckpoint ? 1 : 0)
+		const retainedMessages = structuredClone(plan.retainedMessages)
+		const toolState = this.hooks?.compaction?.length
+			? await runCompactionHooks(this.hooks.compaction, {
+					toolState: options.state.toolState ?? {},
+					replacedMessages: plan.replacedMessages,
+					retainedMessages,
+					trigger,
+				})
+			: options.state.toolState
+		const { contextWindowTokens: _staleContext, toolState: _oldToolState, ...stateWithoutContext } = options.state
+		const state: AgentState = {
+			...stateWithoutContext,
+			messages: [compactionSummaryMessage(summary), ...retainedMessages],
+			...(toolState !== undefined && Object.keys(toolState).length > 0 ? { toolState } : {}),
+			compaction: {
+				version: 1,
+				summary,
+				trigger,
+				replacedMessageCount,
+				retainedMessageCount: retainedMessages.length,
+				totalReplacedMessageCount:
+					(priorCheckpoint?.totalReplacedMessageCount ?? 0) + plan.replacedMessages.length,
+				...(options.state.contextWindowTokens !== undefined
+					? { priorContextWindowTokens: options.state.contextWindowTokens }
+					: {}),
+			},
+		}
+		return {
+			state,
+			inferenceMessages,
+			event: {
+				type: 'compaction',
+				trigger,
+				...(options.state.contextWindowTokens !== undefined
+					? { priorContextWindowTokens: options.state.contextWindowTokens }
+					: {}),
+				replacedMessageCount,
+				retainedMessageCount: retainedMessages.length,
+				summaryUsage: { model: modelKey, usage: summaryUsage },
+			},
+		}
 	}
 
 	private async executeLoop(options: RunOptions, agentRun: AgentRun): Promise<void> {
@@ -323,6 +572,7 @@ export class Agent<TTools extends Record<string, Tool<any, any>> = Record<string
 		// Mutable sub-agent state map — updated when sub-agents pause/resume
 		const subAgents: Record<string, AgentState> = { ...(options.state.subAgents ?? {}) }
 		const terminalChildren: TerminalChildMap = { ...(options.state.terminalChildren ?? {}) }
+		let compaction = options.state.compaction
 		const sink = new MessageSink(allMessages, newMessages, agentRun)
 		const promptCacheKey = options.promptCacheKey ?? this.promptCacheKey
 		const providerOptions = this.resolveProviderOptions(crypto.randomUUID(), promptCacheKey)
@@ -342,13 +592,6 @@ export class Agent<TTools extends Record<string, Tool<any, any>> = Record<string
 		})
 		let contextWindowTokens: number = options.state.contextWindowTokens ?? 0
 
-		// Process forwarded child tokenUsage events through the parent accumulator
-		agentRun.onEvent = (event) => {
-			if (event.type === 'tokenUsage' && event.agentId) {
-				accumulator.add(event.usage.model, event.usage.usage)
-			}
-		}
-
 		// Helper to build a state snapshot from current messages + optional pending + carried history
 		const buildState = (
 			pendingToolCalls?: PendingToolCall[],
@@ -364,6 +607,7 @@ export class Agent<TTools extends Record<string, Tool<any, any>> = Record<string
 				...(Object.keys(toolState).length > 0 ? { toolState } : {}),
 				...(Object.keys(effectiveSubAgents).length > 0 ? { subAgents: effectiveSubAgents } : {}),
 				...(Object.keys(terminalChildren).length > 0 ? { terminalChildren } : {}),
+				...(compaction !== undefined ? { compaction } : {}),
 				...(contextWindowTokens > 0 ? { contextWindowTokens } : {}),
 			}
 		}
@@ -371,6 +615,33 @@ export class Agent<TTools extends Record<string, Tool<any, any>> = Record<string
 		try {
 			// Abort signal — use caller's or create internal one
 			const signal = options.signal ?? new AbortController().signal
+			const applyCompaction = async (
+				trigger: CompactionTrigger,
+				state: AgentState,
+				additionalInstructions?: string,
+			): Promise<void> => {
+				const performed = await this.performCompaction(
+					{
+						state,
+						signal,
+						stream: options.stream,
+						promptCacheKey,
+						trigger,
+						...(additionalInstructions ? { additionalInstructions } : {}),
+					},
+					(model, usage) => accumulator.add(model, usage),
+				)
+				allMessages.splice(0, allMessages.length, ...performed.state.messages)
+				for (const key of Object.keys(toolState)) delete toolState[key]
+				Object.assign(toolState, performed.state.toolState ?? {})
+				compaction = performed.state.compaction
+				contextWindowTokens = 0
+				for (const message of performed.inferenceMessages) {
+					newMessages.push(message)
+					agentRun.push(message)
+				}
+				agentRun.pushEvent(performed.event)
+			}
 
 			const toolCtx: ExecuteToolCallContext = {
 				tools: this.tools,
@@ -383,11 +654,18 @@ export class Agent<TTools extends Record<string, Tool<any, any>> = Record<string
 				promptCacheKey,
 				getContextWindowTokens: () => contextWindowTokens,
 				getContextWindowLimit: () => this.contextWindowLimit,
+				onChildTokenUsage: (usage) => {
+					for (const [model, modelUsage] of Object.entries(usage.byModel)) {
+						const { estimatedCostUsd: _estimatedCostUsd, ...rawUsage } = modelUsage
+						accumulator.add(model, rawUsage)
+					}
+				},
 				createSubAgentFork: () => ({
 					agent: this.createForkAgent(),
 					state: structuredClone({
 						messages: allMessages,
 						...((inputApprovalHistory?.length ?? 0) > 0 ? { approvalHistory: inputApprovalHistory } : {}),
+						...(compaction !== undefined ? { compaction } : {}),
 					}),
 				}),
 				createSubAgentForkAgent: () => this.createForkAgent(),
@@ -411,6 +689,8 @@ export class Agent<TTools extends Record<string, Tool<any, any>> = Record<string
 			// ── main loop ───────────────────────────────────────────────────────
 			const maxStepsLimit = this.maxStepsLimit
 			const hasMaxStepsLimit = maxStepsLimit !== undefined
+			const compactionPolicy = resolveCompactionPolicy(this.autoCompact)
+			let overflowRecoveryUsed = false
 			for (let stepIndex = 0; !hasMaxStepsLimit || stepIndex < maxStepsLimit; stepIndex++) {
 				// Check abort at the top of each iteration
 				if (signal.aborted) {
@@ -424,31 +704,62 @@ export class Agent<TTools extends Record<string, Tool<any, any>> = Record<string
 					return
 				}
 
-				// ── pre-request hooks: transform messages before sending to model ──
-				let requestMessages: ModelMessage[] = allMessages
-				if (this.hooks?.preRequest?.length) {
-					const hookResult = await runPreRequestHooks(this.hooks.preRequest, {
-						messages: allMessages,
-						contextWindowTokens,
+				const manualCommand = parseCompactCommand(allMessages)
+				if (manualCommand) {
+					const messagesWithoutCommand = allMessages.filter(
+						(_, index) => index !== manualCommand.messageIndex,
+					)
+					await applyCompaction(
+						'manual',
+						{ ...buildState(), messages: messagesWithoutCommand },
+						manualCommand.additionalInstructions,
+					)
+				} else if (
+					shouldCompactForThreshold({
+						contextWindowTokens: contextWindowTokens > 0 ? contextWindowTokens : undefined,
+						policy: compactionPolicy,
 						contextWindowLimit: this.contextWindowLimit,
 					})
-					if (hookResult.transformed) {
-						requestMessages = hookResult.messages
-						if (hookResult.persist) {
-							allMessages.length = 0
-							allMessages.push(...hookResult.messages)
-						}
-					}
+				) {
+					await applyCompaction('threshold', buildState())
 				}
 
-				const result = await this.executeModelStep(
-					requestMessages,
-					signal,
-					options.stream,
-					stepIndex,
-					agentRun,
-					providerOptions,
-				)
+				let result: ExecutedModelStep
+				for (;;) {
+					// Compaction runs before request transforms, including on an overflow retry.
+					let requestMessages: ModelMessage[] = allMessages
+					if (this.hooks?.preRequest?.length) {
+						const hookResult = await runPreRequestHooks(this.hooks.preRequest, {
+							messages: allMessages,
+							contextWindowTokens,
+							contextWindowLimit: this.contextWindowLimit,
+						})
+						if (hookResult.transformed) {
+							requestMessages = hookResult.messages
+							if (hookResult.persist) {
+								allMessages.length = 0
+								allMessages.push(...hookResult.messages)
+							}
+						}
+					}
+
+					try {
+						result = await this.executeModelStep(
+							requestMessages,
+							signal,
+							options.stream,
+							stepIndex,
+							agentRun,
+							providerOptions,
+						)
+						break
+					} catch (error) {
+						if (!compactionPolicy.enabled || overflowRecoveryUsed || !isContextOverflowError(error))
+							throw error
+						overflowRecoveryUsed = true
+						await applyCompaction('overflow', buildState())
+					}
+				}
 
 				// Only push non-tool messages from the AI SDK response.
 				// The agent manages tool result creation itself; the AI SDK may

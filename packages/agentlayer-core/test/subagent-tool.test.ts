@@ -1103,4 +1103,172 @@ describe('forking subagent tool', () => {
 			expect(new Set(childCacheKeys)).toHaveLength(1)
 		})
 	}
+
+	test('compacts fork children without mutating the parent snapshot', async () => {
+		const usage = {
+			inputTokens: { total: 12, noCache: 12, cacheRead: 0, cacheWrite: 0 },
+			outputTokens: { total: 3, text: 3, reasoning: 0 },
+		}
+		const model = mockModel([
+			assistantWithToolCall('subagent', { prompt: '/compact Preserve child verification.' }),
+			assistantText('fork-only summary', { usage }),
+			assistantText('fork child complete', { usage }),
+			assistantText('parent complete', { usage }),
+		])
+		const subagent = createForkingSubagentsTool({ agents: [] })
+		const parent = new Agent({ model, tools: { subagent }, autoCompact: { keepRecentTokens: 2 } })
+		const input = startState([
+			userMessage('old parent context'),
+			{ role: 'assistant', content: 'settled parent answer' },
+			userMessage('delegate and keep my state intact'),
+		])
+		const inputJson = JSON.stringify(input)
+		const result = await parent.run({ state: input }).result
+
+		expect(JSON.stringify(input)).toBe(inputJson)
+		expect(result.state.compaction).toBeUndefined()
+		const records = Object.values(result.state.terminalChildren ?? {})
+		expect(records).toHaveLength(1)
+		expect(records[0]!.state.compaction).toMatchObject({ trigger: 'manual' })
+		expect(records[0]!.state.compaction?.summary).toContain('fork-only summary')
+		expect(JSON.stringify(records[0]!.state.messages)).not.toContain('/compact')
+		expect(JSON.stringify(result.state.messages)).toContain('old parent context')
+	})
+
+	test('compacts a paused child on approval resume without compacting its parent', async () => {
+		const highUsage = {
+			inputTokens: { total: 20, noCache: 20, cacheRead: 0, cacheWrite: 0 },
+			outputTokens: { total: 5, text: 5, reasoning: 0 },
+		}
+		const child = new Agent({
+			model: mockModel([
+				assistantWithToolCall('dangerous', { value: 'resume' }, { usage: highUsage }),
+				assistantText('paused-child summary'),
+				assistantText('resumed child complete'),
+			]),
+			tools: { dangerous: approvedTool },
+			contextWindowLimit: 100,
+			autoCompact: { thresholdTokens: 10, keepRecentTokens: 1 },
+			hooks: {
+				approval: [(ctx) => (ctx.toolName === 'dangerous' ? ctx.ask({ message: 'Approve?' }) : ctx.next())],
+			},
+		})
+		const subagent = createForkingSubagentsTool({
+			agents: [{ name: 'worker', description: 'Worker', agent: child, resumable: true }],
+		})
+		const parent = new Agent({
+			model: mockModel([
+				assistantWithToolCall('subagent', {
+					prompt: 'perform approved work',
+					subagent_type: 'worker',
+				}),
+				assistantText('parent complete'),
+			]),
+			tools: { subagent },
+		})
+		const paused = await parent.run({ state: startState([userMessage('parent context')]) }).result
+		expect(paused.finishReason).toBe('approvalRequired')
+		const pending = getAllPendingApprovals(paused.state)
+		const approved = withApprovals(paused.state, [{ toolCallId: pending[0]!.pending.toolCallId, approved: true }])
+		const resumed = await parent.run({ state: approved }).result
+
+		expect(resumed.finishReason).toBe('complete')
+		expect(resumed.state.compaction).toBeUndefined()
+		const records = Object.values(resumed.state.terminalChildren ?? {})
+		expect(records).toHaveLength(1)
+		expect(records[0]!.state.compaction).toMatchObject({
+			trigger: 'threshold',
+		})
+		expect(records[0]!.state.compaction?.summary).toContain('paused-child summary')
+	})
+
+	test('keeps sibling and terminal-resumed child checkpoints isolated', async () => {
+		const firstId = 'first-child'
+		const secondId = 'second-child'
+		const firstChild = new Agent({
+			model: mockModel([assistantText('first summary'), assistantText('first done')]),
+			tools: {},
+			autoCompact: { keepRecentTokens: 2 },
+		})
+		const secondChild = new Agent({
+			model: mockModel([assistantText('second summary'), assistantText('second done')]),
+			tools: {},
+			autoCompact: { keepRecentTokens: 2 },
+		})
+		const subagent = createForkingSubagentsTool({
+			agents: [
+				{ name: 'first', description: 'First', agent: firstChild, resumable: true },
+				{ name: 'second', description: 'Second', agent: secondChild, resumable: true },
+			],
+		})
+		const parent = new Agent({
+			model: mockModel([
+				assistantWithToolCalls(
+					{ toolName: 'subagent', input: { prompt: '/compact', agent_id: firstId } },
+					{ toolName: 'subagent', input: { prompt: '/compact', agent_id: secondId } },
+				),
+				assistantText('siblings complete'),
+			]),
+			tools: { subagent },
+		})
+		const firstRun = await parent.run({
+			state: {
+				messages: [userMessage('run siblings')],
+				terminalChildren: {
+					[firstId]: {
+						state: startState([
+							userMessage('first old context'),
+							{ role: 'assistant', content: 'first old answer' },
+						]),
+						lastOutcome: 'complete',
+						completedTurns: 1,
+						runtime: { type: 'specialist', subagentType: 'first' },
+					},
+					[secondId]: {
+						state: startState([
+							userMessage('second old context'),
+							{ role: 'assistant', content: 'second old answer' },
+						]),
+						lastOutcome: 'complete',
+						completedTurns: 1,
+						runtime: { type: 'specialist', subagentType: 'second' },
+					},
+				},
+			},
+		}).result
+		const entries = Object.entries(firstRun.state.terminalChildren ?? {})
+		expect(entries).toHaveLength(2)
+		const siblingSummaries = entries.map(([, record]) => record.state.compaction?.summary ?? '')
+		expect(siblingSummaries.some((summary) => summary.includes('first summary'))).toBe(true)
+		expect(siblingSummaries.some((summary) => summary.includes('second summary'))).toBe(true)
+		expect(entries[0]![1].state).not.toBe(entries[1]![1].state)
+
+		const [resumeId, resumeRecord] = entries[0]!
+		const resumedAgent = resumeRecord.runtime.type === 'specialist' ? resumeRecord.runtime.subagentType : 'first'
+		const resumeChild = new Agent({
+			model: mockModel([assistantText('updated resumed summary'), assistantText('resumed child done')]),
+			tools: {},
+			autoCompact: { keepRecentTokens: 2 },
+		})
+		const resumedTool = createForkingSubagentsTool({
+			agents: [{ name: resumedAgent, description: 'Resumed', agent: resumeChild, resumable: true }],
+		})
+		const resumedParent = new Agent({
+			model: mockModel([
+				assistantWithToolCall('subagent', { prompt: '/compact Update only this child.', agent_id: resumeId }),
+				assistantText('resume complete'),
+			]),
+			tools: { subagent: resumedTool },
+		})
+		const resumed = await resumedParent.run({
+			state: { ...firstRun.state, messages: [...firstRun.state.messages, userMessage('resume one child')] },
+		}).result
+		const untouchedEntry = entries.find(([id]) => id !== resumeId)!
+
+		expect(resumed.state.terminalChildren?.[resumeId]?.state.compaction?.summary).not.toBe(
+			resumeRecord.state.compaction?.summary,
+		)
+		expect(resumed.state.terminalChildren?.[untouchedEntry[0]]).toEqual(untouchedEntry[1])
+		expect(resumed.state.compaction).toBeUndefined()
+	})
 })

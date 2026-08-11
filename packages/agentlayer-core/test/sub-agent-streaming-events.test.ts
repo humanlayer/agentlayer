@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import type { ModelMessage } from 'ai'
 import { z } from 'zod'
 import { Agent, type AgentEvent, defineTool, getAllPendingApprovals, startState, withApprovals } from '../src'
-import { createSubagentsTool } from '../src/tools'
+import { createForkingSubagentsTool, createSubagentsTool } from '../src/tools'
 import {
 	assistantText,
 	assistantWithToolCall,
@@ -574,5 +574,163 @@ describe('sub-agent streaming events', () => {
 		expect(subagentResults).toHaveLength(1)
 		expect(subagentResults[0]).toContain('Child done after approval.')
 		expect(JSON.stringify(resumedResult.state.messages)).not.toContain('Grandchild approved.')
+	})
+
+	test('tags child compaction events and aggregates summary usage exactly once', async () => {
+		const child = new Agent({
+			model: mockStreamingModel([
+				assistantWithToolCall('dangerous', { value: 'compact' }, { usage: mockUsage(20, 5) }),
+				assistantText('child summary', { usage: mockUsage(7, 2) }),
+				assistantText('child complete', { usage: mockUsage(8, 3) }),
+			]),
+			tools: { dangerous: dangerousTool },
+			contextWindowLimit: 100,
+			autoCompact: { thresholdTokens: 10, keepRecentTokens: 1 },
+			hooks: {
+				approval: [(ctx) => (ctx.toolName === 'dangerous' ? ctx.ask({ message: 'Approve?' }) : ctx.next())],
+			},
+		})
+		const subagent = createSubagentsTool({
+			agents: [{ name: 'worker', description: 'Worker', agent: child }],
+		})
+		const parent = new Agent({
+			model: mockStreamingModel([
+				assistantWithToolCall(
+					'subagent',
+					{ description: 'delegate', prompt: 'approved work', subagent_type: 'worker' },
+					{ usage: mockUsage(100, 20) },
+				),
+				assistantText('parent complete', { usage: mockUsage(200, 30) }),
+			]),
+			tools: { subagent },
+		})
+		const paused = await parent.run({ state: startState([userMessage('go')]), stream: true }).result
+		const pending = getAllPendingApprovals(paused.state)
+		const approved = withApprovals(paused.state, [{ toolCallId: pending[0]!.pending.toolCallId, approved: true }])
+		const resumedRun = parent.run({ state: approved, stream: true })
+		const events: AgentEvent[] = []
+		for await (const event of resumedRun) events.push(event)
+		const result = await resumedRun.result
+		const compactions = events.filter(
+			(event): event is Extract<AgentEvent, { type: 'compaction' }> => event.type === 'compaction',
+		)
+
+		expect(compactions).toHaveLength(1)
+		expect(compactions[0]).toMatchObject({
+			trigger: 'threshold',
+			parentToolCallId: expect.any(String),
+			agentId: expect.any(String),
+			summaryUsage: { usage: { inputTokens: 7, outputTokens: 2 } },
+		})
+		expect(result.tokenUsage.totals.inputTokens).toBe(215)
+		expect(result.tokenUsage.totals.outputTokens).toBe(35)
+	})
+
+	test('aggregates failed child summarizer usage once without committing a checkpoint', async () => {
+		const model = mockStreamingModel([
+			assistantWithToolCall('subagent', { prompt: '/compact' }, { usage: mockUsage(100, 20) }),
+			assistantText('   ', { usage: mockUsage(7, 2) }),
+			assistantText('parent complete', { usage: mockUsage(200, 30) }),
+		])
+		const subagent = createForkingSubagentsTool({ agents: [] })
+		const parent = new Agent({ model, tools: { subagent }, autoCompact: { keepRecentTokens: 2 } })
+		const run = parent.run({
+			state: startState([
+				userMessage('old context'),
+				{ role: 'assistant', content: 'settled answer' },
+				userMessage('delegate compaction'),
+			]),
+			stream: true,
+		})
+		const events: AgentEvent[] = []
+		for await (const event of run) events.push(event)
+		const result = await run.result
+
+		expect(result.finishReason).toBe('complete')
+		expect(result.state.compaction).toBeUndefined()
+		expect(result.tokenUsage.totals.inputTokens).toBe(307)
+		expect(result.tokenUsage.totals.outputTokens).toBe(52)
+		expect(events.filter((event) => event.type === 'compaction')).toHaveLength(0)
+		expect(getSubagentResultTexts(result.state.messages)[0]).toContain(
+			'Compaction summarizer returned an empty summary',
+		)
+	})
+
+	test('aggregates both split-turn child summaries exactly once', async () => {
+		const childId = 'split-child'
+		const child = new Agent({
+			model: mockStreamingModel([
+				assistantText('child history summary', { usage: mockUsage(7, 2) }),
+				assistantText('child turn prefix summary', { usage: mockUsage(8, 3) }),
+				assistantText('child complete', { usage: mockUsage(9, 4) }),
+			]),
+			tools: {},
+			autoCompact: { keepRecentTokens: 2 },
+		})
+		const subagent = createForkingSubagentsTool({
+			agents: [{ name: 'worker', description: 'Worker', agent: child, resumable: true }],
+		})
+		const parent = new Agent({
+			model: mockStreamingModel([
+				assistantWithToolCall(
+					'subagent',
+					{ prompt: '/compact focus on child history', agent_id: childId },
+					{ usage: mockUsage(100, 20) },
+				),
+				assistantText('parent complete', { usage: mockUsage(200, 30) }),
+			]),
+			tools: { subagent },
+		})
+		const run = parent.run({
+			state: {
+				messages: [userMessage('resume child')],
+				terminalChildren: {
+					[childId]: {
+						state: startState([
+							userMessage('older child request'),
+							{ role: 'assistant', content: 'older child answer' },
+							userMessage('oversized child turn'),
+							{ role: 'assistant', content: 'early child work' },
+							{
+								role: 'assistant',
+								content: [{ type: 'tool-call', toolCallId: 'child-read', toolName: 'read', input: {} }],
+							},
+							{
+								role: 'tool',
+								content: [
+									{
+										type: 'tool-result',
+										toolCallId: 'child-read',
+										toolName: 'read',
+										output: { type: 'text', value: 'x'.repeat(400) },
+									},
+								],
+							},
+							{ role: 'assistant', content: 'ok' },
+						]),
+						lastOutcome: 'complete',
+						completedTurns: 1,
+						runtime: { type: 'specialist', subagentType: 'worker' },
+					},
+				},
+			},
+			stream: true,
+		})
+		const events: AgentEvent[] = []
+		for await (const event of run) events.push(event)
+		const result = await run.result
+		const compaction = events.find(
+			(event): event is Extract<AgentEvent, { type: 'compaction' }> => event.type === 'compaction',
+		)
+
+		expect(compaction).toMatchObject({
+			agentId: childId,
+			summaryUsage: { usage: { inputTokens: 15, outputTokens: 5 } },
+		})
+		expect(result.tokenUsage.totals.inputTokens).toBe(324)
+		expect(result.tokenUsage.totals.outputTokens).toBe(59)
+		expect(result.state.terminalChildren?.[childId]?.state.compaction?.summary).toContain(
+			'child turn prefix summary',
+		)
 	})
 })
