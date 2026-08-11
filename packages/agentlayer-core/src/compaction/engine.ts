@@ -270,6 +270,21 @@ export function planCompaction(
 	}
 }
 
+/**
+ * Whether a complete, valid conversation already fits in its configured native tail.
+ *
+ * This is distinct from a missing compaction plan caused by malformed tool traffic or
+ * insufficient conversation structure. Manual compaction commands can safely become a
+ * no-op only in this case.
+ */
+export function fitsCompactionTail(messages: ReadonlyArray<ModelMessage>, options: FindCompactionCutOptions): boolean {
+	if (messages.length < 2 || findCompactionCut(messages, options) !== 0) return false
+	if (!hasValidToolCallResultPairs(messages)) return false
+	if (!containsRequiredToolCalls(messages, options.requiredToolCallIds ?? new Set<string>())) return false
+	const totalTokens = messages.reduce((total, message) => total + estimateMessageTokens(message), 0)
+	return totalTokens <= Math.max(1, options.keepRecentTokens)
+}
+
 export const CONTEXT_OVERFLOW_PATTERNS: ReadonlyArray<RegExp> = [
 	/context[_ ]length[_ ]exceeded/i,
 	/model_context_window_exceeded/i,

@@ -8,6 +8,7 @@ import {
 	COMPACTION_SYSTEM_PROMPT,
 	type CompactionTrigger,
 	compactionSummaryMessage,
+	fitsCompactionTail,
 	isContextOverflowError,
 	parseCompactCommand,
 	planCompaction,
@@ -709,11 +710,19 @@ export class Agent<TTools extends Record<string, Tool<any, any>> = Record<string
 					const messagesWithoutCommand = allMessages.filter(
 						(_, index) => index !== manualCommand.messageIndex,
 					)
-					await applyCompaction(
-						'manual',
-						{ ...buildState(), messages: messagesWithoutCommand },
-						manualCommand.additionalInstructions,
-					)
+					const stateWithoutCommand = { ...buildState(), messages: messagesWithoutCommand }
+					if (
+						fitsCompactionTail(messagesWithoutCommand, {
+							keepRecentTokens: compactionPolicy.keepRecentTokens,
+							requiredToolCallIds: new Set(
+								(stateWithoutCommand.pendingToolCalls ?? []).map((pending) => pending.toolCallId),
+							),
+						})
+					) {
+						allMessages.splice(0, allMessages.length, ...messagesWithoutCommand)
+					} else {
+						await applyCompaction('manual', stateWithoutCommand, manualCommand.additionalInstructions)
+					}
 				} else if (
 					shouldCompactForThreshold({
 						contextWindowTokens: contextWindowTokens > 0 ? contextWindowTokens : undefined,
