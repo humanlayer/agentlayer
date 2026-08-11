@@ -1,6 +1,7 @@
 export {
 	Agent,
 	type AgentConfig,
+	type CompactOptions,
 	type FinishReason,
 	type ProviderOptions,
 	type ProviderOptionsFactory,
@@ -8,6 +9,7 @@ export {
 	type RunResult,
 } from './agent'
 export { type AgentEvent, AgentRun } from './agent-run'
+export * from './compaction'
 export {
 	defineTool,
 	defineToolInterface,
@@ -100,6 +102,7 @@ export {
 	type AgentState,
 	type ApprovalDecision,
 	type ApprovalHistoryEntry,
+	type CompactionCheckpoint,
 	getAgentState,
 	getAllPendingApprovals,
 	sanitizeStateForPersistence,

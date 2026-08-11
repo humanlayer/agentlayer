@@ -1,4 +1,5 @@
 export * from './approval'
+export * from './compaction'
 export * from './deduplicate-reads'
 export * from './output-truncation'
 export * from './post-tool-use'

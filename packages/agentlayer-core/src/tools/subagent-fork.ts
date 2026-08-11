@@ -1,4 +1,5 @@
 import type { ModelMessage } from 'ai'
+import { isCompactionSummaryMessage } from '../compaction'
 import type { AgentState, ApprovalHistoryEntry } from '../state'
 
 export type ForkTurns = 'all' | 'none' | number
@@ -74,9 +75,15 @@ export function createForkState(
 	const approvalHistory = callerState.approvalHistory
 		? clone<ApprovalHistoryEntry[]>(callerState.approvalHistory)
 		: undefined
+	const compaction =
+		callerState.compaction &&
+		messages.some((message) => isCompactionSummaryMessage(message, callerState.compaction!.summary))
+			? clone(callerState.compaction)
+			: undefined
 
 	return {
 		messages: [...messages, { role: 'user', content: prompt }],
 		...(approvalHistory?.length ? { approvalHistory } : {}),
+		...(compaction ? { compaction } : {}),
 	}
 }

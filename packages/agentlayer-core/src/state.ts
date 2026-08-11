@@ -1,4 +1,5 @@
 import type { ModelMessage } from 'ai'
+import type { CompactionTrigger } from './compaction'
 import type { ApprovalRequest, PendingToolCall } from './hooks'
 import { buildToolResultMessage } from './messages'
 
@@ -57,6 +58,17 @@ export interface TerminalChildRecord {
 
 export type TerminalChildMap = Record<string, TerminalChildRecord>
 
+/** JSON-safe metadata for the canonical summary currently replacing an older message prefix. */
+export interface CompactionCheckpoint {
+	version: 1
+	summary: string
+	trigger: CompactionTrigger
+	replacedMessageCount: number
+	retainedMessageCount: number
+	totalReplacedMessageCount: number
+	priorContextWindowTokens?: number
+}
+
 // ── AgentState ────────────────────────────────────────────────────────────────
 
 /**
@@ -82,6 +94,8 @@ export interface AgentState {
 	subAgents?: Record<string, AgentState>
 	/** Terminal child states that can be continued by stable agent ID. */
 	terminalChildren?: TerminalChildMap
+	/** Metadata for the synthetic summary message in the active model view. */
+	compaction?: CompactionCheckpoint
 	/** Estimated tokens in context window after the most recent streamText call (input + output). */
 	contextWindowTokens?: number
 }
@@ -400,6 +414,7 @@ export function withApprovals(state: AgentState, decisions: ApprovalDecision[]):
 		...(state.toolState !== undefined ? { toolState: state.toolState } : {}),
 		...(newSubAgents !== undefined ? { subAgents: newSubAgents } : {}),
 		...(newTerminalChildren !== undefined ? { terminalChildren: newTerminalChildren } : {}),
+		...(state.compaction !== undefined ? { compaction: state.compaction } : {}),
 		...(state.contextWindowTokens !== undefined ? { contextWindowTokens: state.contextWindowTokens } : {}),
 	}
 }

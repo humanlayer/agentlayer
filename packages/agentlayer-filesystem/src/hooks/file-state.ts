@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import { readFile, stat } from 'node:fs/promises'
-import type { PostToolUseHook, PreToolUseHook } from '@humanlayer/agentlayer-core'
+import type { CompactionHook, PostToolUseHook, PreToolUseHook } from '@humanlayer/agentlayer-core'
 import { createPostToolUseHook, createPreToolUseHook, sanitizeTextForModelState } from '@humanlayer/agentlayer-core'
 import { ApplyPatchTool, EditTool, ReadTool, WriteTool } from '@humanlayer/agentlayer-core/interfaces'
 import { type PatchOperation, parsePatch } from '@humanlayer/agentlayer-core/utils'
@@ -30,6 +30,16 @@ export type FileVerificationStateMap = Record<string, FileVerificationStateEntry
 
 export const FILE_READ_STATE_KEY = 'fileReadState'
 export const FILE_VERIFICATION_STATE_KEY = 'fileVerificationState'
+
+/** Drop filesystem evidence that may refer only to messages removed by compaction. */
+export function createFileStateCompactionHook(): CompactionHook {
+	return ({ toolState }) => {
+		const next = { ...toolState }
+		delete next[FILE_READ_STATE_KEY]
+		delete next[FILE_VERIFICATION_STATE_KEY]
+		return next
+	}
+}
 
 export interface FileStateHookOptions {
 	cwd?: string

@@ -521,6 +521,27 @@ describe('AgentState JSON round-trip', () => {
 		const restored = JSON.parse(JSON.stringify(state)) as AgentState
 		expect(restored.terminalChildren?.['child-1']).toEqual(state.terminalChildren?.['child-1'])
 	})
+
+	test('compaction checkpoint survives round-trip and approval transforms', () => {
+		const state: AgentState = {
+			messages: [userMessage('<conversation-summary>\nsummary\n</conversation-summary>'), userMessage('recent')],
+			pendingToolCalls: [makeApprovalPending('call-checkpoint', 'deploy')],
+			compaction: {
+				version: 1,
+				summary: 'summary',
+				trigger: 'manual',
+				replacedMessageCount: 8,
+				retainedMessageCount: 1,
+				totalReplacedMessageCount: 8,
+				priorContextWindowTokens: 120_000,
+			},
+		}
+
+		const restored = JSON.parse(JSON.stringify(state)) as AgentState
+		expect(restored.compaction).toEqual(state.compaction)
+		const approved = withApprovals(restored, [{ toolCallId: 'call-checkpoint', approved: true }])
+		expect(approved.compaction).toEqual(state.compaction)
+	})
 })
 
 // ─── sanitizeStateForPersistence() ────────────────────────────────────────────

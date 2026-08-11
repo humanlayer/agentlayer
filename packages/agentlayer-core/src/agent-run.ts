@@ -1,8 +1,9 @@
 import type { ModelMessage } from 'ai'
 import type { RunResult } from './agent'
+import type { CompactionTrigger } from './compaction'
 import type { ApprovalRequest } from './hooks'
 import type { ApprovalDecision } from './state'
-import type { TokenUsageEvent } from './token-usage'
+import type { ModelTokenUsage, TokenUsageEvent } from './token-usage'
 
 // ── AgentEvent — discriminated union for the async iterator ──────────────────
 
@@ -84,6 +85,17 @@ export type AgentEvent =
 			type: 'stepFinish'
 			stepIndex: number
 			finishReason?: string
+	  } & AgentEventMeta)
+	| ({
+			type: 'compaction'
+			trigger: CompactionTrigger
+			priorContextWindowTokens?: number
+			replacedMessageCount: number
+			retainedMessageCount: number
+			summaryUsage: {
+				model: string
+				usage: Omit<ModelTokenUsage, 'estimatedCostUsd'>
+			}
 	  } & AgentEventMeta)
 
 export class AgentRun implements AsyncIterable<AgentEvent> {

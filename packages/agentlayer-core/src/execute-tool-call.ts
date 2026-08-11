@@ -1,10 +1,12 @@
 import type { ModelMessage } from 'ai'
+import type { RunResult } from './agent'
 import type { AgentRun } from './agent-run'
 import type { SubAgentPauseResult, SubAgentResult, SubAgentRunHandle, Tool, ToolContext } from './define-tool'
 import type { HookStopResult, StopOptions } from './hooks'
 import { type AgentLayerToolOutput, buildToolResultMessage, isToolResultOutput } from './messages'
 import { sanitizeTextForModelState, sanitizeToolOutputForModelState } from './sanitize-text'
 import type { AgentState, TerminalChildMap } from './state'
+import type { TokenUsage } from './token-usage'
 
 export interface ToolCallRef {
 	toolCallId: string
@@ -30,6 +32,8 @@ export interface ExecuteToolCallContext {
 	getContextWindowTokens?: () => number
 	/** Returns the context window token limit for the current model. */
 	getContextWindowLimit?: () => number | undefined
+	/** Aggregate one completed child run without relying on forwarded event accounting. */
+	onChildTokenUsage?: (usage: TokenUsage) => void
 	/** Capture an isolated caller state and equivalent runtime for a fork child. */
 	createSubAgentFork?: (toolCallId: string) => { agent: import('./agent').Agent; state: AgentState }
 	createSubAgentForkAgent?: () => import('./agent').Agent
@@ -141,7 +145,8 @@ export async function executeToolCall(tc: ToolCallRef, ctx: ExecuteToolCallConte
 			})()
 
 			// Wait for the child result
-			const result = await childRun.result
+			const result = (await childRun.result) as RunResult
+			ctx.onChildTokenUsage?.(result.tokenUsage)
 
 			// Wait for forwarding to finish
 			await forwardingPromise

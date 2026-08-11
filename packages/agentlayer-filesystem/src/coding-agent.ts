@@ -1,6 +1,7 @@
 import { isAbsolute, resolve } from 'node:path'
 import type { AgentEvent } from '@humanlayer/agentlayer-core'
 import {
+	type CompactionHook,
 	createSubagentsTool,
 	createWebFetchTool,
 	type PostToolUseHook,
@@ -10,7 +11,12 @@ import {
 	type Tool,
 } from '@humanlayer/agentlayer-core'
 import type { ReadToolModalities, Skill } from '@humanlayer/agentlayer-core/interfaces'
-import { createFileStateTrackingHook, createReadBeforeWriteHook, createWastedReadHook } from './hooks/file-state'
+import {
+	createFileStateCompactionHook,
+	createFileStateTrackingHook,
+	createReadBeforeWriteHook,
+	createWastedReadHook,
+} from './hooks/file-state'
 import {
 	createBashOutputTruncationHook,
 	createGlobOutputTruncationHook,
@@ -42,6 +48,7 @@ export function createAgentFilesystemHooks(opts: CreateAgentFilesystemHooksOptio
 	preToolUse: readonly PreToolUseHook[]
 	postToolUse: readonly PostToolUseHook[]
 	preRequest: readonly PreRequestHook[]
+	compaction: readonly CompactionHook[]
 } {
 	const sharedOutputTruncation = opts.outputTruncation
 		? {
@@ -70,6 +77,7 @@ export function createAgentFilesystemHooks(opts: CreateAgentFilesystemHooksOptio
 			createFileStateTrackingHook({ cwd: opts.cwd }),
 		],
 		preRequest: [],
+		compaction: [createFileStateCompactionHook()],
 	} as const
 }
 
