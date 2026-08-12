@@ -398,7 +398,6 @@ export function convertCallOptionsToLLMRequest(
 	}
 
 	const generation = new GenerationOptions({
-		maxTokens: options.maxOutputTokens,
 		temperature: options.temperature,
 		topP: options.topP,
 		seed: options.seed,

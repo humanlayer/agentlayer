@@ -732,7 +732,7 @@ describe('convertCallOptionsToLLMRequest', () => {
 		expect(request.toolChoice!.name).toBe('search')
 	})
 
-	test('maps generation options from call options', () => {
+	test('maps supported generation options and omits maxOutputTokens', async () => {
 		const config = makeConfig()
 		const options = makeOptions({
 			temperature: 0.7,
@@ -745,8 +745,11 @@ describe('convertCallOptionsToLLMRequest', () => {
 
 		expect(request.generation?.temperature).toBe(0.7)
 		expect(request.generation?.topP).toBe(0.9)
-		expect(request.generation?.maxTokens).toBe(4096)
+		expect(request.generation?.maxTokens).toBeUndefined()
 		expect(request.generation?.seed).toBe(42)
+
+		const body = await Effect.runPromise(webSocketRoute.body.from(request))
+		expect(body.max_output_tokens).toBeUndefined()
 	})
 
 	test('sets providerOptions with defaults', () => {
