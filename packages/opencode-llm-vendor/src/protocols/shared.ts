@@ -187,6 +187,7 @@ export const sseFraming = (bytes: Stream.Stream<Uint8Array, LLMError>): Stream.S
 				}),
 			),
 		),
+		Stream.mapError((error) => eventError('sse', `Invalid SSE stream: ${error.message}`)),
 		Stream.filter((event) => event.data.length > 0 && event.data !== '[DONE]'),
 		Stream.map((event) => event.data),
 	)
@@ -219,7 +220,7 @@ export const matchToolChoice = <Auto, None, Required, Tool>(
 		if (toolChoice.type === 'auto') return cases.auto()
 		if (toolChoice.type === 'none') return cases.none()
 		if (toolChoice.type === 'required') return cases.required()
-		if (!toolChoice.name) return yield* invalidRequest(`${route} tool choice requires a tool name`)
+		if (!toolChoice.name) return yield* Effect.fail(invalidRequest(`${route} tool choice requires a tool name`))
 		return cases.tool(toolChoice.name)
 	})
 

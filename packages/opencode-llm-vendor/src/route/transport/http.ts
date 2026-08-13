@@ -61,7 +61,9 @@ const bodyWithOverlay = <Body>(body: Body, request: LLMRequest, encodeBody: (bod
 			const overlaid = mergeJsonRecords(body, request.http.body) ?? {}
 			return { jsonBody: overlaid, bodyText: ProviderShared.encodeJson(overlaid) }
 		}
-		return yield* ProviderShared.invalidRequest('http.body can only overlay JSON object request bodies')
+		return yield* Effect.fail(
+			ProviderShared.invalidRequest('http.body can only overlay JSON object request bodies'),
+		)
 	})
 
 export const jsonRequestParts = <Body>(input: JsonRequestInput<Body>) =>
