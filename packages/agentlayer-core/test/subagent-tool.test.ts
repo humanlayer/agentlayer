@@ -764,7 +764,13 @@ describe('forking subagent tool', () => {
 			description: 'trace flow',
 		})
 		expect(
-			parseSubagentCommand({ prompt: 'inspect it', agent_id: '', subagent_type: '', fork_turns: 'all', skill: '' }),
+			parseSubagentCommand({
+				prompt: 'inspect it',
+				agent_id: '',
+				subagent_type: '',
+				fork_turns: 'all',
+				skill: '',
+			}),
 		).toEqual({ type: 'fork', prompt: 'inspect it', turns: 'all' })
 		expect(parseSubagentCommand({ prompt: 'inspect it', agent_id: '' })).toEqual({
 			type: 'fork',
