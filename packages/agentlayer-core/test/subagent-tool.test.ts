@@ -742,12 +742,47 @@ describe('forking subagent tool', () => {
 			parseSubagentCommand({ prompt: 'inspect it', fork_turns: 'all', subagent_type: 'worker' }),
 		).toThrow('mutually exclusive')
 		expect(() => parseSubagentCommand({ prompt: '   ' })).toThrow('prompt must not be blank')
-		expect(() => parseSubagentCommand({ prompt: 'inspect it', agent_id: '' })).toThrow('agent_id must not be blank')
-		expect(() => parseSubagentCommand({ prompt: 'inspect it', fork_turns: '' })).toThrow('fork_turns')
-		expect(() => parseSubagentCommand({ prompt: 'inspect it', subagent_type: '' })).toThrow(
-			'subagent_type must not be blank',
-		)
 		expect(() => parseSubagentCommand({ prompt: 'inspect it', fork_turns: '0' })).toThrow('fork_turns')
+	})
+
+	test('treats blank optionals as absent (GPT models send "" for omitted fields)', () => {
+		// Exact shape gpt-5.6-sol sends when dispatching a specialist: every
+		// property present, "" for the ones it means to omit.
+		expect(
+			parseSubagentCommand({
+				prompt: 'inspect it',
+				description: 'trace flow',
+				subagent_type: 'worker',
+				agent_id: '',
+				fork_turns: '',
+				skill: '',
+			}),
+		).toEqual({
+			type: 'dispatch-role',
+			prompt: 'inspect it',
+			subagentType: 'worker',
+			description: 'trace flow',
+		})
+		expect(
+			parseSubagentCommand({ prompt: 'inspect it', agent_id: '', subagent_type: '', fork_turns: 'all', skill: '' }),
+		).toEqual({ type: 'fork', prompt: 'inspect it', turns: 'all' })
+		expect(parseSubagentCommand({ prompt: 'inspect it', agent_id: '' })).toEqual({
+			type: 'fork',
+			prompt: 'inspect it',
+			turns: 'all',
+		})
+		expect(parseSubagentCommand({ prompt: 'inspect it', fork_turns: '  ' })).toEqual({
+			type: 'fork',
+			prompt: 'inspect it',
+			turns: 'all',
+		})
+		expect(
+			parseSubagentCommand({ prompt: 'inspect it', agent_id: 'child-1', subagent_type: '', fork_turns: '' }),
+		).toEqual({ type: 'resume', prompt: 'inspect it', agentId: 'child-1' })
+		// Blank selectors do not count toward mutual exclusivity, but real ones still do.
+		expect(() =>
+			parseSubagentCommand({ prompt: 'inspect it', agent_id: 'child-1', fork_turns: 'all', subagent_type: '' }),
+		).toThrow('mutually exclusive')
 	})
 
 	test('projects only completed eligible turns and removes the triggering user plus invoking assistant', () => {

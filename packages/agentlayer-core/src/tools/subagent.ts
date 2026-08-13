@@ -67,11 +67,12 @@ export type SubagentCommand =
 	| { type: 'dispatch-role'; prompt: string; subagentType: string; description?: string; skill?: string }
 	| { type: 'resume'; prompt: string; agentId: string; skill?: string }
 
-function optionalNonBlank(value: string | undefined, field: string): string | undefined {
+// GPT-family models fill every schema property and send "" for fields they mean
+// to omit, so a blank optional must parse as absent rather than error.
+function normalizeOptional(value: string | undefined): string | undefined {
 	if (value === undefined) return undefined
 	const trimmed = value.trim()
-	if (!trimmed) throw new Error(`${field} must not be blank.`)
-	return trimmed
+	return trimmed === '' ? undefined : trimmed
 }
 
 function parseForkTurns(value: string | undefined): ForkTurns {
@@ -86,12 +87,13 @@ export function parseSubagentCommand(input: ForkingSubagentInput): SubagentComma
 	const prompt = input.prompt.trim()
 	if (!prompt) throw new Error('prompt must not be blank.')
 
-	const agentId = optionalNonBlank(input.agent_id, 'agent_id')
-	const subagentType = optionalNonBlank(input.subagent_type, 'subagent_type')
-	const description = optionalNonBlank(input.description, 'description')
-	const skill = optionalNonBlank(input.skill, 'skill')
-	const hasForkTurns = input.fork_turns !== undefined
-	const selectorCount = Number(agentId !== undefined) + Number(subagentType !== undefined) + Number(hasForkTurns)
+	const agentId = normalizeOptional(input.agent_id)
+	const subagentType = normalizeOptional(input.subagent_type)
+	const description = normalizeOptional(input.description)
+	const skill = normalizeOptional(input.skill)
+	const forkTurns = normalizeOptional(input.fork_turns)
+	const selectorCount =
+		Number(agentId !== undefined) + Number(subagentType !== undefined) + Number(forkTurns !== undefined)
 	if (selectorCount > 1) {
 		throw new Error('agent_id, fork_turns, and subagent_type are mutually exclusive; pass at most one.')
 	}
@@ -109,7 +111,7 @@ export function parseSubagentCommand(input: ForkingSubagentInput): SubagentComma
 	return {
 		type: 'fork',
 		prompt,
-		turns: parseForkTurns(input.fork_turns),
+		turns: parseForkTurns(forkTurns),
 		...(description ? { description } : {}),
 		...(skill ? { skill } : {}),
 	}
