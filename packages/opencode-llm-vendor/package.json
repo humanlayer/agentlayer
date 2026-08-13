@@ -18,6 +18,6 @@
 		"./tool-runtime": "./src/tool-runtime.ts"
 	},
 	"dependencies": {
-		"effect": "4.0.0-beta.66"
+		"effect": "catalog:"
 	}
 }
