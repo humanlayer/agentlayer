@@ -865,14 +865,15 @@ describe('createCodelayerAgent', () => {
 		expect(system.some((entry) => entry.includes('You are TARS'))).toBe(true)
 	})
 
-	test('adds the rpi specialist guidance when requested', async () => {
+	test('does not add broad delegation guidance when rpi specialists are requested', async () => {
 		const agent = await createCodelayerAgent({
 			model: createMockModel('claude-sonnet-4-5'),
 			cwd: '/tmp',
 			rpi: true,
 		})
 		const system = getSystemEntries(agent)
-		expect(system.some((entry) => entry.includes('RPI specialist subagents are enabled'))).toBe(true)
+		expect(system.some((entry) => entry.includes('RPI specialist subagents are enabled'))).toBe(false)
+		expect(system.some((entry) => entry.includes('Prefer delegating specialized research'))).toBe(false)
 	})
 
 	test('allows environment prompt controls', async () => {

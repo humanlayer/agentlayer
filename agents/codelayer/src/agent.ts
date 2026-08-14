@@ -363,7 +363,6 @@ export async function createCodelayerAgent(opts: CodelayerAgentOptions): Promise
 		tools: toolOpts,
 		systemPromptAdditions = [],
 		rlm = false,
-		rpi = false,
 		tars = false,
 		exaApiKey,
 		context7ApiKey,
@@ -428,7 +427,7 @@ export async function createCodelayerAgent(opts: CodelayerAgentOptions): Promise
 			includeEnvironment: environment?.include,
 			date: environment?.date,
 			platform: environment?.platform,
-			systemPromptAdditions: [ORCHESTRATOR_PROMPT, ...(rpi ? ['RPI specialist subagents are enabled. Prefer delegating specialized research and codebase analysis tasks to subagents when appropriate.'] : []), ...personaPromptAdditions],
+			systemPromptAdditions: [ORCHESTRATOR_PROMPT, ...personaPromptAdditions],
 		})
 		const aux = await createCodingAgentAuxToolset({
 			cwd,
@@ -505,10 +504,7 @@ export async function createCodelayerAgent(opts: CodelayerAgentOptions): Promise
 		includeEnvironment: environment?.include,
 		date: environment?.date,
 		platform: environment?.platform,
-		systemPromptAdditions: [
-			...(rpi ? ['RPI specialist subagents are enabled. Prefer delegating specialized research and codebase analysis tasks to subagents when appropriate.'] : []),
-			...personaPromptAdditions,
-		],
+		systemPromptAdditions: personaPromptAdditions,
 	})
 
 	return new Agent({
