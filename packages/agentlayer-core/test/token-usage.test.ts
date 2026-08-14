@@ -123,11 +123,13 @@ describe('TokenUsageAccumulator', () => {
 		expect(acc.snapshot().byModel['provider/model']!.estimatedCostUsd).toBeCloseTo(0.099)
 	})
 
-	test('prefers the provider-reported uncached figure over deriving it by subtraction', () => {
+	test('prefers the provider-reported uncached figure and reconciles the cache counters around it', () => {
 		const acc = new TokenUsageAccumulator(() => ({ input: 10, output: 0, cacheRead: 1, cacheWrite: 12.5 }))
-		// A breakdown that does NOT perfectly telescope (total − read = 200, but
-		// the provider says 250 uncached — e.g. cache-block rounding). The
-		// provider's own number wins.
+		// A breakdown that does NOT perfectly telescope (total − read = 200k, but
+		// the provider says 250k uncached — e.g. cache-block rounding). The
+		// provider's uncached figure wins, and cacheRead is capped to the
+		// remainder so the priced categories PARTITION the 1M prompt — billing
+		// 1.05M category-tokens for a 1M prompt would overcharge.
 		acc.add('provider/model', {
 			inputTokens: 1_000_000,
 			outputTokens: 0,
@@ -136,8 +138,23 @@ describe('TokenUsageAccumulator', () => {
 			reasoningTokens: 0,
 			noCacheInputTokens: 250_000,
 		})
-		// reported: 250k × $10/M + 800k × $1/M = 3.30. Derived would be 2.80.
-		expect(acc.snapshot().byModel['provider/model']!.estimatedCostUsd).toBeCloseTo(3.3)
+		// reported: 250k × $10/M + min(800k, 750k) × $1/M = 3.25. Derived would be 2.80.
+		expect(acc.snapshot().byModel['provider/model']!.estimatedCostUsd).toBeCloseTo(3.25)
+	})
+
+	test('clamps a pathological provider uncached figure to the prompt total', () => {
+		const acc = new TokenUsageAccumulator(() => ({ input: 10, output: 0, cacheRead: 1 }))
+		// A cumulative/garbage noCache far above the prompt: cap at inputTokens
+		// so it cannot bill more prompt than existed.
+		acc.add('provider/model', {
+			inputTokens: 100_000,
+			outputTokens: 0,
+			cacheReadTokens: 0,
+			cacheWriteTokens: 0,
+			reasoningTokens: 0,
+			noCacheInputTokens: 5_000_000,
+		})
+		expect(acc.snapshot().byModel['provider/model']!.estimatedCostUsd).toBeCloseTo(1.0)
 	})
 
 	test('one call without noCacheInputTokens poisons the model sum to undefined and costing falls back', () => {

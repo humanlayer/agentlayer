@@ -750,12 +750,19 @@ export class OpenAIResponsesLanguageModel implements LanguageModelV3 {
 			usage: {
 				inputTokens: {
 					total: response.usage.input_tokens,
+					// Both cache counters are SUBSETS of input_tokens; cache_write_tokens
+					// is new with GPT-5.6, so noCache must subtract BOTH when present.
 					noCache:
-						response.usage.input_tokens_details?.cached_tokens != null
-							? response.usage.input_tokens - response.usage.input_tokens_details.cached_tokens
+						response.usage.input_tokens_details != null
+							? Math.max(
+									response.usage.input_tokens -
+										(response.usage.input_tokens_details.cached_tokens ?? 0) -
+										(response.usage.input_tokens_details.cache_write_tokens ?? 0),
+									0,
+								)
 							: undefined,
 					cacheRead: response.usage.input_tokens_details?.cached_tokens ?? undefined,
-					cacheWrite: undefined,
+					cacheWrite: response.usage.input_tokens_details?.cache_write_tokens ?? undefined,
 				},
 				outputTokens: {
 					total: response.usage.output_tokens,
@@ -812,12 +819,16 @@ export class OpenAIResponsesLanguageModel implements LanguageModelV3 {
 			totalTokens: number | undefined
 			reasoningTokens: number | undefined
 			cachedInputTokens: number | undefined
+			cacheWriteInputTokens: number | undefined
+			hasInputTokenDetails: boolean
 		} = {
 			inputTokens: undefined,
 			outputTokens: undefined,
 			totalTokens: undefined,
 			reasoningTokens: undefined,
 			cachedInputTokens: undefined,
+			cacheWriteInputTokens: undefined,
+			hasInputTokenDetails: false,
 		}
 		const logprobs: Array<z.infer<typeof LOGPROBS_SCHEMA>> = []
 		let responseId: string | null = null
@@ -1282,6 +1293,9 @@ export class OpenAIResponsesLanguageModel implements LanguageModelV3 {
 									value.response.usage.output_tokens_details?.reasoning_tokens ?? undefined
 								usage.cachedInputTokens =
 									value.response.usage.input_tokens_details?.cached_tokens ?? undefined
+								usage.cacheWriteInputTokens =
+									value.response.usage.input_tokens_details?.cache_write_tokens ?? undefined
+								usage.hasInputTokenDetails = value.response.usage.input_tokens_details != null
 								if (typeof value.response.service_tier === 'string') {
 									serviceTier = value.response.service_tier
 								}
@@ -1339,11 +1353,16 @@ export class OpenAIResponsesLanguageModel implements LanguageModelV3 {
 									inputTokens: {
 										total: usage.inputTokens,
 										noCache:
-											usage.inputTokens != null && usage.cachedInputTokens != null
-												? usage.inputTokens - usage.cachedInputTokens
+											usage.inputTokens != null && usage.hasInputTokenDetails
+												? Math.max(
+														usage.inputTokens -
+															(usage.cachedInputTokens ?? 0) -
+															(usage.cacheWriteInputTokens ?? 0),
+														0,
+													)
 												: undefined,
 										cacheRead: usage.cachedInputTokens,
-										cacheWrite: undefined,
+										cacheWrite: usage.cacheWriteInputTokens,
 									},
 									outputTokens: {
 										total: usage.outputTokens,
@@ -1370,7 +1389,9 @@ export class OpenAIResponsesLanguageModel implements LanguageModelV3 {
 
 const usageSchema = z.object({
 	input_tokens: z.number(),
-	input_tokens_details: z.object({ cached_tokens: z.number().nullish() }).nullish(),
+	input_tokens_details: z
+		.object({ cached_tokens: z.number().nullish(), cache_write_tokens: z.number().nullish() })
+		.nullish(),
 	output_tokens: z.number(),
 	output_tokens_details: z.object({ reasoning_tokens: z.number().nullish() }).nullish(),
 })

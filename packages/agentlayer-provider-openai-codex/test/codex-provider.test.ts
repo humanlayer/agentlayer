@@ -559,7 +559,10 @@ describe('codex provider wrapper', () => {
 				type: 'finish',
 				finishReason: { unified: 'stop', raw: undefined },
 				usage: {
-					inputTokens: { total: 2, noCache: 2, cacheRead: undefined, cacheWrite: undefined },
+					// No input_tokens_details in the fixture: noCache stays undefined
+					// rather than being fabricated from the total, so downstream
+					// fallbacks that key on its absence keep working.
+					inputTokens: { total: 2, noCache: undefined, cacheRead: undefined, cacheWrite: undefined },
 					outputTokens: { total: 2, text: 2, reasoning: undefined },
 				},
 				providerMetadata: { openai: { responseId: 'resp_stream' } },

@@ -1404,10 +1404,19 @@ function mapCodexUsage(usage?: CodexResponseFinishedEvent['response']['usage']):
 	const reasoning = usage?.output_tokens_details?.reasoning_tokens ?? undefined
 	const text = outputTotal != null ? Math.max(outputTotal - (reasoning ?? 0), 0) : undefined
 
+	// noCache is only DERIVED here (total minus the cache subsets), so it is
+	// reported only when the backend actually sent a breakdown to derive from.
+	// Fabricating `noCache = total` when input_tokens_details is absent would
+	// present a guess as a provider-reported figure and permanently disable
+	// downstream fallbacks that key on its absence.
+	const hasBreakdown = usage?.input_tokens_details != null
 	return {
 		inputTokens: {
 			total: inputTotal,
-			noCache: inputTotal != null ? Math.max(inputTotal - (cacheRead ?? 0) - (cacheWrite ?? 0), 0) : undefined,
+			noCache:
+				hasBreakdown && inputTotal != null
+					? Math.max(inputTotal - (cacheRead ?? 0) - (cacheWrite ?? 0), 0)
+					: undefined,
 			cacheRead,
 			cacheWrite,
 		},

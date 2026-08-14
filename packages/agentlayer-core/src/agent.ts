@@ -444,6 +444,7 @@ export class Agent<TTools extends Record<string, Tool<any, any>> = Record<string
 			cacheReadTokens: 0,
 			cacheWriteTokens: 0,
 			reasoningTokens: 0,
+			noCacheInputTokens: 0,
 		}
 		const inferenceMessages: ModelMessage[] = []
 		const summarize = async (requestText: string, turnPrefix: boolean): Promise<string> => {
@@ -478,6 +479,13 @@ export class Agent<TTools extends Record<string, Tool<any, any>> = Record<string
 			] as const) {
 				summaryUsage[key] += callUsage[key]
 			}
+			// Same poisoning rule as TokenUsageAccumulator.add(): one summarizer
+			// call without the provider figure makes the summary total undefined
+			// rather than a misleading partial sum.
+			summaryUsage.noCacheInputTokens =
+				summaryUsage.noCacheInputTokens !== undefined && callUsage.noCacheInputTokens !== undefined
+					? summaryUsage.noCacheInputTokens + callUsage.noCacheInputTokens
+					: undefined
 			const responseMessages = response.messages.filter((message) => message.role !== 'tool')
 			const summary = responseMessages
 				.filter((message) => message.role === 'assistant')

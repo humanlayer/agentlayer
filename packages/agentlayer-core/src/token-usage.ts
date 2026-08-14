@@ -54,8 +54,13 @@ export function extractUsage(usage: LanguageModelUsage): Omit<ModelTokenUsage, '
 		cacheWriteTokens: usage.inputTokenDetails?.cacheWriteTokens ?? 0,
 		reasoningTokens: usage.outputTokenDetails?.reasoningTokens ?? 0,
 		// Unlike the counters above, absence is meaningful here (it decides
-		// whether costing can trust the provider's breakdown), so no `?? 0`.
-		noCacheInputTokens: usage.inputTokenDetails?.noCacheTokens,
+		// whether costing can trust the provider's breakdown), so no `?? 0` —
+		// but a reported negative is clamped so it can never drag a summed
+		// count below zero.
+		noCacheInputTokens:
+			usage.inputTokenDetails?.noCacheTokens !== undefined
+				? Math.max(0, usage.inputTokenDetails.noCacheTokens)
+				: undefined,
 	}
 }
 
@@ -118,19 +123,29 @@ export class TokenUsageAccumulator {
 
 		for (const [modelKey, usage] of Object.entries(this.byModel)) {
 			const pricing = this.pricingLookup?.(modelKey as ModelKey)
-			const cacheReadTokens = Math.min(Math.max(0, usage.cacheReadTokens), usage.inputTokens)
-			const cacheWriteTokens = Math.min(Math.max(0, usage.cacheWriteTokens), usage.inputTokens - cacheReadTokens)
 			// Prefer the provider's own uncached figure over deriving it — the
 			// subtraction is a fallback for providers that only report the
-			// inclusive total. Clamped >= 0 only; the provider's breakdown is
-			// authoritative even when it doesn't perfectly telescope with the
-			// cache counters (rounding, cache-block granularity).
+			// inclusive total. Whichever side is reported, the priced categories
+			// are reconciled to PARTITION the prompt total: without the cap a
+			// non-telescoping breakdown (rounding, cache-block granularity) would
+			// bill more prompt tokens than the prompt contained, and a negative
+			// counter would push a summed category below zero.
 			const uncachedInputTokens =
 				usage.noCacheInputTokens !== undefined
-					? Math.max(0, usage.noCacheInputTokens)
-					: usage.inputTokens - cacheReadTokens - cacheWriteTokens
+					? Math.min(Math.max(0, usage.noCacheInputTokens), Math.max(0, usage.inputTokens))
+					: undefined
+			const cacheReadTokens = Math.min(
+				Math.max(0, usage.cacheReadTokens),
+				Math.max(0, usage.inputTokens) - (uncachedInputTokens ?? 0),
+			)
+			const cacheWriteTokens = Math.min(
+				Math.max(0, usage.cacheWriteTokens),
+				Math.max(0, usage.inputTokens) - (uncachedInputTokens ?? 0) - cacheReadTokens,
+			)
+			const pricedUncachedTokens =
+				uncachedInputTokens ?? Math.max(0, usage.inputTokens) - cacheReadTokens - cacheWriteTokens
 			const estimatedCostUsd = pricing
-				? (uncachedInputTokens * pricing.input) / 1_000_000 +
+				? (pricedUncachedTokens * pricing.input) / 1_000_000 +
 					(usage.outputTokens * pricing.output) / 1_000_000 +
 					(cacheReadTokens * (pricing.cacheRead ?? pricing.input)) / 1_000_000 +
 					(cacheWriteTokens * (pricing.cacheWrite ?? pricing.input)) / 1_000_000
