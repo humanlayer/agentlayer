@@ -16,13 +16,24 @@ function invokesToolCall(message: ModelMessage, toolCallId: string): boolean {
 	)
 }
 
+function isInjectedSkillMessage(message: ModelMessage): boolean {
+	if (message.role !== 'user' || typeof message.content !== 'string') return false
+	const content = message.content.trim()
+	return /^<skill(?:\s|>)/.test(content) && content.endsWith('</skill>')
+}
+
+function isUserTurnBoundary(message: ModelMessage): boolean {
+	return message.role === 'user' && !isInjectedSkillMessage(message)
+}
+
 function removeInvokingTurn(messages: ReadonlyArray<ModelMessage>, toolCallId: string): ModelMessage[] {
 	const invokingAssistantIndex = messages.findIndex((message) => invokesToolCall(message, toolCallId))
 	if (invokingAssistantIndex < 0) return [...messages]
 
 	let triggeringUserIndex = -1
 	for (let index = invokingAssistantIndex - 1; index >= 0; index--) {
-		if (messages[index]?.role === 'user') {
+		const message = messages[index]
+		if (message && isUserTurnBoundary(message)) {
 			triggeringUserIndex = index
 			break
 		}
@@ -46,7 +57,8 @@ function isEligibleForkMessage(message: ModelMessage): boolean {
 function selectRecentTurns(messages: ModelMessage[], turns: number): ModelMessage[] {
 	let userTurns = 0
 	for (let index = messages.length - 1; index >= 0; index--) {
-		if (messages[index]?.role !== 'user') continue
+		const message = messages[index]
+		if (!message || !isUserTurnBoundary(message)) continue
 		userTurns += 1
 		if (userTurns === turns) return messages.slice(index)
 	}
