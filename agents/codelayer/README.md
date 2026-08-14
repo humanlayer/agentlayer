@@ -39,7 +39,7 @@ CODELAYER_CODEX_MODEL=my-azure-deployment
 
 The selected CodeLayer model still controls prompts, reasoning, context, and cost data. Only the `model` value sent on the wire changes. Custom requests keep reasoning effort and summary, stateless `store: false`, encrypted reasoning content, and prompt caching. They omit fast mode and `service_tier`.
 
-Setting any optional override without both `CODELAYER_CODEX_BASE_URL` and `CODELAYER_CODEX_API_KEY` fails before CodeLayer reads Codex file auth or sends a request. Restart the Riptide daemon after changing any override value. When all override values are absent, CodeLayer keeps its current Codex file auth and `CODEX_PROVIDER=sse|websockets|aisdk_responses` behavior.
+Setting any optional override without both `CODELAYER_CODEX_BASE_URL` and `CODELAYER_CODEX_API_KEY` fails before CodeLayer reads Codex file auth or sends a request. Restart the Riptide daemon after changing any override value. When all override values are absent, CodeLayer keeps its current Codex file auth and `CODEX_PROVIDER=sse|websockets` behavior.
 
 Custom endpoint failures flow through the existing Codex diagnostics sink. The CLI writes them to its Codex diagnostics log; Riptide writes them to daemon logs and captures error events in Sentry. Diagnostic records omit API keys and response bodies.
 

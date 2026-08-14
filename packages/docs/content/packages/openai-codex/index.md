@@ -13,10 +13,10 @@ bun add @humanlayer/agentlayer-provider-openai-codex @humanlayer/agentlayer-prov
 Codex CLI fast mode sets `service_tier: "priority"` on the Codex request. AgentLayer exposes the same behavior with `fastMode: true`.
 
 ```ts
-import { createCodexProvider } from '@humanlayer/agentlayer-provider-openai-codex'
+import { createCodexSseVendorProvider } from '@humanlayer/agentlayer-provider-openai-codex'
 import { createMemoryAuthStore } from '@humanlayer/agentlayer-provider-auth'
 
-const codex = createCodexProvider({
+const codex = createCodexSseVendorProvider({
   authStore: createMemoryAuthStore({
     codex: {
       kind: 'oauth',
@@ -71,7 +71,7 @@ Supported values:
 
 ## Auth Store OAuth Fields
 
-When using the auth store with `createCodexProvider`, you can store OAuth tokens using either canonical field names or aliases:
+When using the auth store with `createCodexSseVendorProvider`, you can store OAuth tokens using either canonical field names or aliases:
 
 | Field | Aliases | Description |
 |-------|---------|-------------|
@@ -85,7 +85,7 @@ When using the auth store with `createCodexProvider`, you can store OAuth tokens
 Example with aliases:
 
 ```ts
-import { createCodexProvider } from '@humanlayer/agentlayer-provider-openai-codex'
+import { createCodexSseVendorProvider } from '@humanlayer/agentlayer-provider-openai-codex'
 import { ensureFileAuthStore } from '@humanlayer/agentlayer-provider-auth'
 
 const authStore = await ensureFileAuthStore()
@@ -96,6 +96,6 @@ await authStore.set('codex', {
   expires: 1234567890,
 })
 
-const codex = createCodexProvider({ authStore, fastMode: true })
+const codex = createCodexSseVendorProvider({ authStore, fastMode: true })
 const model = codex.languageModel('gpt-5.4')
 ```
