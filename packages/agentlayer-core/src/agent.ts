@@ -42,7 +42,14 @@ import { sanitizeTextForModelState, sanitizeToolOutputForModelState } from './sa
 import type { AgentState, ApprovalDecision, ApprovalHistoryEntry, TerminalChildMap } from './state'
 import type { Step, StepToolResult, StopResult, StopTiming, StopWhen } from './stop-conditions'
 import { shouldStop } from './stop-conditions'
-import { extractUsage, getModelKey, type ModelTokenUsage, type TokenUsage, TokenUsageAccumulator } from './token-usage'
+import {
+	extractUsage,
+	getModelKey,
+	type ModelTokenUsage,
+	sumOrPoison,
+	type TokenUsage,
+	TokenUsageAccumulator,
+} from './token-usage'
 
 export type ProviderOptions = Parameters<typeof streamText>[0]['providerOptions']
 export type ProviderOptionsFactory = (ctx: { runId: string; promptCacheKey?: string }) => ProviderOptions
@@ -479,13 +486,7 @@ export class Agent<TTools extends Record<string, Tool<any, any>> = Record<string
 			] as const) {
 				summaryUsage[key] += callUsage[key]
 			}
-			// Same poisoning rule as TokenUsageAccumulator.add(): one summarizer
-			// call without the provider figure makes the summary total undefined
-			// rather than a misleading partial sum.
-			summaryUsage.noCacheInputTokens =
-				summaryUsage.noCacheInputTokens !== undefined && callUsage.noCacheInputTokens !== undefined
-					? summaryUsage.noCacheInputTokens + callUsage.noCacheInputTokens
-					: undefined
+			summaryUsage.noCacheInputTokens = sumOrPoison(summaryUsage.noCacheInputTokens, callUsage.noCacheInputTokens)
 			const responseMessages = response.messages.filter((message) => message.role !== 'tool')
 			const summary = responseMessages
 				.filter((message) => message.role === 'assistant')

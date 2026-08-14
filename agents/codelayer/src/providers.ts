@@ -437,7 +437,9 @@ export async function resolveModel(
 			}
 
 			const authStore = await ensureFileAuthStore()
-			const requestedMode = context?.codexProviderMode ?? (process.env.CODEX_PROVIDER as string | undefined)
+			const requestedRaw = context?.codexProviderMode ?? (process.env.CODEX_PROVIDER as string | undefined)
+			// An empty env value (CODEX_PROVIDER= from a template) means unset, not unknown.
+			const requestedMode = requestedRaw === '' ? undefined : requestedRaw
 			// 'aisdk_responses' was removed (it delegated SSE parsing to upstream
 			// @ai-sdk/openai, which drops cache_write_tokens); unknown or retired
 			// values fall back to the default transport instead of crashing a

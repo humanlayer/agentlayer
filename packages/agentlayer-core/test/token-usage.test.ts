@@ -214,6 +214,41 @@ describe('TokenUsageAccumulator', () => {
 		expect(snapshot.totals.noCacheInputTokens).toBe(600)
 	})
 
+	test('falls back to derivation when noCache is reported without any cache counters', () => {
+		const acc = new TokenUsageAccumulator(() => ({ input: 10, output: 0, cacheRead: 1 }))
+		// noCache 250k on a 1M prompt with NO cache counters: trusting it would
+		// price the 750k cached remainder at $0. Derivation bills the full input
+		// (matching pre-noCache behavior); the published figure is poisoned.
+		acc.add('provider/model', {
+			inputTokens: 1_000_000,
+			outputTokens: 0,
+			cacheReadTokens: 0,
+			cacheWriteTokens: 0,
+			reasoningTokens: 0,
+			noCacheInputTokens: 250_000,
+		})
+		const snapshot = acc.snapshot()
+		expect(snapshot.byModel['provider/model']!.estimatedCostUsd).toBeCloseTo(10.0)
+		expect(snapshot.byModel['provider/model']!.noCacheInputTokens).toBeUndefined()
+	})
+
+	test('publishes the reconciled noCache figure, never the raw pathological report', () => {
+		const acc = new TokenUsageAccumulator(() => ({ input: 10, output: 0, cacheRead: 1 }))
+		acc.add('provider/model', {
+			inputTokens: 100_000,
+			outputTokens: 0,
+			cacheReadTokens: 0,
+			cacheWriteTokens: 0,
+			reasoningTokens: 0,
+			noCacheInputTokens: 5_000_000,
+		})
+		const snapshot = acc.snapshot()
+		// Billed from the clamped figure, and the EXPORTED figure matches it —
+		// a consumer deriving cached = input - noCache must never go negative.
+		expect(snapshot.byModel['provider/model']!.noCacheInputTokens).toBe(100_000)
+		expect(snapshot.totals.noCacheInputTokens).toBe(100_000)
+	})
+
 	test('unknown model has undefined cost', () => {
 		const acc = new TokenUsageAccumulator(() => undefined)
 		acc.add('unknown/model', {
@@ -244,6 +279,18 @@ describe('extractUsage', () => {
 		expect(usage.cacheWriteTokens).toBe(50)
 		expect(usage.reasoningTokens).toBe(50)
 		expect(usage.noCacheInputTokens).toBe(800)
+	})
+
+	test('treats a negative noCacheTokens report as absent, not as zero', () => {
+		const usage = extractUsage({
+			inputTokens: 1000,
+			outputTokens: 500,
+			totalTokens: 1500,
+			inputTokenDetails: { noCacheTokens: -1, cacheReadTokens: undefined, cacheWriteTokens: undefined },
+			outputTokenDetails: { textTokens: undefined, reasoningTokens: undefined },
+		})
+		// Clamping garbage to 0 would bill the whole prompt at $0 downstream.
+		expect(usage.noCacheInputTokens).toBeUndefined()
 	})
 
 	test('keeps noCacheInputTokens undefined when the provider omits it — absence is meaningful', () => {

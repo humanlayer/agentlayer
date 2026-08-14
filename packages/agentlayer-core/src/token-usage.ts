@@ -55,13 +55,26 @@ export function extractUsage(usage: LanguageModelUsage): Omit<ModelTokenUsage, '
 		reasoningTokens: usage.outputTokenDetails?.reasoningTokens ?? 0,
 		// Unlike the counters above, absence is meaningful here (it decides
 		// whether costing can trust the provider's breakdown), so no `?? 0` —
-		// but a reported negative is clamped so it can never drag a summed
-		// count below zero.
+		// and a NEGATIVE report is treated as absent rather than clamped:
+		// clamping garbage to 0 would present "zero uncached tokens" as a
+		// provider-vouched fact and bill the whole prompt at $0, where absence
+		// correctly falls back to derivation.
 		noCacheInputTokens:
-			usage.inputTokenDetails?.noCacheTokens !== undefined
-				? Math.max(0, usage.inputTokenDetails.noCacheTokens)
+			usage.inputTokenDetails?.noCacheTokens !== undefined && usage.inputTokenDetails.noCacheTokens >= 0
+				? usage.inputTokenDetails.noCacheTokens
 				: undefined,
 	}
+}
+
+/**
+ * Sums two optional counters under the poisoning rule: one missing operand
+ * makes the sum `undefined`, because a partial sum presented as a complete one
+ * is worse than none. This is a business rule, not a convenience — every place
+ * that accumulates `noCacheInputTokens` must use it so the policy cannot
+ * diverge between call sites.
+ */
+export function sumOrPoison(a: number | undefined, b: number | undefined): number | undefined {
+	return a !== undefined && b !== undefined ? a + b : undefined
 }
 
 function emptyTotals(): TokenTotals {
@@ -102,13 +115,10 @@ export class TokenUsageAccumulator {
 			existing.cacheReadTokens += usage.cacheReadTokens
 			existing.cacheWriteTokens += usage.cacheWriteTokens
 			existing.reasoningTokens += usage.reasoningTokens
-			// Sums only while EVERY call reported it; one silent call poisons the
-			// model's sum to undefined so costing falls back to derivation instead
-			// of billing a partial "uncached" figure as if it covered all calls.
-			existing.noCacheInputTokens =
-				existing.noCacheInputTokens !== undefined && usage.noCacheInputTokens !== undefined
-					? existing.noCacheInputTokens + usage.noCacheInputTokens
-					: undefined
+			// One silent call poisons the model's sum so costing falls back to
+			// derivation instead of billing a partial "uncached" figure as if it
+			// covered all calls.
+			existing.noCacheInputTokens = sumOrPoison(existing.noCacheInputTokens, usage.noCacheInputTokens)
 		} else {
 			this.byModel[modelKey] = { ...usage }
 		}
@@ -125,25 +135,30 @@ export class TokenUsageAccumulator {
 			const pricing = this.pricingLookup?.(modelKey as ModelKey)
 			// Prefer the provider's own uncached figure over deriving it — the
 			// subtraction is a fallback for providers that only report the
-			// inclusive total. Whichever side is reported, the priced categories
-			// are reconciled to PARTITION the prompt total: without the cap a
-			// non-telescoping breakdown (rounding, cache-block granularity) would
-			// bill more prompt tokens than the prompt contained, and a negative
-			// counter would push a summed category below zero.
+			// inclusive total. The provider figure is TRUSTED only when the rest
+			// of the prompt is accounted for: either cache counters exist to
+			// price the remainder, or the figure covers the whole prompt. A bare
+			// noCache below the total with no cache counters would price the
+			// cached remainder at $0, so it falls back to derivation instead.
+			// Whichever side wins, the priced categories are reconciled to
+			// PARTITION the prompt total: without the cap a non-telescoping
+			// breakdown (rounding, cache-block granularity) would bill more
+			// prompt tokens than the prompt contained.
+			const promptTotal = Math.max(0, usage.inputTokens)
+			const hasCacheCounters = Math.max(0, usage.cacheReadTokens) > 0 || Math.max(0, usage.cacheWriteTokens) > 0
 			const uncachedInputTokens =
-				usage.noCacheInputTokens !== undefined
-					? Math.min(Math.max(0, usage.noCacheInputTokens), Math.max(0, usage.inputTokens))
+				usage.noCacheInputTokens !== undefined && (hasCacheCounters || usage.noCacheInputTokens >= promptTotal)
+					? Math.min(usage.noCacheInputTokens, promptTotal)
 					: undefined
 			const cacheReadTokens = Math.min(
 				Math.max(0, usage.cacheReadTokens),
-				Math.max(0, usage.inputTokens) - (uncachedInputTokens ?? 0),
+				promptTotal - (uncachedInputTokens ?? 0),
 			)
 			const cacheWriteTokens = Math.min(
 				Math.max(0, usage.cacheWriteTokens),
-				Math.max(0, usage.inputTokens) - (uncachedInputTokens ?? 0) - cacheReadTokens,
+				promptTotal - (uncachedInputTokens ?? 0) - cacheReadTokens,
 			)
-			const pricedUncachedTokens =
-				uncachedInputTokens ?? Math.max(0, usage.inputTokens) - cacheReadTokens - cacheWriteTokens
+			const pricedUncachedTokens = uncachedInputTokens ?? promptTotal - cacheReadTokens - cacheWriteTokens
 			const estimatedCostUsd = pricing
 				? (pricedUncachedTokens * pricing.input) / 1_000_000 +
 					(usage.outputTokens * pricing.output) / 1_000_000 +
@@ -151,17 +166,17 @@ export class TokenUsageAccumulator {
 					(cacheWriteTokens * (pricing.cacheWrite ?? pricing.input)) / 1_000_000
 				: undefined
 
-			byModel[modelKey] = { ...usage, estimatedCostUsd }
+			// Publish the RECONCILED figure (the one costing used), never the raw
+			// report: a raw pathological value in byModel/totals could exceed
+			// inputTokens and contradict the billed cost.
+			byModel[modelKey] = { ...usage, noCacheInputTokens: uncachedInputTokens, estimatedCostUsd }
 
 			totals.inputTokens += usage.inputTokens
 			totals.outputTokens += usage.outputTokens
 			totals.cacheReadTokens += usage.cacheReadTokens
 			totals.cacheWriteTokens += usage.cacheWriteTokens
 			totals.reasoningTokens += usage.reasoningTokens
-			totalNoCache =
-				totalNoCache !== undefined && usage.noCacheInputTokens !== undefined
-					? totalNoCache + usage.noCacheInputTokens
-					: undefined
+			totalNoCache = sumOrPoison(totalNoCache, uncachedInputTokens)
 			if (estimatedCostUsd !== undefined) {
 				totals.estimatedCostUsd = (totals.estimatedCostUsd ?? 0) + estimatedCostUsd
 			}
