@@ -27,7 +27,7 @@ const { state } = await agent.run({ state: startState([userMessage('Hello')]), s
 
 ## Providers
 
-The package exports two provider factories with different transport tradeoffs; swap the import to change providers, everything else stays the same. (The hand-rolled `createCodexProvider` and the `@ai-sdk/openai`-delegating `createCodexResponsesProvider` were removed: the former had no runtime consumers, and the latter inherited upstream's usage schema, which drops GPT-5.6's `cache_write_tokens`.)
+The package exports two provider factories with different transport tradeoffs; swap the import to change providers, everything else stays the same. (The hand-rolled `createCodexProvider` and the `@ai-sdk/openai`-delegating `createCodexResponsesProvider` were removed: neither had runtime consumers, and the latter inherited an upstream usage schema that dropped GPT-5.6's `cache_write_tokens` at the then-pinned version.)
 
 ### 1. `createCodexSseVendorProvider` — Effect-based parser over HTTP SSE
 Builds requests through the shared `LLMRequest` adapter (`./shared/adapter`) and streams via the vendored `@humanlayer/opencode-llm-vendor` `LLMClient` over HTTP SSE (`httpSseRoute`). Reports structured records to `diagnostics.onEvent` when configured.

@@ -445,10 +445,11 @@ export async function resolveModel(
 			const requestedRaw = context?.codexProviderMode ?? (process.env.CODEX_PROVIDER as string | undefined)
 			// An empty env value (CODEX_PROVIDER= from a template) means unset, not unknown.
 			const requestedMode = requestedRaw === '' ? undefined : requestedRaw
-			// 'aisdk_responses' was removed (it delegated SSE parsing to upstream
-			// @ai-sdk/openai, which drops cache_write_tokens); unknown or retired
-			// values fall back to the default transport instead of crashing a
-			// daemon that still carries the env var.
+			// 'aisdk_responses' was removed (unused, and at the time it inherited an
+			// @ai-sdk/openai usage schema that dropped cache_write_tokens — fixed
+			// upstream in 3.0.96); unknown or retired values fall back to the
+			// default transport instead of crashing a daemon that still carries
+			// the env var.
 			const codexMode: CodexProviderMode =
 				requestedMode === 'sse' || requestedMode === 'websockets' ? requestedMode : 'sse'
 			if (requestedMode !== undefined && requestedMode !== codexMode) {
