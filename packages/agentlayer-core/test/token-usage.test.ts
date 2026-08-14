@@ -123,6 +123,80 @@ describe('TokenUsageAccumulator', () => {
 		expect(acc.snapshot().byModel['provider/model']!.estimatedCostUsd).toBeCloseTo(0.099)
 	})
 
+	test('prefers the provider-reported uncached figure over deriving it by subtraction', () => {
+		const acc = new TokenUsageAccumulator(() => ({ input: 10, output: 0, cacheRead: 1, cacheWrite: 12.5 }))
+		// A breakdown that does NOT perfectly telescope (total − read = 200, but
+		// the provider says 250 uncached — e.g. cache-block rounding). The
+		// provider's own number wins.
+		acc.add('provider/model', {
+			inputTokens: 1_000_000,
+			outputTokens: 0,
+			cacheReadTokens: 800_000,
+			cacheWriteTokens: 0,
+			reasoningTokens: 0,
+			noCacheInputTokens: 250_000,
+		})
+		// reported: 250k × $10/M + 800k × $1/M = 3.30. Derived would be 2.80.
+		expect(acc.snapshot().byModel['provider/model']!.estimatedCostUsd).toBeCloseTo(3.3)
+	})
+
+	test('one call without noCacheInputTokens poisons the model sum to undefined and costing falls back', () => {
+		const acc = new TokenUsageAccumulator(() => ({ input: 10, output: 0, cacheRead: 1 }))
+		acc.add('provider/model', {
+			inputTokens: 1_000_000,
+			outputTokens: 0,
+			cacheReadTokens: 800_000,
+			cacheWriteTokens: 0,
+			reasoningTokens: 0,
+			noCacheInputTokens: 200_000,
+		})
+		acc.add('provider/model', {
+			inputTokens: 1_000_000,
+			outputTokens: 0,
+			cacheReadTokens: 800_000,
+			cacheWriteTokens: 0,
+			reasoningTokens: 0,
+			// no noCacheInputTokens — a partial sum would misrepresent the run
+		})
+		const snapshot = acc.snapshot()
+		expect(snapshot.byModel['provider/model']!.noCacheInputTokens).toBeUndefined()
+		expect(snapshot.totals.noCacheInputTokens).toBeUndefined()
+		// Derived: (2M − 1.6M) × $10/M + 1.6M × $1/M = 5.60
+		expect(snapshot.byModel['provider/model']!.estimatedCostUsd).toBeCloseTo(5.6)
+	})
+
+	test('sums noCacheInputTokens across calls and models when every call reports it', () => {
+		const acc = new TokenUsageAccumulator()
+		acc.add('provider/a', {
+			inputTokens: 1000,
+			outputTokens: 0,
+			cacheReadTokens: 700,
+			cacheWriteTokens: 0,
+			reasoningTokens: 0,
+			noCacheInputTokens: 300,
+		})
+		acc.add('provider/a', {
+			inputTokens: 500,
+			outputTokens: 0,
+			cacheReadTokens: 400,
+			cacheWriteTokens: 0,
+			reasoningTokens: 0,
+			noCacheInputTokens: 100,
+		})
+		acc.add('provider/b', {
+			inputTokens: 200,
+			outputTokens: 0,
+			cacheReadTokens: 0,
+			cacheWriteTokens: 0,
+			reasoningTokens: 0,
+			noCacheInputTokens: 200,
+		})
+		const snapshot = acc.snapshot()
+		expect(snapshot.byModel['provider/a']!.noCacheInputTokens).toBe(400)
+		expect(snapshot.byModel['provider/b']!.noCacheInputTokens).toBe(200)
+		expect(snapshot.totals.noCacheInputTokens).toBe(600)
+	})
+
 	test('unknown model has undefined cost', () => {
 		const acc = new TokenUsageAccumulator(() => undefined)
 		acc.add('unknown/model', {
@@ -152,6 +226,18 @@ describe('extractUsage', () => {
 		expect(usage.cacheReadTokens).toBe(150)
 		expect(usage.cacheWriteTokens).toBe(50)
 		expect(usage.reasoningTokens).toBe(50)
+		expect(usage.noCacheInputTokens).toBe(800)
+	})
+
+	test('keeps noCacheInputTokens undefined when the provider omits it — absence is meaningful', () => {
+		const usage = extractUsage({
+			inputTokens: 1000,
+			outputTokens: 500,
+			totalTokens: 1500,
+			inputTokenDetails: { noCacheTokens: undefined, cacheReadTokens: 150, cacheWriteTokens: 50 },
+			outputTokenDetails: { textTokens: undefined, reasoningTokens: undefined },
+		})
+		expect(usage.noCacheInputTokens).toBeUndefined()
 	})
 
 	test('handles undefined detail fields gracefully', () => {

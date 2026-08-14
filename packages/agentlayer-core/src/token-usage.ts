@@ -9,6 +9,17 @@ export interface ModelTokenUsage {
 	cacheReadTokens: number
 	cacheWriteTokens: number
 	reasoningTokens: number
+	/**
+	 * Provider-reported uncached prompt tokens (AI SDK
+	 * `inputTokenDetails.noCacheTokens`), summed across calls. `undefined` when
+	 * any accumulated call omitted it — a partial sum would silently
+	 * misrepresent the models that did report it. When present, costing uses
+	 * this number instead of deriving `inputTokens - cacheRead - cacheWrite`,
+	 * so a provider whose breakdown doesn't perfectly telescope (rounding,
+	 * cache-block granularity) is billed on its own accounting rather than
+	 * ours.
+	 */
+	noCacheInputTokens?: number
 	estimatedCostUsd: number | undefined
 }
 
@@ -42,6 +53,9 @@ export function extractUsage(usage: LanguageModelUsage): Omit<ModelTokenUsage, '
 		cacheReadTokens: usage.inputTokenDetails?.cacheReadTokens ?? 0,
 		cacheWriteTokens: usage.inputTokenDetails?.cacheWriteTokens ?? 0,
 		reasoningTokens: usage.outputTokenDetails?.reasoningTokens ?? 0,
+		// Unlike the counters above, absence is meaningful here (it decides
+		// whether costing can trust the provider's breakdown), so no `?? 0`.
+		noCacheInputTokens: usage.inputTokenDetails?.noCacheTokens,
 	}
 }
 
@@ -83,6 +97,13 @@ export class TokenUsageAccumulator {
 			existing.cacheReadTokens += usage.cacheReadTokens
 			existing.cacheWriteTokens += usage.cacheWriteTokens
 			existing.reasoningTokens += usage.reasoningTokens
+			// Sums only while EVERY call reported it; one silent call poisons the
+			// model's sum to undefined so costing falls back to derivation instead
+			// of billing a partial "uncached" figure as if it covered all calls.
+			existing.noCacheInputTokens =
+				existing.noCacheInputTokens !== undefined && usage.noCacheInputTokens !== undefined
+					? existing.noCacheInputTokens + usage.noCacheInputTokens
+					: undefined
 		} else {
 			this.byModel[modelKey] = { ...usage }
 		}
@@ -91,12 +112,23 @@ export class TokenUsageAccumulator {
 	snapshot(): TokenUsage {
 		const totals = emptyTotals()
 		const byModel: Record<string, ModelTokenUsage> = {}
+		// Same poisoning rule as add(): the total is only meaningful when every
+		// model reported its own uncached figure.
+		let totalNoCache: number | undefined = 0
 
 		for (const [modelKey, usage] of Object.entries(this.byModel)) {
 			const pricing = this.pricingLookup?.(modelKey as ModelKey)
 			const cacheReadTokens = Math.min(Math.max(0, usage.cacheReadTokens), usage.inputTokens)
 			const cacheWriteTokens = Math.min(Math.max(0, usage.cacheWriteTokens), usage.inputTokens - cacheReadTokens)
-			const uncachedInputTokens = usage.inputTokens - cacheReadTokens - cacheWriteTokens
+			// Prefer the provider's own uncached figure over deriving it — the
+			// subtraction is a fallback for providers that only report the
+			// inclusive total. Clamped >= 0 only; the provider's breakdown is
+			// authoritative even when it doesn't perfectly telescope with the
+			// cache counters (rounding, cache-block granularity).
+			const uncachedInputTokens =
+				usage.noCacheInputTokens !== undefined
+					? Math.max(0, usage.noCacheInputTokens)
+					: usage.inputTokens - cacheReadTokens - cacheWriteTokens
 			const estimatedCostUsd = pricing
 				? (uncachedInputTokens * pricing.input) / 1_000_000 +
 					(usage.outputTokens * pricing.output) / 1_000_000 +
@@ -111,9 +143,18 @@ export class TokenUsageAccumulator {
 			totals.cacheReadTokens += usage.cacheReadTokens
 			totals.cacheWriteTokens += usage.cacheWriteTokens
 			totals.reasoningTokens += usage.reasoningTokens
+			totalNoCache =
+				totalNoCache !== undefined && usage.noCacheInputTokens !== undefined
+					? totalNoCache + usage.noCacheInputTokens
+					: undefined
 			if (estimatedCostUsd !== undefined) {
 				totals.estimatedCostUsd = (totals.estimatedCostUsd ?? 0) + estimatedCostUsd
 			}
+		}
+
+		// An empty accumulator has no calls to vouch for; leave it undefined.
+		if (Object.keys(this.byModel).length > 0 && totalNoCache !== undefined) {
+			totals.noCacheInputTokens = totalNoCache
 		}
 
 		return { byModel, totals }

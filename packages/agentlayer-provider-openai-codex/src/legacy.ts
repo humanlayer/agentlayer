@@ -174,7 +174,10 @@ interface CodexResponseFinishedEvent {
 		incomplete_details?: { reason?: string } | null
 		usage?: {
 			input_tokens: number
-			input_tokens_details?: { cached_tokens?: number | null } | null
+			// cache_write_tokens: GPT-5.6 started reporting prompt-cache writes
+			// (billed at 1.25x the uncached input rate); older models omit it.
+			// Both counters are SUBSETS of input_tokens.
+			input_tokens_details?: { cached_tokens?: number | null; cache_write_tokens?: number | null } | null
 			output_tokens: number
 			output_tokens_details?: { reasoning_tokens?: number | null } | null
 		} | null
@@ -1396,6 +1399,7 @@ function mapCodexFinishReason(reason?: string, hasFunctionCall = false): Languag
 function mapCodexUsage(usage?: CodexResponseFinishedEvent['response']['usage']): LanguageModelV3Usage {
 	const inputTotal = usage?.input_tokens
 	const cacheRead = usage?.input_tokens_details?.cached_tokens ?? undefined
+	const cacheWrite = usage?.input_tokens_details?.cache_write_tokens ?? undefined
 	const outputTotal = usage?.output_tokens
 	const reasoning = usage?.output_tokens_details?.reasoning_tokens ?? undefined
 	const text = outputTotal != null ? Math.max(outputTotal - (reasoning ?? 0), 0) : undefined
@@ -1403,9 +1407,9 @@ function mapCodexUsage(usage?: CodexResponseFinishedEvent['response']['usage']):
 	return {
 		inputTokens: {
 			total: inputTotal,
-			noCache: inputTotal != null ? Math.max(inputTotal - (cacheRead ?? 0), 0) : undefined,
+			noCache: inputTotal != null ? Math.max(inputTotal - (cacheRead ?? 0) - (cacheWrite ?? 0), 0) : undefined,
 			cacheRead,
-			cacheWrite: undefined,
+			cacheWrite,
 		},
 		outputTokens: {
 			total: outputTotal,

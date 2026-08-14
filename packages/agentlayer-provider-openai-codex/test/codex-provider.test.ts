@@ -195,6 +195,51 @@ describe('codex provider wrapper', () => {
 		})
 	})
 
+	test('carries GPT-5.6 cache_write_tokens through usage instead of dropping them', async () => {
+		const store = createMemoryAuthStore({
+			[CODEX_PROVIDER_ID]: {
+				kind: 'oauth',
+				accessToken: 'oauth-access',
+				accountId: 'acct_123',
+			},
+		})
+		const provider = createCodexProvider({
+			authStore: store,
+			version: '1.2.3',
+			sessionId: 'session-abc',
+			fetch: async () =>
+				createSseResponse([
+					{ type: 'response.created', response: { id: 'resp_1', created_at: 1700000000, model: 'gpt-5.6' } },
+					{ type: 'response.output_item.added', output_index: 0, item: { type: 'message', id: 'msg_1' } },
+					{ type: 'response.output_text.delta', item_id: 'msg_1', delta: 'Hi' },
+					{ type: 'response.output_item.done', output_index: 0, item: { type: 'message', id: 'msg_1' } },
+					{
+						type: 'response.completed',
+						response: {
+							usage: {
+								input_tokens: 100,
+								// Both counters are SUBSETS of input_tokens; cache_write_tokens
+								// is new with GPT-5.6 (billed at 1.25x the input rate), so
+								// noCache must subtract BOTH: 100 − 60 − 15 = 25.
+								input_tokens_details: { cached_tokens: 60, cache_write_tokens: 15 },
+								output_tokens: 4,
+								output_tokens_details: { reasoning_tokens: 1 },
+							},
+						},
+					},
+				]),
+		})
+
+		const result = await provider.languageModel('gpt-5.6').doGenerate({
+			prompt: [{ role: 'user', content: [{ type: 'text', text: 'Hi' }] }],
+		})
+
+		expect(result.usage).toEqual({
+			inputTokens: { total: 100, noCache: 25, cacheRead: 60, cacheWrite: 15 },
+			outputTokens: { total: 4, text: 3, reasoning: 1 },
+		})
+	})
+
 	test('refreshes expired oauth auth before the request', async () => {
 		const store = createMemoryAuthStore({
 			[CODEX_PROVIDER_ID]: {
