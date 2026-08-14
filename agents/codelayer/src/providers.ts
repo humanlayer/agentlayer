@@ -78,12 +78,17 @@ export async function captureResponseUsage(response: Response, usage: RawCacheUs
 	if (!response.body || !response.ok) return response
 	const contentType = response.headers.get('content-type') ?? ''
 	if (contentType.includes('application/json')) {
+		// Read once and rebuild rather than clone(): the SDK (>= @ai-sdk/openai
+		// 3.0.96) reads the body in a way that races the clone's tee under Bun,
+		// surfacing as "JSON Parse error: Unexpected EOF" from a half-drained
+		// stream. A rebuilt Response hands it a fresh, fully-buffered body.
+		const text = await response.text()
 		try {
-			captureCacheUsage(await response.clone().json(), usage)
+			captureCacheUsage(JSON.parse(text), usage)
 		} catch {
-			// The SDK parses and reports malformed JSON from the original response.
+			// The SDK parses and reports malformed JSON itself.
 		}
-		return response
+		return new Response(text, { status: response.status, statusText: response.statusText, headers: response.headers })
 	}
 	if (!contentType.includes('text/event-stream')) return response
 
