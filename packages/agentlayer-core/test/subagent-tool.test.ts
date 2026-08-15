@@ -823,6 +823,33 @@ describe('forking subagent tool', () => {
 		expect(projectForkMessages(messages, 'none', 'spawn-call')).toEqual([])
 	})
 
+	test('does not treat an injected skill message as the invoking user turn boundary', () => {
+		const messages: ModelMessage[] = [
+			{ role: 'user', content: 'old request' },
+			{ role: 'assistant', content: [{ type: 'text', text: 'old answer' }] },
+			{ role: 'user', content: 'actual triggering request' },
+			{
+				role: 'user',
+				content: '<skill name="investigate" baseDir="/skills/investigate">\nInvestigate carefully.\n</skill>',
+			},
+			{
+				role: 'assistant',
+				content: [
+					{ type: 'tool-call', toolCallId: 'spawn-call', toolName: 'subagent', input: { prompt: 'work' } },
+				],
+			},
+		]
+
+		expect(projectForkMessages(messages, 'all', 'spawn-call')).toEqual([
+			{ role: 'user', content: 'old request' },
+			{ role: 'assistant', content: [{ type: 'text', text: 'old answer' }] },
+		])
+		expect(projectForkMessages(messages, 1, 'spawn-call')).toEqual([
+			{ role: 'user', content: 'old request' },
+			{ role: 'assistant', content: [{ type: 'text', text: 'old answer' }] },
+		])
+	})
+
 	test('constructs isolated fork state without caller tool, pending, child, or context state', () => {
 		const caller: AgentState = {
 			messages: [{ role: 'user', content: { nested: ['original'] } } as any],
