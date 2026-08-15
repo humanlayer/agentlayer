@@ -139,7 +139,14 @@ describe('TokenUsageAccumulator', () => {
 			noCacheInputTokens: 250_000,
 		})
 		// reported: 250k × $10/M + min(800k, 750k) × $1/M = 3.25. Derived would be 2.80.
-		expect(acc.snapshot().byModel['provider/model']!.estimatedCostUsd).toBeCloseTo(3.25)
+		const snapshot = acc.snapshot()
+		expect(snapshot.byModel['provider/model']!.estimatedCostUsd).toBeCloseTo(3.25)
+		// The PUBLISHED counters must partition the prompt and re-derive the
+		// billed cost — raw values (800k read on a 1M prompt with 250k uncached)
+		// would sum to 1.05M category-tokens and contradict it.
+		expect(snapshot.byModel['provider/model']!.cacheReadTokens).toBe(750_000)
+		expect(snapshot.byModel['provider/model']!.noCacheInputTokens).toBe(250_000)
+		expect(snapshot.totals.cacheReadTokens).toBe(750_000)
 	})
 
 	test('clamps a pathological provider uncached figure to the prompt total', () => {

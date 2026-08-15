@@ -145,9 +145,15 @@ export class TokenUsageAccumulator {
 			// breakdown (rounding, cache-block granularity) would bill more
 			// prompt tokens than the prompt contained.
 			const promptTotal = Math.max(0, usage.inputTokens)
-			const hasCacheCounters = Math.max(0, usage.cacheReadTokens) > 0 || Math.max(0, usage.cacheWriteTokens) > 0
+			// Trust requires COVERAGE, not mere presence: the reported categories
+			// together must account for the whole prompt, or the uncovered
+			// remainder would be priced at $0.
+			const reportedCoverage =
+				(usage.noCacheInputTokens ?? 0) +
+				Math.max(0, usage.cacheReadTokens) +
+				Math.max(0, usage.cacheWriteTokens)
 			const uncachedInputTokens =
-				usage.noCacheInputTokens !== undefined && (hasCacheCounters || usage.noCacheInputTokens >= promptTotal)
+				usage.noCacheInputTokens !== undefined && reportedCoverage >= promptTotal
 					? Math.min(usage.noCacheInputTokens, promptTotal)
 					: undefined
 			const cacheReadTokens = Math.min(
@@ -166,15 +172,22 @@ export class TokenUsageAccumulator {
 					(cacheWriteTokens * (pricing.cacheWrite ?? pricing.input)) / 1_000_000
 				: undefined
 
-			// Publish the RECONCILED figure (the one costing used), never the raw
-			// report: a raw pathological value in byModel/totals could exceed
-			// inputTokens and contradict the billed cost.
-			byModel[modelKey] = { ...usage, noCacheInputTokens: uncachedInputTokens, estimatedCostUsd }
+			// Publish the RECONCILED figures (the ones costing used), never the
+			// raw reports: raw values in byModel/totals could exceed inputTokens,
+			// break the partition property, and contradict the billed cost for
+			// any consumer re-deriving it from the published counters.
+			byModel[modelKey] = {
+				...usage,
+				cacheReadTokens,
+				cacheWriteTokens,
+				noCacheInputTokens: uncachedInputTokens,
+				estimatedCostUsd,
+			}
 
 			totals.inputTokens += usage.inputTokens
 			totals.outputTokens += usage.outputTokens
-			totals.cacheReadTokens += usage.cacheReadTokens
-			totals.cacheWriteTokens += usage.cacheWriteTokens
+			totals.cacheReadTokens += cacheReadTokens
+			totals.cacheWriteTokens += cacheWriteTokens
 			totals.reasoningTokens += usage.reasoningTokens
 			totalNoCache = sumOrPoison(totalNoCache, uncachedInputTokens)
 			if (estimatedCostUsd !== undefined) {

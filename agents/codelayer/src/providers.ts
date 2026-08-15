@@ -269,7 +269,7 @@ function reportCustomResponsesError(options: {
 		options.diagnostics.onEvent({
 			event: 'codex.provider.custom_responses.failed',
 			severity: 'error',
-			transport: 'aisdk_responses',
+			transport: 'custom_responses',
 			annotations: options.diagnostics.annotations,
 			metadata: {
 				error: safeMessage,
