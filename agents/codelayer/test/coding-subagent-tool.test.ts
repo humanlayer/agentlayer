@@ -68,6 +68,13 @@ describe('createCodingSubagentTool', () => {
 		expect(tool.description).toContain('Set subagent_type to start a fresh registered specialist')
 		expect(tool.description).toContain('Every terminal result returns an agent_id')
 		expect(tool.description).toContain('completion, error, or interruption')
+		expect(tool.description).toContain('Do not spawn subagents unless the user')
+		expect(tool.description).toContain('Requests for depth, thoroughness, research, investigation')
+		expect(tool.description).toContain('Only call this tool for a concrete, bounded, yet non-trivial subtask')
+		expect(tool.description).toContain('When not to use subagents:')
+		expect(tool.description).toContain('Do not use rpi: subagents for trivial research tasks')
+		expect(tool.description).toContain('use multiple subagents in parallel')
+		expect(tool.description).toContain('ability to spawn its own subagents')
 		expect(tool.subagents.every((agent) => agent.resumable === true)).toBe(true)
 	})
 

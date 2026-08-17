@@ -154,10 +154,18 @@ export async function deriveChildPromptCacheKey(parentKey: string, toolCallId: s
 	return `${safeParent}${suffix}`
 }
 
-function expandedDescription(agentList: string): string {
+function expandedDescription(agentList: string, instructions?: string): string {
 	return `Launch an isolated subagent.
 
-Omit agent_id, fork_turns, and subagent_type to fork all eligible calling-agent conversation into a new child. Set fork_turns to "all", "none", or a positive integer string to control inherited conversation. Set subagent_type to start a fresh registered specialist with no inherited conversation. Every terminal result returns an agent_id; pass it with a follow-up prompt to continue that exact child after completion, error, or interruption.
+${
+	instructions
+		? `${instructions}
+
+`
+		: ''
+}Omit agent_id, fork_turns, and subagent_type to fork all eligible calling-agent conversation into a new child. Set fork_turns to "all", "none", or a positive integer string to control inherited conversation. Set subagent_type to start a fresh registered specialist with no inherited conversation. Every terminal result returns an agent_id; pass it with a follow-up prompt to continue that exact child after completion, error, or interruption.
+
+Using fork_turns or omitting subagent_type spawns a subagent with the same tools as you and the ability to spawn its own subagents.
 
 Registered specialists:
 ${agentList}`
@@ -166,6 +174,7 @@ ${agentList}`
 interface CreateSubagentsToolOptions {
 	agents: SubAgentConfig[]
 	onChildEvent?: (event: AgentEvent) => void
+	instructions?: string
 }
 
 /**
@@ -192,7 +201,7 @@ function createSubagentsToolImplementation(opts: CreateSubagentsToolOptions, sup
 		.map((agent) => `- ${agent.name}: ${agent.description}${agent.resumable ? ' (resumable)' : ''}`)
 		.join('\n')
 	const description = supportsForking
-		? expandedDescription(agentList)
+		? expandedDescription(agentList, opts.instructions)
 		: SUBAGENT_DESCRIPTION_TEMPLATE.replace('{agents}', agentList)
 	const inputSchema = supportsForking
 		? forkingSubagentInput

@@ -971,6 +971,37 @@ describe('forking subagent tool', () => {
 		})
 	})
 
+	test('uses the configured fork chain to remove delegation from grandchildren', async () => {
+		const subagent = createForkingSubagentsTool({ agents: [] })
+		const delegatingTools = { agent: subagent }
+		const root = new Agent({
+			model: mockModel([
+				assistantWithToolCall('agent', { prompt: 'delegate to a child' }),
+				assistantWithToolCall('agent', { prompt: 'delegate to a grandchild' }),
+				assistantWithToolCall('agent', { prompt: 'attempt a fourth level' }),
+				assistantText('child completed after the grandchild error'),
+				assistantText('root completed'),
+			]),
+			tools: delegatingTools,
+			fork: {
+				tools: delegatingTools,
+				fork: { tools: {} },
+			},
+		})
+
+		const result = await root.run({ state: startState([userMessage('start')]) }).result
+
+		expect(result.finishReason).toBe('complete')
+		const child = Object.values(result.state.terminalChildren ?? {})[0]
+		const grandchild = Object.values(child?.state.terminalChildren ?? {})[0]
+		expect(grandchild?.lastOutcome).toBe('error')
+		expect(grandchild?.state.messages.at(-1)).toMatchObject({
+			role: 'assistant',
+			content: [{ type: 'tool-call', toolName: 'agent' }],
+		})
+		expect(grandchild?.state.terminalChildren).toBeUndefined()
+	})
+
 	test('does not recursively redispatch when the triggering parent instruction asks for a subagent', async () => {
 		const triggeringInstruction = 'call a subagent to investigate this problem'
 		const delegatedPrompt = 'Inspect the fork request and report what you find.'

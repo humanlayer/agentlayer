@@ -3,6 +3,7 @@ export {
 	type AgentConfig,
 	type CompactOptions,
 	type FinishReason,
+	type ForkAgentConfig,
 	type ProviderOptions,
 	type ProviderOptionsFactory,
 	type RunOptions,

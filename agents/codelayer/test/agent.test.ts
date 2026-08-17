@@ -111,6 +111,10 @@ function getAgentConfig(agent: object) {
 	return agent as {
 		model?: LanguageModel
 		tools?: Record<string, unknown>
+		forkConfig?: {
+			tools: Record<string, unknown>
+			fork?: { tools: Record<string, unknown> }
+		}
 		system?: string | string[]
 		hooks?: AgentConfig['hooks']
 		providerOptions?: Record<string, unknown>
@@ -686,6 +690,8 @@ describe('createCodelayerAgent', () => {
 		expect(config.tools?.write).toBeDefined()
 		expect(config.tools?.web_fetch).toBeDefined()
 		expect(config.tools?.agent).toBeDefined()
+		expect(config.forkConfig?.tools.agent).toBe(config.tools?.agent)
+		expect(config.forkConfig?.fork?.tools.agent).toBeUndefined()
 		expect(config.system?.length).toBeGreaterThan(0)
 		// glob, grep, list removed - agent uses bash for file discovery
 		expect(config.tools?.list).toBeUndefined()
@@ -852,6 +858,8 @@ describe('createCodelayerAgent', () => {
 		expect(config.tools?.grep).toBeUndefined()
 		expect(config.tools?.glob).toBeUndefined()
 		expect(config.tools?.agent).toBeDefined()
+		expect(config.forkConfig?.tools.agent).toBe(config.tools?.agent)
+		expect(config.forkConfig?.fork?.tools.agent).toBeUndefined()
 		expect(config.tools?.web_fetch).toBeDefined()
 	})
 
