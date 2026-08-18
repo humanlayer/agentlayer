@@ -50,17 +50,6 @@ const DEFAULT_CODE_SEARCH_TIMEOUT_MS = 30_000
 const EXA_CONTEXT_ENDPOINT = 'https://api.exa.ai/context'
 const CONTEXT7_BASE_URL = 'https://context7.com'
 const CODELAYER_READ_TOOL_MODALITIES = ['text', 'image', 'pdf'] as const
-const SUBAGENT_USAGE_INSTRUCTIONS = `Do not spawn subagents unless the user or applicable AGENTS.md or skill instructions explicitly ask for subagents, delegation, or parallel agent work. Requests for depth, thoroughness, research, investigation, or detailed codebase analysis do not count as permission to spawn.
-
-Only call this tool for a concrete, bounded, yet non-trivial subtask.
-
-When not to use subagents:
-- If you want to read a specific file path.
-- If you are searching for code within a specific file or set of two or three files.
-- If no available agent is a good fit for the task; use other tools directly.
-- Do not use rpi: subagents for trivial research tasks.
-
-When using subagents, use multiple subagents in parallel to parallelize discrete, bounded tasks.`
 
 export interface CreateCodingSubagentToolOptions
 	extends CreateAgentFilesystemHooksOptions,
@@ -454,7 +443,6 @@ export async function createCodingSubagentTool(opts: CreateCodingSubagentToolOpt
 	const tool = createForkingSubagentsTool({
 		agents: configuredAgents,
 		onChildEvent: opts.onChildEvent,
-		instructions: SUBAGENT_USAGE_INSTRUCTIONS,
 	})
 	return Object.assign(tool, { subagents: configuredAgents })
 }
