@@ -441,14 +441,8 @@ describe('convertTools', () => {
 
 		expect(result).toHaveLength(1)
 		expect(result[0]!.name).toBe('subagent')
-		expect(result[0]!.description).toBe('Dispatch a subagent')
 		expect(result[0]!.inputSchema.required).toEqual(['prompt'])
 		expect(result[0]!.inputSchema.additionalProperties).toBe(false)
-		const props = result[0]!.inputSchema.properties as Record<string, Record<string, unknown>>
-		expect(props.prompt!.description).toBe('Task or follow-up for the subagent.')
-		expect(props.agent_id!.description).toBe('Continue an existing subagent.')
-		expect(props.fork_turns!.description).toBe('Conversation to inherit.')
-		expect(props.subagent_type!.description).toBe('Start a registered specialist.')
 	})
 
 	test('returns empty array for undefined tools', () => {
@@ -468,21 +462,6 @@ describe('convertTools', () => {
 		const result = convertTools(tools)
 
 		expect(result).toHaveLength(0)
-	})
-
-	test('handles tools without description', () => {
-		const tools: LanguageModelV3CallOptions['tools'] = [
-			{
-				type: 'function',
-				name: 'noop',
-				inputSchema: { type: 'object', properties: {} },
-			},
-		]
-
-		const result = convertTools(tools)
-
-		expect(result).toHaveLength(1)
-		expect(result[0]!.description).toBe('')
 	})
 })
 

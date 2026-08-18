@@ -354,6 +354,14 @@ function mergeHooks(base: ReturnType<typeof createAgentFilesystemHooks>, hooks?:
 	}
 }
 
+function createForkConfig(tools: Record<string, Tool<any, any>>) {
+	const { agent: _agentTool, ...nonDelegatingTools } = tools
+	return {
+		tools,
+		fork: { tools: nonDelegatingTools },
+	}
+}
+
 export async function createCodelayerAgent(opts: CodelayerAgentOptions): Promise<Agent> {
 	const {
 		model,
@@ -468,6 +476,7 @@ export async function createCodelayerAgent(opts: CodelayerAgentOptions): Promise
 			stopWhen: [doomLoop(3)],
 			providerOptions,
 			promptCacheKey,
+			fork: createForkConfig(tools),
 		})
 	}
 
@@ -515,6 +524,7 @@ export async function createCodelayerAgent(opts: CodelayerAgentOptions): Promise
 		stopWhen: [doomLoop(3)],
 		providerOptions,
 		promptCacheKey,
+		fork: createForkConfig(tools),
 	})
 }
 

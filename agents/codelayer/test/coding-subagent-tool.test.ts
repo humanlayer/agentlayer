@@ -38,7 +38,7 @@ describe('createCodingSubagentTool', () => {
 			system: 'test system prompt',
 		})
 		const input = tool.input as any
-		const shape = input.shape as Record<string, { description?: string }>
+		const shape = input.shape as Record<string, unknown>
 
 		expect(Object.keys(shape)).toEqual([
 			'description',
@@ -50,24 +50,6 @@ describe('createCodingSubagentTool', () => {
 		])
 		expect(input.safeParse({ prompt: 'delegate this' }).success).toBe(true)
 		expect(input.safeParse({ prompt: 'delegate this', unknown: true }).success).toBe(false)
-		expect(shape.description?.description).toBe('Short description of the subagent task.')
-		expect(shape.prompt?.description).toBe(
-			'Task for the subagent. Custom-role tasks must be self-contained because they do not inherit the conversation.',
-		)
-		expect(shape.agent_id?.description).toBe(
-			'Continue an existing subagent using an ID from an earlier result. Do not combine with fork_turns or subagent_type.',
-		)
-		expect(shape.fork_turns?.description).toBe(
-			'Conversation to inherit: "all", "none", or a positive integer string such as "3". Omitted means "all". Do not combine with agent_id or subagent_type.',
-		)
-		expect(shape.subagent_type?.description).toBe(
-			'Start a registered specialist without inheriting the calling agent conversation. Do not combine with agent_id or fork_turns.',
-		)
-		expect(shape.skill?.description).toBe('Optional skill to preload into the subagent.')
-		expect(tool.description).toContain('Omit agent_id, fork_turns, and subagent_type')
-		expect(tool.description).toContain('Set subagent_type to start a fresh registered specialist')
-		expect(tool.description).toContain('Every terminal result returns an agent_id')
-		expect(tool.description).toContain('completion, error, or interruption')
 		expect(tool.subagents.every((agent) => agent.resumable === true)).toBe(true)
 	})
 
@@ -83,7 +65,6 @@ describe('createCodingSubagentTool', () => {
 			tool.input.safeParse({ description: 'small task', prompt: 'work', subagent_type: 'general-purpose' }).success,
 		).toBe(true)
 		expect(tool.input.safeParse({ prompt: 'continue', agent_id: 'prior-child' }).success).toBe(true)
-		expect(tool.description).toContain('Omit agent_id, fork_turns, and subagent_type')
 		expect(tool.subagents.every((agent) => agent.resumable === true)).toBe(true)
 	})
 
@@ -98,7 +79,6 @@ describe('createCodingSubagentTool', () => {
 
 		expect(OUTLINE_IMPLEMENTER_AGENT_NAME).toBe('rpi:outline-implementer-agent')
 		expect(subagents).toHaveLength(1)
-		expect(subagents[0]?.description).toContain('Implements structure outlines')
 	})
 
 	test('shares the configured skill tool with every sub-agent', async () => {

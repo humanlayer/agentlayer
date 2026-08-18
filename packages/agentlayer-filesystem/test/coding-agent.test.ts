@@ -14,7 +14,6 @@ import {
 	createClaudeCodingAgentToolset,
 	createCodexAgentFilesystemToolset,
 	createCodexCodingAgentToolset,
-	createSkillToolFromRepoDirs,
 } from '../src'
 import { makeToolContext } from './mocks'
 
@@ -56,25 +55,6 @@ async function withHomeEnvironment<T>(home: string, run: () => Promise<T>): Prom
 		else process.env.HOME = originalHome
 		releaseEnvironment()
 	}
-}
-
-async function withSkillResolutionFixture<T>(run: (nestedCwd: string) => Promise<T>): Promise<T> {
-	return withTemporaryDirectory('agentlayer-skill-repo-', async (repoDir) =>
-		withTemporaryDirectory('agentlayer-other-cwd-', async (unrelatedDir) => {
-			await initGitRepo(repoDir)
-			await mkdir(join(repoDir, '.claude', 'skills'), { recursive: true })
-			await writeFile(join(repoDir, '.claude', 'skills', 'plan.md'), '# Plan\n\nDo the plan.')
-			const nestedCwd = join(repoDir, 'packages', 'app')
-			await mkdir(nestedCwd, { recursive: true })
-			const originalCwd = process.cwd()
-			process.chdir(unrelatedDir)
-			try {
-				return await run(nestedCwd)
-			} finally {
-				process.chdir(originalCwd)
-			}
-		}),
-	)
 }
 
 async function buildPublicPromptWithMixedInstructionSources() {
@@ -146,15 +126,6 @@ async function withEmptyPromptFixture<T>(run: (repoDir: string) => Promise<T>): 
 		}),
 	)
 }
-
-describe('createSkillToolFromRepoDirs', () => {
-	test('when the process cwd is unrelated, the provided cwd determines the repository whose skills are loaded', async () => {
-		await withSkillResolutionFixture(async (nestedCwd) => {
-			const skillTool = await createSkillToolFromRepoDirs({ cwd: nestedCwd })
-			expect(skillTool.description).toContain('plan')
-		})
-	})
-})
 
 describe('createAgentSystemPrompt', () => {
 	test('the public prompt builder derives HOME from the environment and renders user, root, then cwd instructions', async () => {

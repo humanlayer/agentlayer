@@ -48,6 +48,11 @@ export type ProviderOptions = Parameters<typeof streamText>[0]['providerOptions'
 export type ProviderOptionsFactory = (ctx: { runId: string; promptCacheKey?: string }) => ProviderOptions
 type StreamPart = TextStreamPart<any>
 
+export interface ForkAgentConfig {
+	tools: Record<string, Tool<any, any>>
+	fork?: ForkAgentConfig
+}
+
 function isReasoningOnlyAssistantMessage(message: ModelMessage): boolean {
 	if (message.role !== 'assistant' || !Array.isArray(message.content)) return false
 	let hasReasoning = false
@@ -95,6 +100,8 @@ export interface AgentConfig<TTools extends Record<string, Tool<any, any>> = Rec
 	contextWindowLimit?: number
 	/** Provider-neutral compaction policy. Omitted means enabled with defaults. */
 	autoCompact?: AutoCompactConfig
+	/** Runtime configuration for fork children. Nested values configure later descendants. */
+	fork?: ForkAgentConfig
 	/** Called when an approval is requested. Fires before the event is pushed to the iterator. Observe-only, errors swallowed. */
 	onApprovalRequested?: (
 		approval: ApprovalRequest,
@@ -297,6 +304,7 @@ export class Agent<TTools extends Record<string, Tool<any, any>> = Record<string
 	private contextWindowLimit: number | undefined
 	private promptCacheKey: string
 	private autoCompact: AutoCompactConfig | undefined
+	private forkConfig: ForkAgentConfig | undefined
 
 	private modelProvider: ModelProvider
 
@@ -315,6 +323,7 @@ export class Agent<TTools extends Record<string, Tool<any, any>> = Record<string
 		this.onApprovalRequested = config.onApprovalRequested
 		this.contextWindowLimit = config.contextWindowLimit
 		this.autoCompact = config.autoCompact
+		this.forkConfig = config.fork
 		this.hooks = config.hooks
 		this.modelProvider = config.modelProvider ?? new ModelProvider()
 	}
@@ -341,10 +350,11 @@ export class Agent<TTools extends Record<string, Tool<any, any>> = Record<string
 	}
 
 	private createForkAgent(): Agent {
+		const forkConfig = this.forkConfig
 		return new Agent({
 			model: this.model,
 			system: this.system,
-			tools: this.tools,
+			tools: forkConfig?.tools ?? this.tools,
 			toolChoice: this.toolChoice,
 			providerOptions: this.providerOptions,
 			maxSteps: this.maxStepsLimit,
@@ -357,6 +367,7 @@ export class Agent<TTools extends Record<string, Tool<any, any>> = Record<string
 			hooks: this.hooks,
 			promptCacheKey: this.promptCacheKey,
 			autoCompact: this.autoCompact,
+			fork: forkConfig?.fork,
 		})
 	}
 

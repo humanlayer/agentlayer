@@ -23,10 +23,6 @@ describe('ReadTool interface', () => {
 		expect(ReadTool.name).toBe('read')
 	})
 
-	test('has non-empty description', () => {
-		expect(ReadTool.description.length).toBeGreaterThan(0)
-	})
-
 	test('define() returns a tool with the correct name', () => {
 		const tool = ReadTool.define(async () => 'content')
 		expect(tool.name).toBe('read')

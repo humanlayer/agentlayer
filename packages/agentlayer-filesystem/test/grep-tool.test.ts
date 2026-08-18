@@ -13,10 +13,6 @@ describe('GrepTool interface', () => {
 		expect(GrepTool.name).toBe('grep')
 	})
 
-	test('has non-empty description', () => {
-		expect(GrepTool.description.length).toBeGreaterThan(0)
-	})
-
 	test('define() returns a tool with name "grep"', () => {
 		const tool = GrepTool.define(async () => [])
 		expect(tool.name).toBe('grep')

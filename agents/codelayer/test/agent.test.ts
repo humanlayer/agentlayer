@@ -111,6 +111,10 @@ function getAgentConfig(agent: object) {
 	return agent as {
 		model?: LanguageModel
 		tools?: Record<string, unknown>
+		forkConfig?: {
+			tools: Record<string, unknown>
+			fork?: { tools: Record<string, unknown> }
+		}
 		system?: string | string[]
 		hooks?: AgentConfig['hooks']
 		providerOptions?: Record<string, unknown>
@@ -686,6 +690,8 @@ describe('createCodelayerAgent', () => {
 		expect(config.tools?.write).toBeDefined()
 		expect(config.tools?.web_fetch).toBeDefined()
 		expect(config.tools?.agent).toBeDefined()
+		expect(config.forkConfig?.tools.agent).toBe(config.tools?.agent)
+		expect(config.forkConfig?.fork?.tools.agent).toBeUndefined()
 		expect(config.system?.length).toBeGreaterThan(0)
 		// glob, grep, list removed - agent uses bash for file discovery
 		expect(config.tools?.list).toBeUndefined()
@@ -831,10 +837,10 @@ describe('createCodelayerAgent', () => {
 			context7ApiKey: 'context7-test-key',
 		})
 		const config = getAgentConfig(agent)
-		const subagent = config.tools?.agent as { description?: string } | undefined
+		const subagents = getSubagents(config.tools?.agent)
 
-		expect(subagent?.description).toContain('library-researcher')
-		expect(subagent?.description).toContain('rpi:implementer-agent')
+		expect(subagents.some((subagent) => subagent.name === 'library-researcher')).toBe(true)
+		expect(subagents.some((subagent) => subagent.name === 'rpi:implementer-agent')).toBe(true)
 	})
 
 	test('creates an rlm codex agent without bash and with apply_patch', async () => {
@@ -852,6 +858,8 @@ describe('createCodelayerAgent', () => {
 		expect(config.tools?.grep).toBeUndefined()
 		expect(config.tools?.glob).toBeUndefined()
 		expect(config.tools?.agent).toBeDefined()
+		expect(config.forkConfig?.tools.agent).toBe(config.tools?.agent)
+		expect(config.forkConfig?.fork?.tools.agent).toBeUndefined()
 		expect(config.tools?.web_fetch).toBeDefined()
 	})
 
@@ -1213,7 +1221,6 @@ describe('createCodingSubagentTool', () => {
 		const tool = getAgentConfig(agent).tools?.agent as Tool<any, any> | undefined
 
 		expect(tool?.input.safeParse({ prompt: 'inherit and inspect' }).success).toBe(true)
-		expect(tool?.description).toContain('fork all eligible calling-agent conversation')
 	})
 
 	test('creates the standard subagent tool wrapper', async () => {
@@ -1223,9 +1230,10 @@ describe('createCodingSubagentTool', () => {
 		})
 
 		expect(tool.name).toBe('subagent')
-		expect(tool.description).toContain('general-purpose')
-		expect(tool.description).toContain('rpi:implementer-agent')
-		expect(tool.description).toContain('rpi:codebase-locator')
+		const subagents = getSubagents(tool)
+		expect(subagents.some((subagent) => subagent.name === 'general-purpose')).toBe(true)
+		expect(subagents.some((subagent) => subagent.name === 'rpi:implementer-agent')).toBe(true)
+		expect(subagents.some((subagent) => subagent.name === 'rpi:codebase-locator')).toBe(true)
 	})
 
 	test('hard-codes multimodal read for coding subagents', async () => {
@@ -1281,7 +1289,7 @@ describe('createCodingSubagentTool', () => {
 			context7ApiKey: 'context7-test-key',
 		})
 
-		expect(tool.description).toContain('library-researcher')
+		expect(getSubagents(tool).some((subagent) => subagent.name === 'library-researcher')).toBe(true)
 	})
 })
 

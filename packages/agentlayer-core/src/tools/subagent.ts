@@ -157,7 +157,21 @@ export async function deriveChildPromptCacheKey(parentKey: string, toolCallId: s
 function expandedDescription(agentList: string): string {
 	return `Launch an isolated subagent.
 
+Do not spawn subagents unless the user or applicable AGENTS.md or skill instructions explicitly ask for subagents, delegation, or parallel agent work. Requests for depth, thoroughness, research, investigation, or detailed codebase analysis do not count as permission to spawn.
+
+Only call this tool for a concrete, bounded, yet non-trivial subtask.
+
+When not to use subagents:
+- If you want to read a specific file path.
+- If you are searching for code within a specific file or set of two or three files.
+- If no available agent is a good fit for the task; use other tools directly.
+- Do not use rpi: subagents for trivial research tasks.
+
+When using subagents, use multiple subagents in parallel to parallelize discrete, bounded tasks.
+
 Omit agent_id, fork_turns, and subagent_type to fork all eligible calling-agent conversation into a new child. Set fork_turns to "all", "none", or a positive integer string to control inherited conversation. Set subagent_type to start a fresh registered specialist with no inherited conversation. Every terminal result returns an agent_id; pass it with a follow-up prompt to continue that exact child after completion, error, or interruption.
+
+Using fork_turns or omitting subagent_type spawns a subagent with the same tools as you and the ability to spawn its own subagents.
 
 Registered specialists:
 ${agentList}`

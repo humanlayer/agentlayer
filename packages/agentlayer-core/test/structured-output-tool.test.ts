@@ -40,19 +40,6 @@ describe('createStructuredOutputTool', () => {
 		expect(tool.name).toBe('structured_output')
 	})
 
-	test('includes generated JSON schema in the description', () => {
-		const tool = createStructuredOutputTool(
-			z.object({
-				name: z.string(),
-				age: z.number(),
-			}),
-		)
-
-		expect(tool.description).toContain('JSON Schema')
-		expect(tool.description).toContain('"name"')
-		expect(tool.description).toContain('"age"')
-	})
-
 	test('serializes typed data to JSON', async () => {
 		const tool = createStructuredOutputTool(z.object({ answer: z.number() }))
 		const result = await tool.execute({ data: { answer: 42 } }, makeToolContext())

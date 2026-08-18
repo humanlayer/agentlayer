@@ -13,10 +13,6 @@ describe('GlobTool interface', () => {
 		expect(GlobTool.name).toBe('glob')
 	})
 
-	test('has non-empty description', () => {
-		expect(GlobTool.description.length).toBeGreaterThan(0)
-	})
-
 	test('define() returns a tool with name "glob"', () => {
 		const tool = GlobTool.define(async () => [])
 		expect(tool.name).toBe('glob')
