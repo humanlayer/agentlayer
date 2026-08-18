@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
-import { defineTool } from '@humanlayer/agentlayer-core'
+import { Agent, defineTool, startState, WebFetchTool } from '@humanlayer/agentlayer-core'
 import { claudePrompt, codexPrompt } from '@humanlayer/agentlayer-core/prompts'
 import { z } from 'zod'
 import {
@@ -15,7 +15,15 @@ import {
 	createCodexAgentFilesystemToolset,
 	createCodexCodingAgentToolset,
 } from '../src'
-import { makeToolContext } from './mocks'
+import {
+	assistantText,
+	assistantWithToolCall,
+	mockModel as createMockToolModel,
+	getToolResults,
+	makeToolContext,
+	outputValue,
+	userMessage,
+} from './mocks'
 
 function mockModel(modelId: string) {
 	return { modelId } as any
@@ -173,8 +181,39 @@ describe('createAgentFilesystemHooks', () => {
 		await withTemporaryDirectory('agentlayer-hooks-', async (dir) => {
 			const hooks = createAgentFilesystemHooks({ cwd: dir })
 			expect(hooks.preToolUse).toHaveLength(2)
-			expect(hooks.postToolUse).toHaveLength(6)
+			expect(hooks.postToolUse).toHaveLength(7)
 			expect(hooks.preRequest).toHaveLength(0)
+		})
+	})
+
+	test('forwards configured output limits to the web output hook', async () => {
+		await withTemporaryDirectory('agentlayer-hooks-', async (dir) => {
+			const hooks = createAgentFilesystemHooks({
+				cwd: dir,
+				outputTruncation: { maxLines: 1, maxBytes: 100_000 },
+			})
+			const agent = new Agent({
+				model: createMockToolModel([
+					assistantWithToolCall('web_fetch', { url: 'https://example.com' }),
+					assistantText('Done.'),
+				]),
+				tools: {
+					web_fetch: WebFetchTool.define(async () => 'first line\nsecond line'),
+				},
+				hooks: {
+					preToolUse: [...hooks.preToolUse],
+					postToolUse: [...hooks.postToolUse],
+					preRequest: [...hooks.preRequest],
+					compaction: [...hooks.compaction],
+				},
+			})
+			const result = await agent.run({ state: startState([userMessage('go')]) }).result
+			const [toolResult] = getToolResults(result.state.messages)
+			const output = outputValue(toolResult!)
+
+			expect(output).toContain('first line')
+			expect(output).not.toContain('second line')
+			expect(output).toContain('Full output saved to')
 		})
 	})
 })

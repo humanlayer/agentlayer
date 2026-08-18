@@ -19,7 +19,6 @@ import {
 	detectModelFamily,
 	getSystemPromptForModel,
 } from '@humanlayer/agentlayer-filesystem'
-import { saneDefaultOutputTruncationHooks } from '@humanlayer/agentlayer-filesystem/hooks'
 import { createApplyPatchTool } from '@humanlayer/agentlayer-filesystem/tools'
 import { createEditTool } from '@humanlayer/agentlayer-filesystem/tools'
 import { createReadMultimodalTool } from '@humanlayer/agentlayer-filesystem/tools'
@@ -343,12 +342,10 @@ export function subagentThinkingOverrides(
 }
 
 function mergeHooks(base: ReturnType<typeof createAgentFilesystemHooks>, hooks?: AgentConfig['hooks']): AgentConfig['hooks'] {
-	const fileStatePostHooks = base.postToolUse.filter((hook) => !saneDefaultOutputTruncationHooks.includes(hook))
-
 	return {
 		approval: hooks?.approval,
 		preToolUse: [...base.preToolUse, ...(hooks?.preToolUse ?? [])],
-		postToolUse: [...saneDefaultOutputTruncationHooks, ...fileStatePostHooks, ...(hooks?.postToolUse ?? [])],
+		postToolUse: [...base.postToolUse, ...(hooks?.postToolUse ?? [])],
 		preRequest: [...base.preRequest, ...(hooks?.preRequest ?? [])],
 		compaction: [...base.compaction, ...(hooks?.compaction ?? [])],
 	}

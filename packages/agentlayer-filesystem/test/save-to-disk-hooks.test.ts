@@ -5,6 +5,7 @@
  * - createGlobOutputTruncationHook
  * - createGrepOutputTruncationHook
  * - createListOutputTruncationHook
+ * - createWebOutputTruncationHook
  * - saneDefaultOutputTruncationHooks composition
  *
  * Integration tests use the same pattern as output-truncation.test.ts:
@@ -14,21 +15,43 @@
 import { describe, expect, test } from 'bun:test'
 import { readFile } from 'node:fs/promises'
 import { Agent, startState } from '@humanlayer/agentlayer-core'
-import { BashTool, GlobTool, GrepTool, ListTool } from '@humanlayer/agentlayer-core/interfaces'
+import { BashTool, GlobTool, GrepTool, ListTool, WebFetchTool } from '@humanlayer/agentlayer-core/interfaces'
 import {
 	bashOutputTruncationHook,
 	createBashOutputTruncationHook,
 	createGlobOutputTruncationHook,
 	createGrepOutputTruncationHook,
 	createListOutputTruncationHook,
+	createWebOutputTruncationHook,
 	globOutputTruncationHook,
 	grepOutputTruncationHook,
 	listOutputTruncationHook,
 	readTruncationHook,
 	saneDefaultOutputTruncationHooks,
 	saveFullOutput,
+	webOutputTruncationHook,
 } from '../src/hooks'
 import { assistantText, assistantWithToolCall, getToolResults, mockModel, outputValue, userMessage } from './mocks'
+
+async function runWebFetchWithHook(
+	hook: ReturnType<typeof createWebOutputTruncationHook>,
+	output: string,
+): Promise<string> {
+	const agent = new Agent({
+		model: mockModel([assistantWithToolCall('web_fetch', { url: 'https://example.com' }), assistantText('Done.')]),
+		tools: { web_fetch: WebFetchTool.define(async () => output) },
+		hooks: { postToolUse: [hook] },
+	})
+	const result = await agent.run({ state: startState([userMessage('go')]) }).result
+	const [toolResult] = getToolResults(result.state.messages)
+	return outputValue(toolResult!)
+}
+
+function extractWebSavedPath(output: string): string {
+	const match = output.match(/Full output saved to (.+?)\. (?:Showing lines|The first line)/)
+	expect(match).not.toBeNull()
+	return match![1]!
+}
 
 // ── saveFullOutput ────────────────────────────────────────────────────────────
 
@@ -787,11 +810,11 @@ describe('save-to-disk hooks — direction override', () => {
 // ── saneDefaultOutputTruncationHooks composition ─────────────────────────────
 
 describe('saneDefaultOutputTruncationHooks', () => {
-	test('array contains exactly 5 hooks', () => {
-		expect(saneDefaultOutputTruncationHooks).toHaveLength(5)
+	test('array contains exactly 6 hooks', () => {
+		expect(saneDefaultOutputTruncationHooks).toHaveLength(6)
 	})
 
-	test('all five hooks are functions', () => {
+	test('all six hooks are functions', () => {
 		for (const hook of saneDefaultOutputTruncationHooks) {
 			expect(typeof hook).toBe('function')
 		}
@@ -817,6 +840,10 @@ describe('saneDefaultOutputTruncationHooks', () => {
 		expect(saneDefaultOutputTruncationHooks[4]).toBe(listOutputTruncationHook)
 	})
 
+	test('includes the pre-composed webOutputTruncationHook instance', () => {
+		expect(saneDefaultOutputTruncationHooks[5]).toBe(webOutputTruncationHook)
+	})
+
 	test('wired into an agent, bash tool is truncated and saved to disk', async () => {
 		// Use very tight limits to trigger truncation
 		const tightHooks = [
@@ -825,6 +852,7 @@ describe('saneDefaultOutputTruncationHooks', () => {
 			createGlobOutputTruncationHook({ maxLines: 2, maxBytes: 100_000 }),
 			createGrepOutputTruncationHook({ maxLines: 2, maxBytes: 100_000 }),
 			createListOutputTruncationHook({ maxLines: 2, maxBytes: 100_000 }),
+			createWebOutputTruncationHook({ maxLines: 2, maxBytes: 100_000 }),
 		]
 
 		const lines = Array.from({ length: 10 }, (_, i) => `output line ${i + 1}`)
@@ -878,6 +906,46 @@ describe('saneDefaultOutputTruncationHooks', () => {
 		const globResult = await globAgent.run({ state: startState([userMessage('go')]) }).result
 		const [globToolResult] = getToolResults(globResult.state.messages)
 		expect(outputValue(globToolResult!)).toContain('Full output saved to')
+	})
+})
+
+describe('web output hook boundaries', () => {
+	test('keeps exactly 2,000 lines and spills the 2,001st line', async () => {
+		const underLimit = Array.from({ length: 2000 }, (_, index) => `line ${index + 1}`).join('\n')
+		const overLimit = `${underLimit}\nline 2001`
+		const hook = createWebOutputTruncationHook()
+
+		expect(await runWebFetchWithHook(hook, underLimit)).toBe(underLimit)
+
+		const output = await runWebFetchWithHook(hook, overLimit)
+		expect(output).toContain('line 1')
+		expect(output).toContain('line 2000')
+		expect(output).not.toContain('line 2001')
+		expect(await readFile(extractWebSavedPath(output), 'utf8')).toBe(overLimit)
+	})
+
+	test('counts UTF-8 bytes while preserving complete output', async () => {
+		const fullOutput = 'ééé\nnext line'
+		const output = await runWebFetchWithHook(
+			createWebOutputTruncationHook({ maxLines: 10, maxBytes: 8 }),
+			fullOutput,
+		)
+
+		expect(output).toContain('ééé')
+		expect(output).not.toContain('next line')
+		expect(output).toContain('8-byte limit')
+		expect(await readFile(extractWebSavedPath(output), 'utf8')).toBe(fullOutput)
+	})
+
+	test('provides a valid read instruction when the first line exceeds the byte limit', async () => {
+		const fullOutput = `${'x'.repeat(50 * 1024)}\nsecond line`
+		const output = await runWebFetchWithHook(createWebOutputTruncationHook(), fullOutput)
+		const savedPath = extractWebSavedPath(output)
+
+		expect(output).toContain('The first line exceeds the 51200-byte limit')
+		expect(output).not.toContain('Showing lines')
+		expect(output).toContain(`read(file_path="${savedPath}", offset=1)`)
+		expect(await readFile(savedPath, 'utf8')).toBe(fullOutput)
 	})
 })
 

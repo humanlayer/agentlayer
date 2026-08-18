@@ -1,18 +1,29 @@
 import { describe, expect, test } from 'bun:test'
 import { readFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
-import { Agent, BashTool, GlobTool, GrepTool, ListTool, startState } from '@humanlayer/agentlayer-core'
+import {
+	Agent,
+	BashTool,
+	GlobTool,
+	GrepTool,
+	ListTool,
+	startState,
+	WebFetchTool,
+	WebSearchTool,
+} from '@humanlayer/agentlayer-core'
 import {
 	bashOutputTruncationHook,
 	createBashOutputTruncationHook,
 	createGlobOutputTruncationHook,
 	createGrepOutputTruncationHook,
 	createListOutputTruncationHook,
+	createWebOutputTruncationHook,
 	globOutputTruncationHook,
 	grepOutputTruncationHook,
 	listOutputTruncationHook,
 	saneDefaultOutputTruncationHooks,
 	saveFullOutput,
+	webOutputTruncationHook,
 } from '../src/hooks'
 import { assistantText, assistantWithToolCall, getToolResults, mockModel, outputValue, userMessage } from './mocks'
 
@@ -29,6 +40,12 @@ async function runToolWithHook(toolName: string, tool: any, hook: any, input: Re
 
 function extractSavedPath(output: string): string {
 	const match = output.match(/Full output saved to ([^)]+)/)
+	expect(match).toBeTruthy()
+	return match![1]!
+}
+
+function extractWebSavedPath(output: string): string {
+	const match = output.match(/Full output saved to (.+?)\. (?:Showing lines|The first line)/)
 	expect(match).toBeTruthy()
 	return match![1]!
 }
@@ -110,6 +127,78 @@ describe('disk-backed output truncation hooks — truncation', () => {
 	})
 })
 
+describe('web output truncation hook', () => {
+	test('preserves under-limit web fetch and search results registered under model-facing names', async () => {
+		const hook = createWebOutputTruncationHook({ maxLines: 10, maxBytes: 100_000 })
+		const fetchOutput = await runToolWithHook(
+			'web_fetch',
+			WebFetchTool.define(async () => 'short fetched page'),
+			hook,
+			{ url: 'https://example.com' },
+		)
+		const searchOutput = await runToolWithHook(
+			'web_search',
+			WebSearchTool.define(async () => ({
+				results: [{ title: 'Result', url: 'https://example.com/result', snippet: 'short result' }],
+			})),
+			hook,
+			{ query: 'example' },
+		)
+
+		expect(fetchOutput).toBe('short fetched page')
+		expect(searchOutput).toBe('Result\n  https://example.com/result\n  short result')
+		expect(fetchOutput).not.toContain('Full output saved')
+		expect(searchOutput).not.toContain('Full output saved')
+	})
+
+	test('keeps a head excerpt, saves the complete fetch result, and provides a read offset', async () => {
+		const fullOutput = 'first line\nsecond line\nthird line\nfourth line'
+		const output = await runToolWithHook(
+			'web_fetch',
+			WebFetchTool.define(async () => fullOutput),
+			createWebOutputTruncationHook({ maxLines: 2, maxBytes: 100_000 }),
+			{ url: 'https://example.com' },
+		)
+		const savedPath = extractWebSavedPath(output)
+
+		expect(output).toContain('first line\nsecond line')
+		expect(output).not.toContain('third line')
+		expect(output).toContain('Showing lines 1-2')
+		expect(output).toContain(`read(file_path="${savedPath}", offset=3)`)
+		expect(await readFile(savedPath, 'utf8')).toBe(fullOutput)
+	})
+
+	test('truncates serialized web search output from the head', async () => {
+		const output = await runToolWithHook(
+			'web_search',
+			WebSearchTool.define(async () => ({
+				results: [
+					{ title: 'First', url: 'https://example.com/first', snippet: 'first snippet' },
+					{ title: 'Second', url: 'https://example.com/second', snippet: 'second snippet' },
+				],
+			})),
+			createWebOutputTruncationHook({ maxLines: 3, maxBytes: 100_000 }),
+			{ query: 'example' },
+		)
+
+		expect(output).toContain('First\n  https://example.com/first\n  first snippet')
+		expect(output).not.toContain('Second')
+		expect(await readFile(extractWebSavedPath(output), 'utf8')).toContain('Second')
+	})
+
+	test('does not affect non-web tools', async () => {
+		const output = await runToolWithHook(
+			'bash',
+			BashTool.define(async () => 'first line\nsecond line'),
+			createWebOutputTruncationHook({ maxLines: 1, maxBytes: 1 }),
+			{ command: 'echo test', timeout: 5000 },
+		)
+
+		expect(output).toBe('first line\nsecond line')
+		expect(output).not.toContain('Full output saved')
+	})
+})
+
 describe('disk-backed output truncation hooks — custom hints and defaults', () => {
 	test('uses custom hint function', async () => {
 		const tool = GlobTool.define(async () => ['a.ts', 'b.ts', 'c.ts'])
@@ -130,6 +219,7 @@ describe('disk-backed output truncation hooks — custom hints and defaults', ()
 		expect(globOutputTruncationHook).toBeFunction()
 		expect(grepOutputTruncationHook).toBeFunction()
 		expect(listOutputTruncationHook).toBeFunction()
-		expect(saneDefaultOutputTruncationHooks).toHaveLength(5)
+		expect(webOutputTruncationHook).toBeFunction()
+		expect(saneDefaultOutputTruncationHooks).toHaveLength(6)
 	})
 })

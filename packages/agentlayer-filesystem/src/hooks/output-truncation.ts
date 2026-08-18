@@ -28,6 +28,11 @@ export interface OutputTruncationOptions {
 	hint?: (ctx: { toolName: string; outputPath: string }) => string
 }
 
+export interface WebOutputTruncationOptions {
+	maxLines?: number
+	maxBytes?: number
+}
+
 function createOutputTruncationHook(
 	Tool: ToolInterface<any, any>,
 	defaultDirection: 'head' | 'tail',
@@ -81,10 +86,53 @@ export function createListOutputTruncationHook(opts?: OutputTruncationOptions): 
 
 export const listOutputTruncationHook = createListOutputTruncationHook()
 
+const WEB_TOOL_NAMES = new Set(['web_fetch', 'web_search'])
+
+function webOutputHint(input: { outputPath: string; maxBytes: number; keptLines: number; hitBytes: boolean }): string {
+	const read = (offset: number) => `read(file_path="${input.outputPath}", offset=${offset})`
+	if (input.keptLines === 0) {
+		return `(Output truncated. Full output saved to ${input.outputPath}. The first line exceeds the ${input.maxBytes}-byte limit. Use ${read(1)} to inspect it.)`
+	}
+
+	const byteLimit = input.hitBytes ? ` (${input.maxBytes}-byte limit)` : ''
+	const nextOffset = input.keptLines + 1
+	return `(Output truncated. Full output saved to ${input.outputPath}. Showing lines 1-${input.keptLines}${byteLimit}. Use ${read(nextOffset)} to continue.)`
+}
+
+export function createWebOutputTruncationHook(opts?: WebOutputTruncationOptions): PostToolUseHook {
+	const maxLines = opts?.maxLines ?? 2000
+	const maxBytes = opts?.maxBytes ?? 50 * 1024
+
+	return async (ctx) => {
+		if (!WEB_TOOL_NAMES.has(ctx.toolName) || typeof ctx.output !== 'string') {
+			return ctx.done()
+		}
+
+		const result = truncateWithOptions(ctx.output, { maxLines, maxBytes, direction: 'head' })
+		if (!result.truncated) {
+			return ctx.done()
+		}
+
+		const outputPath = await saveFullOutput(ctx.output)
+		const keptLines = ctx.output.split('\n').length - result.truncatedLines
+		return ctx.done(
+			`${result.content}\n\n${webOutputHint({
+				outputPath,
+				maxBytes,
+				keptLines,
+				hitBytes: result.hitBytes,
+			})}`,
+		)
+	}
+}
+
+export const webOutputTruncationHook = createWebOutputTruncationHook()
+
 export const saneDefaultOutputTruncationHooks: PostToolUseHook[] = [
 	readTruncationHook,
 	bashOutputTruncationHook,
 	globOutputTruncationHook,
 	grepOutputTruncationHook,
 	listOutputTruncationHook,
+	webOutputTruncationHook,
 ]
