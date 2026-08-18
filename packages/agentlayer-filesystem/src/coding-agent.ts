@@ -23,6 +23,7 @@ import {
 	createGrepOutputTruncationHook,
 	createListOutputTruncationHook,
 	createReadTruncationHook,
+	createWebOutputTruncationHook,
 } from './hooks/output-truncation'
 import { createApplyPatchTool } from './tools/apply-patch'
 import { createBashTool } from './tools/bash'
@@ -74,6 +75,7 @@ export function createAgentFilesystemHooks(opts: CreateAgentFilesystemHooksOptio
 			createGlobOutputTruncationHook(sharedOutputTruncation),
 			createGrepOutputTruncationHook(sharedOutputTruncation),
 			createListOutputTruncationHook(sharedOutputTruncation),
+			createWebOutputTruncationHook(sharedOutputTruncation),
 			createFileStateTrackingHook({ cwd: opts.cwd }),
 		],
 		preRequest: [],

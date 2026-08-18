@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { LanguageModel } from 'ai'
 import type { AgentConfig, PostToolUseHook, SubAgentConfig, Tool } from '@humanlayer/agentlayer-core'
-import { saneDefaultOutputTruncationHooks } from '@humanlayer/agentlayer-filesystem/hooks'
+import { createAgentFilesystemHooks } from '@humanlayer/agentlayer-filesystem'
 import { createMemoryAuthStore } from '@humanlayer/agentlayer-provider-auth'
 import * as providerAuth from '@humanlayer/agentlayer-provider-auth'
 import * as codexProvider from '@humanlayer/agentlayer-provider-openai-codex'
@@ -123,10 +123,12 @@ function getSystemEntries(agent: object): string[] {
 	return Array.isArray(system) ? system : [system]
 }
 
-function expectDefaultTruncationHooksFirst(hooks: AgentConfig['hooks']) {
-	expect(hooks?.postToolUse?.slice(0, saneDefaultOutputTruncationHooks.length)).toEqual(
-		saneDefaultOutputTruncationHooks,
-	)
+function expectFilesystemHooksBeforeUser(hooks: AgentConfig['hooks'], userPostHook: PostToolUseHook) {
+	const postToolUse = hooks?.postToolUse ?? []
+	const expectedFilesystemHookCount = createAgentFilesystemHooks({ cwd: '/tmp' }).postToolUse.length
+
+	expect(postToolUse).toHaveLength(expectedFilesystemHookCount + 1)
+	expect(postToolUse.at(-1)).toBe(userPostHook)
 }
 
 function getSubagents(tool: unknown): SubAgentConfig[] {
@@ -779,7 +781,7 @@ describe('createCodelayerAgent', () => {
 		expect(config.tools?.agent).toBeDefined()
 	})
 
-	test('prepends default truncation hooks before file-state and user hooks for standard agents', async () => {
+	test('installs the filesystem hook chain once before user hooks for standard agents', async () => {
 		const userPostHook: PostToolUseHook = (ctx) => ctx.done()
 		const agent = await createCodelayerAgent({
 			model: createMockModel('claude-sonnet-4-5'),
@@ -788,12 +790,11 @@ describe('createCodelayerAgent', () => {
 		})
 		const postToolUse = getAgentConfig(agent).hooks?.postToolUse ?? []
 
-		expectDefaultTruncationHooksFirst(getAgentConfig(agent).hooks)
-		expect(postToolUse.at(-1)).toBe(userPostHook)
-		expect(postToolUse.length).toBeGreaterThan(saneDefaultOutputTruncationHooks.length + 1)
+		expectFilesystemHooksBeforeUser(getAgentConfig(agent).hooks, userPostHook)
+		expect(postToolUse).toHaveLength(8)
 	})
 
-	test('prepends default truncation hooks before file-state and user hooks for rlm agents', async () => {
+	test('installs the filesystem hook chain once before user hooks for rlm agents', async () => {
 		const userPostHook: PostToolUseHook = (ctx) => ctx.done()
 		const agent = await createCodelayerAgent({
 			model: createMockModel('gpt-5.4'),
@@ -803,12 +804,11 @@ describe('createCodelayerAgent', () => {
 		})
 		const postToolUse = getAgentConfig(agent).hooks?.postToolUse ?? []
 
-		expectDefaultTruncationHooksFirst(getAgentConfig(agent).hooks)
-		expect(postToolUse.at(-1)).toBe(userPostHook)
-		expect(postToolUse.length).toBeGreaterThan(saneDefaultOutputTruncationHooks.length + 1)
+		expectFilesystemHooksBeforeUser(getAgentConfig(agent).hooks, userPostHook)
+		expect(postToolUse).toHaveLength(8)
 	})
 
-	test('prepends default truncation hooks before inherited user hooks for subagents', async () => {
+	test('installs the filesystem hook chain once before inherited user hooks for subagents', async () => {
 		const userPostHook: PostToolUseHook = (ctx) => ctx.done()
 		const agent = await createCodelayerAgent({
 			model: createMockModel('claude-sonnet-4-5'),
@@ -819,9 +819,8 @@ describe('createCodelayerAgent', () => {
 		const subagent = getSubagents(subagentTool).find((candidate) => candidate.name === 'general-purpose')
 		const postToolUse = getAgentConfig(subagent?.agent ?? {}).hooks?.postToolUse ?? []
 
-		expectDefaultTruncationHooksFirst(getAgentConfig(subagent?.agent ?? {}).hooks)
-		expect(postToolUse.at(-1)).toBe(userPostHook)
-		expect(postToolUse.length).toBeGreaterThan(saneDefaultOutputTruncationHooks.length + 1)
+		expectFilesystemHooksBeforeUser(getAgentConfig(subagent?.agent ?? {}).hooks, userPostHook)
+		expect(postToolUse).toHaveLength(8)
 	})
 
 	test('propagates context7 support into the subagent tool inventory', async () => {

@@ -23,7 +23,6 @@ import {
 	type CreateAgentFilesystemHooksOptions,
 	type CreateCodingAgentAuxToolsetOptions,
 } from '@humanlayer/agentlayer-filesystem'
-import { saneDefaultOutputTruncationHooks } from '@humanlayer/agentlayer-filesystem/hooks'
 import { createWebSearchTool } from '@humanlayer/agentlayer-filesystem/tools'
 import {
 	createBashSpecialistAgent,
@@ -166,12 +165,10 @@ function mergeHooks(
 	base: ReturnType<typeof createAgentFilesystemHooks>,
 	hooks?: AgentConfig['hooks'],
 ): AgentConfig['hooks'] {
-	const fileStatePostHooks = base.postToolUse.filter((hook) => !saneDefaultOutputTruncationHooks.includes(hook))
-
 	return {
 		approval: hooks?.approval,
 		preToolUse: [...base.preToolUse, ...(hooks?.preToolUse ?? [])],
-		postToolUse: [...saneDefaultOutputTruncationHooks, ...fileStatePostHooks, ...(hooks?.postToolUse ?? [])],
+		postToolUse: [...base.postToolUse, ...(hooks?.postToolUse ?? [])],
 		preRequest: [...base.preRequest, ...(hooks?.preRequest ?? [])],
 		compaction: [...base.compaction, ...(hooks?.compaction ?? [])],
 	}
@@ -329,6 +326,7 @@ export async function createCodingSubagentTool(opts: CreateCodingSubagentToolOpt
 
 	const libraryResearcherTools: Record<string, Tool<any, any>> = {
 		web_fetch: createWebFetchTool(),
+		read: createReadMultimodalTool({ cwd: opts.cwd, readToolModalities: CODELAYER_READ_TOOL_MODALITIES }),
 		skill: skillTool,
 	}
 	if (opts.exaApiKey || opts.context7ApiKey) {

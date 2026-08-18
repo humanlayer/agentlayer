@@ -133,6 +133,8 @@ const { preToolUseHook, postToolUseHook } = createReadBeforeWriteHooks({ cwd: pr
 
 Hooks that truncate excessive tool output to save context.
 
+`createAgentFilesystemHooks()` installs the ordered defaults once: Read, Bash, Glob, Grep, List, web output, then file-state tracking. Caller-provided post-tool hooks run after that chain.
+
 ### Individual Truncation Hooks
 
 ```ts
@@ -141,7 +143,8 @@ import {
   createBashOutputTruncationHook,
   createGlobOutputTruncationHook,
   createGrepOutputTruncationHook,
-  createListOutputTruncationHook
+  createListOutputTruncationHook,
+  createWebOutputTruncationHook
 } from '@humanlayer/agentlayer-filesystem'
 
 const options = {
@@ -155,7 +158,14 @@ const bashHook = createBashOutputTruncationHook(options)
 const globHook = createGlobOutputTruncationHook(options)
 const grepHook = createGrepOutputTruncationHook(options)
 const listHook = createListOutputTruncationHook(options)
+const webHook = createWebOutputTruncationHook(options)
 ```
+
+### Web Fetch and Search Output
+
+`createWebOutputTruncationHook()` applies only to the standard coding-tool registry keys `web_fetch` and `web_search`. It uses a head-oriented 2,000-line, 50-KiB policy by default. Under-limit results are unchanged. When a result exceeds either limit, the complete serialized string is saved in an `agent-tool-output-*` directory under the OS temp directory and the model receives the leading lines plus a `read(file_path=..., offset=...)` instruction.
+
+The hook deliberately matches runtime registry keys rather than the underlying interface names (`webfetch` and `websearch`), so it applies to normal coding-agent toolsets. If the first line alone exceeds the byte limit, the hint directs the agent to read the saved file from offset 1 without claiming that any lines were shown.
 
 ### Pre-configured Hook Instances
 
@@ -166,6 +176,7 @@ import {
   globOutputTruncationHook,
   grepOutputTruncationHook,
   listOutputTruncationHook,
+  webOutputTruncationHook,
   saneDefaultOutputTruncationHooks
 } from '@humanlayer/agentlayer-filesystem'
 
@@ -207,9 +218,9 @@ const agent = new Agent({
       wastedRead.preToolUseHook
     ],
     postToolUse: [
+      ...saneDefaultOutputTruncationHooks,
       createFileStateTrackingHook({ cwd }),
-      wastedRead.postToolUseHook,
-      ...saneDefaultOutputTruncationHooks
+      wastedRead.postToolUseHook
     ]
   }
 })
@@ -237,6 +248,7 @@ import type {
   TruncationOptions,
   TruncationResult,
   OutputTruncationOptions,
+  WebOutputTruncationOptions,
   ReadTruncationOptions,
   AgentOutputTruncationOptions,
 } from '@humanlayer/agentlayer-filesystem'

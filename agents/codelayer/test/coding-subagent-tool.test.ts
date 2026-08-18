@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import type { Tool } from '@humanlayer/agentlayer-core'
+import { createAgentFilesystemHooks } from '@humanlayer/agentlayer-filesystem'
 import { createCodingSubagentTool } from '../src/coding-subagent-tool'
 import { OUTLINE_IMPLEMENTER_AGENT_NAME } from '../src/rpi-agents'
 
@@ -28,6 +29,10 @@ function getAgentTools(agent: object): Record<string, Tool<any, any>> {
 
 function getAgentAssembly(agent: object) {
 	return agent as { model: unknown; providerOptions?: unknown }
+}
+
+function getAgentPostToolHooks(agent: object) {
+	return (agent as { hooks?: { postToolUse?: unknown[] } }).hooks?.postToolUse ?? []
 }
 
 describe('createCodingSubagentTool', () => {
@@ -134,6 +139,40 @@ describe('createCodingSubagentTool', () => {
 		expect(tool.subagents.map(({ name }) => name)).toEqual(EXPECTED_SUBAGENT_NAMES)
 		expect(skillTools.every(Boolean)).toBe(true)
 		expect(new Set(skillTools)).toHaveLength(1)
+	})
+
+	test('installs the shared web-output hook chain for web-capable agents and gives library research read access', async () => {
+		const tool = await createCodingSubagentTool({
+			cwd: process.cwd(),
+			model: 'claude-test' as any,
+			system: 'test system prompt',
+			exaApiKey: 'test-exa-key',
+			context7ApiKey: 'test-context7-key',
+		})
+		const expectedHookCount = createAgentFilesystemHooks({ cwd: process.cwd() }).postToolUse.length
+		const subagentsByName = new Map(tool.subagents.map((agent) => [agent.name, agent]))
+
+		for (const name of [
+			'general-purpose',
+			'rpi:implementer-agent',
+			'rpi:outline-implementer-agent',
+			'web-search-researcher',
+			'library-researcher',
+		]) {
+			const subagent = subagentsByName.get(name)
+			expect(subagent, name).toBeDefined()
+			expect(getAgentPostToolHooks(subagent!.agent), name).toHaveLength(expectedHookCount)
+		}
+
+		const webResearcherTools = getAgentTools(subagentsByName.get('web-search-researcher')!.agent)
+		expect(webResearcherTools.web_fetch).toBeDefined()
+		expect(webResearcherTools.web_search).toBeDefined()
+		expect(webResearcherTools.read).toBeDefined()
+
+		const libraryResearcherTools = getAgentTools(subagentsByName.get('library-researcher')!.agent)
+		expect(libraryResearcherTools.web_fetch).toBeDefined()
+		expect(libraryResearcherTools.web_search).toBeDefined()
+		expect(libraryResearcherTools.read).toBeDefined()
 	})
 
 	test('applies the grouped research override only to designated research agents', async () => {
