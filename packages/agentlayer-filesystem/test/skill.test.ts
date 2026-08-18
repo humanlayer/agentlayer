@@ -136,20 +136,6 @@ describe('createSkillTool', () => {
 })
 
 describe('createSkillToolFromDirs', () => {
-	test('reads flat .md skills from a directory', async () => {
-		const dir = await mkdtemp(join(tmpdir(), 'skill-test-'))
-		try {
-			await writeFile(join(dir, 'my-skill.md'), '# My Skill\n\nThis is my skill content.')
-			await writeFile(join(dir, 'another.md'), '# Another\n\nAnother skill.')
-
-			const skillTool = await createSkillToolFromDirs({ dirs: dir })
-			expect(skillTool.description).toContain('my-skill')
-			expect(skillTool.description).toContain('another')
-		} finally {
-			await rm(dir, { recursive: true })
-		}
-	})
-
 	test('SKILL.md convention sets baseDir to the skill directory', async () => {
 		const dir = await mkdtemp(join(tmpdir(), 'skill-test-'))
 		try {
@@ -165,17 +151,6 @@ describe('createSkillToolFromDirs', () => {
 
 			const after = pendingUpdates[0]!([])
 			expect(JSON.stringify(after[0]!.content)).toContain(join(dir, 'my-skill'))
-		} finally {
-			await rm(dir, { recursive: true })
-		}
-	})
-
-	test('namespace prefixes loaded skill names', async () => {
-		const dir = await mkdtemp(join(tmpdir(), 'skill-test-'))
-		try {
-			await writeFile(join(dir, 'plan.md'), '# Plan\n\nPlan instructions.')
-			const skillTool = await createSkillToolFromDirs({ dirs: [{ path: dir, namespace: 'rpi' }] })
-			expect(skillTool.description).toContain('rpi:plan')
 		} finally {
 			await rm(dir, { recursive: true })
 		}

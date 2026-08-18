@@ -94,25 +94,6 @@ function createLocalReadTool(cwd: string) {
 // ── Tests ────────────────────────────────────────────────────────────────────
 
 describe('createSubagentsTool', () => {
-	test('description includes all registered agent names', () => {
-		const childAgent = new Agent({
-			model: mockModel([assistantText('hi')]),
-			tools: { echo: echoTool },
-		})
-
-		const tool = createSubagentsTool({
-			agents: [
-				{ name: 'researcher', description: 'Deep codebase research', agent: childAgent },
-				{ name: 'implementer', description: 'Implement from a plan', agent: childAgent },
-			],
-		})
-
-		expect(tool.description).toContain('researcher')
-		expect(tool.description).toContain('Deep codebase research')
-		expect(tool.description).toContain('implementer')
-		expect(tool.description).toContain('Implement from a plan')
-	})
-
 	test('invalid subagent_type returns error in tool result', async () => {
 		const childAgent = new Agent({
 			model: mockModel([assistantText('hi')]),

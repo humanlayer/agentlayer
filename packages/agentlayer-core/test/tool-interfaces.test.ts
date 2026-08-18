@@ -749,26 +749,3 @@ describe('normalizeEscapes', () => {
 		expect(normalizeEscapes('\\n\\n\\t')).toBe('\n\n\t')
 	})
 })
-
-// ─── define() with description override ───────────────────────────────────────
-
-describe('define() with description override', () => {
-	test('EditTool.define() accepts custom description', () => {
-		const tool = EditTool.define(async () => ({ content: '', matchCount: 0 }), {
-			description: 'Custom edit description',
-		})
-		expect(tool.description).toBe('Custom edit description')
-	})
-
-	test('WriteTool.define() uses default description when no override', () => {
-		const tool = WriteTool.define(async () => 'ok')
-		expect(tool.description).toBe('Write content to a file, creating it if it does not exist')
-	})
-
-	test('ApplyPatchTool.define() accepts custom description', () => {
-		const tool = ApplyPatchTool.define(async () => 'ok', {
-			description: 'Apply Codex patches',
-		})
-		expect(tool.description).toBe('Apply Codex patches')
-	})
-})

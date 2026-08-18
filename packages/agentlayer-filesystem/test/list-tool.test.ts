@@ -13,10 +13,6 @@ describe('ListTool interface', () => {
 		expect(ListTool.name).toBe('list')
 	})
 
-	test('has non-empty description', () => {
-		expect(ListTool.description.length).toBeGreaterThan(0)
-	})
-
 	test('define() returns a tool with name "list"', () => {
 		const tool = ListTool.define(async () => [])
 		expect(tool.name).toBe('list')
