@@ -42,7 +42,7 @@
 	],
     "catalog": {
 		"@ai-sdk/anthropic": "3.0.82",
-		"@ai-sdk/openai": "3.0.69",
+		"@ai-sdk/openai": "3.0.96",
         "@ai-sdk/provider": "3.0.10",
         "@ai-sdk/provider-utils": "4.0.27",
         "@pulumi/aws": "7.26.0",

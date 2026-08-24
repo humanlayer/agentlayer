@@ -750,12 +750,13 @@ export class OpenAIResponsesLanguageModel implements LanguageModelV3 {
 			usage: {
 				inputTokens: {
 					total: response.usage.input_tokens,
-					noCache:
-						response.usage.input_tokens_details?.cached_tokens != null
-							? response.usage.input_tokens - response.usage.input_tokens_details.cached_tokens
-							: undefined,
+					noCache: deriveNoCacheTokens(
+						response.usage.input_tokens,
+						response.usage.input_tokens_details?.cached_tokens,
+						response.usage.input_tokens_details?.cache_write_tokens,
+					),
 					cacheRead: response.usage.input_tokens_details?.cached_tokens ?? undefined,
-					cacheWrite: undefined,
+					cacheWrite: response.usage.input_tokens_details?.cache_write_tokens ?? undefined,
 				},
 				outputTokens: {
 					total: response.usage.output_tokens,
@@ -812,12 +813,14 @@ export class OpenAIResponsesLanguageModel implements LanguageModelV3 {
 			totalTokens: number | undefined
 			reasoningTokens: number | undefined
 			cachedInputTokens: number | undefined
+			cacheWriteInputTokens: number | undefined
 		} = {
 			inputTokens: undefined,
 			outputTokens: undefined,
 			totalTokens: undefined,
 			reasoningTokens: undefined,
 			cachedInputTokens: undefined,
+			cacheWriteInputTokens: undefined,
 		}
 		const logprobs: Array<z.infer<typeof LOGPROBS_SCHEMA>> = []
 		let responseId: string | null = null
@@ -1282,6 +1285,8 @@ export class OpenAIResponsesLanguageModel implements LanguageModelV3 {
 									value.response.usage.output_tokens_details?.reasoning_tokens ?? undefined
 								usage.cachedInputTokens =
 									value.response.usage.input_tokens_details?.cached_tokens ?? undefined
+								usage.cacheWriteInputTokens =
+									value.response.usage.input_tokens_details?.cache_write_tokens ?? undefined
 								if (typeof value.response.service_tier === 'string') {
 									serviceTier = value.response.service_tier
 								}
@@ -1338,12 +1343,13 @@ export class OpenAIResponsesLanguageModel implements LanguageModelV3 {
 								usage: {
 									inputTokens: {
 										total: usage.inputTokens,
-										noCache:
-											usage.inputTokens != null && usage.cachedInputTokens != null
-												? usage.inputTokens - usage.cachedInputTokens
-												: undefined,
+										noCache: deriveNoCacheTokens(
+											usage.inputTokens,
+											usage.cachedInputTokens,
+											usage.cacheWriteInputTokens,
+										),
 										cacheRead: usage.cachedInputTokens,
-										cacheWrite: undefined,
+										cacheWrite: usage.cacheWriteInputTokens,
 									},
 									outputTokens: {
 										total: usage.outputTokens,
@@ -1368,9 +1374,26 @@ export class OpenAIResponsesLanguageModel implements LanguageModelV3 {
 	}
 }
 
+// One derivation for both doGenerate and doStream: noCache is only a fact when
+// the backend reported at least one cache counter — details: {} (or null
+// fields) means "unknown", and fabricating noCache = input_tokens there would
+// present a guess as a provider-vouched figure and bypass downstream
+// absence-keyed fallbacks. Both counters are SUBSETS of the input total.
+function deriveNoCacheTokens(
+	inputTokens: number | undefined,
+	cacheRead: number | null | undefined,
+	cacheWrite: number | null | undefined,
+): number | undefined {
+	if (inputTokens == null) return undefined
+	if (cacheRead == null && cacheWrite == null) return undefined
+	return Math.max(inputTokens - (cacheRead ?? 0) - (cacheWrite ?? 0), 0)
+}
+
 const usageSchema = z.object({
 	input_tokens: z.number(),
-	input_tokens_details: z.object({ cached_tokens: z.number().nullish() }).nullish(),
+	input_tokens_details: z
+		.object({ cached_tokens: z.number().nullish(), cache_write_tokens: z.number().nullish() })
+		.nullish(),
 	output_tokens: z.number(),
 	output_tokens_details: z.object({ reasoning_tokens: z.number().nullish() }).nullish(),
 })

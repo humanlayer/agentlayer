@@ -1,22 +1,9 @@
 // --- Providers ---
 
-export type CodexProviderMode = 'sse' | 'aisdk_responses' | 'websockets'
+export type CodexProviderMode = 'sse' | 'websockets'
 
 // --- JWT ---
 export * from './jwt'
-export type { CodexRequestBody } from './legacy'
-// --- Legacy (from old codex.ts — keep for backward compat until removed) ---
-export {
-	buildCodexHeaders,
-	buildCodexRequestBody,
-	createCodexLanguageModel,
-	createCodexProvider,
-	createCodexSseStream,
-	parseCodexSseResponse,
-	prepareCodexRequest,
-	streamPartsToGenerateResult,
-	transformCodexPrompt,
-} from './legacy'
 // --- OAuth ---
 export {
 	type BrowserOAuthStartResult,
@@ -44,7 +31,6 @@ export {
 	startDeviceOAuth,
 	writeOAuthTokens,
 } from './oauth'
-export { type CodexResponsesProviderOptions, createCodexResponsesProvider } from './providers/aisdk-codex-provider'
 export { type CodexSseVendorProviderOptions, createCodexSseVendorProvider } from './providers/sse-vendor-provider'
 export { type CodexEffectProviderOptions, createCodexEffectProvider } from './providers/websockets-vendor-provider'
 // --- Auth ---

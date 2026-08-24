@@ -50,7 +50,7 @@ export interface CodexDiagnosticRecord {
 
 export type CodexDiagnosticSeverity = 'debug' | 'info' | 'warning' | 'error'
 
-export type CodexDiagnosticTransport = 'sse' | 'websockets' | 'aisdk_responses'
+export type CodexDiagnosticTransport = 'sse' | 'websockets' | 'custom_responses'
 
 /**
  * Opaque diagnostics context the host threads through CodeLayer into the Codex

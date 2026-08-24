@@ -6,12 +6,11 @@ import { createCopilotProvider } from '@humanlayer/agentlayer-provider-github-co
 import {
 	createCodexSseVendorProvider,
 	createCodexEffectProvider,
-	createCodexResponsesProvider,
 	type CodexDiagnosticsContext,
 	CODEX_DEFAULT_VERSION,
 } from '@humanlayer/agentlayer-provider-openai-codex'
 
-export type CodexProviderMode = 'sse' | 'aisdk_responses' | 'websockets'
+export type CodexProviderMode = 'sse' | 'websockets'
 
 export type ProviderType = 'anthropic' | 'openai' | 'codex' | 'copilot' | 'firepass'
 
@@ -79,12 +78,17 @@ export async function captureResponseUsage(response: Response, usage: RawCacheUs
 	if (!response.body || !response.ok) return response
 	const contentType = response.headers.get('content-type') ?? ''
 	if (contentType.includes('application/json')) {
+		// Read once and rebuild rather than clone(): the SDK (>= @ai-sdk/openai
+		// 3.0.96) reads the body in a way that races the clone's tee under Bun,
+		// surfacing as "JSON Parse error: Unexpected EOF" from a half-drained
+		// stream. A rebuilt Response hands it a fresh, fully-buffered body.
+		const text = await response.text()
 		try {
-			captureCacheUsage(await response.clone().json(), usage)
+			captureCacheUsage(JSON.parse(text), usage)
 		} catch {
-			// The SDK parses and reports malformed JSON from the original response.
+			// The SDK parses and reports malformed JSON itself.
 		}
-		return response
+		return new Response(text, { status: response.status, statusText: response.statusText, headers: response.headers })
 	}
 	if (!contentType.includes('text/event-stream')) return response
 
@@ -265,7 +269,7 @@ function reportCustomResponsesError(options: {
 		options.diagnostics.onEvent({
 			event: 'codex.provider.custom_responses.failed',
 			severity: 'error',
-			transport: 'aisdk_responses',
+			transport: 'custom_responses',
 			annotations: options.diagnostics.annotations,
 			metadata: {
 				error: safeMessage,
@@ -438,9 +442,16 @@ export async function resolveModel(
 			}
 
 			const authStore = await ensureFileAuthStore()
-			const codexMode = context?.codexProviderMode
-				?? (process.env.CODEX_PROVIDER as CodexProviderMode | undefined)
-				?? 'sse'
+			const requestedRaw = context?.codexProviderMode ?? (process.env.CODEX_PROVIDER as string | undefined)
+			// An empty env value (CODEX_PROVIDER= from a template) means unset, not unknown.
+			const requestedMode = requestedRaw === '' ? undefined : requestedRaw
+			// Unknown or retired CODEX_PROVIDER values fall back to the default
+			// transport instead of crashing a daemon that still carries the env var.
+			const codexMode: CodexProviderMode =
+				requestedMode === 'sse' || requestedMode === 'websockets' ? requestedMode : 'sse'
+			if (requestedMode !== undefined && requestedMode !== codexMode) {
+				console.error(`[codex-provider] unknown transport '${requestedMode}', falling back to 'sse'`)
+			}
 			const codexOpts = {
 				authStore,
 				version: CODEX_DEFAULT_VERSION,
@@ -450,8 +461,6 @@ export async function resolveModel(
 			}
 			console.error(`[codex-provider] using ${codexMode} transport for model ${modelId}`)
 			switch (codexMode) {
-				case 'aisdk_responses':
-					return createCodexResponsesProvider(codexOpts).languageModel(modelId) as LanguageModel
 				case 'websockets':
 					return createCodexEffectProvider(codexOpts).languageModel(modelId) as LanguageModel
 				case 'sse':

@@ -42,7 +42,14 @@ import { sanitizeTextForModelState, sanitizeToolOutputForModelState } from './sa
 import type { AgentState, ApprovalDecision, ApprovalHistoryEntry, TerminalChildMap } from './state'
 import type { Step, StepToolResult, StopResult, StopTiming, StopWhen } from './stop-conditions'
 import { shouldStop } from './stop-conditions'
-import { extractUsage, getModelKey, type ModelTokenUsage, type TokenUsage, TokenUsageAccumulator } from './token-usage'
+import {
+	extractUsage,
+	getModelKey,
+	type ModelTokenUsage,
+	sumOrPoison,
+	type TokenUsage,
+	TokenUsageAccumulator,
+} from './token-usage'
 
 export type ProviderOptions = Parameters<typeof streamText>[0]['providerOptions']
 export type ProviderOptionsFactory = (ctx: { runId: string; promptCacheKey?: string }) => ProviderOptions
@@ -455,6 +462,7 @@ export class Agent<TTools extends Record<string, Tool<any, any>> = Record<string
 			cacheReadTokens: 0,
 			cacheWriteTokens: 0,
 			reasoningTokens: 0,
+			noCacheInputTokens: 0,
 		}
 		const inferenceMessages: ModelMessage[] = []
 		const summarize = async (requestText: string, turnPrefix: boolean): Promise<string> => {
@@ -489,6 +497,7 @@ export class Agent<TTools extends Record<string, Tool<any, any>> = Record<string
 			] as const) {
 				summaryUsage[key] += callUsage[key]
 			}
+			summaryUsage.noCacheInputTokens = sumOrPoison(summaryUsage.noCacheInputTokens, callUsage.noCacheInputTokens)
 			const responseMessages = response.messages.filter((message) => message.role !== 'tool')
 			const summary = responseMessages
 				.filter((message) => message.role === 'assistant')

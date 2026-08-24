@@ -13,9 +13,9 @@ bun add @humanlayer/agentlayer-provider-openai-codex @humanlayer/agentlayer-prov
 ```ts
 import { Agent, startState, userMessage } from '@humanlayer/agentlayer-core'
 import { createMemoryAuthStore } from '@humanlayer/agentlayer-provider-auth'
-import { createCodexProvider } from '@humanlayer/agentlayer-provider-openai-codex'
+import { createCodexSseVendorProvider } from '@humanlayer/agentlayer-provider-openai-codex'
 
-const codex = createCodexProvider({
+const codex = createCodexSseVendorProvider({
   authStore: createMemoryAuthStore({
     codex: { kind: 'oauth', accessToken: process.env.CODEX_ACCESS_TOKEN! },
   }),
@@ -27,22 +27,16 @@ const { state } = await agent.run({ state: startState([userMessage('Hello')]), s
 
 ## Providers
 
-The package exports four provider factories with different transport/parsing tradeoffs; swap the import to change providers, everything else stays the same.
+The package exports two provider factories with different transport tradeoffs; swap the import to change providers, everything else stays the same. (The hand-rolled `createCodexProvider` and the `@ai-sdk/openai`-delegating `createCodexResponsesProvider` were removed: neither had runtime consumers, and the latter inherited an upstream usage schema that dropped GPT-5.6's `cache_write_tokens` at the then-pinned version.)
 
-### 1. `createCodexProvider` — hand-rolled SSE (legacy)
-Full SSE byte-stream parsing, event dispatch, and a 120s per-chunk watchdog (`readWithTimeout`). No dependency on `@ai-sdk/openai` for streaming. Also exports its building blocks from `./legacy` (`buildCodexRequestBody`, `buildCodexHeaders`, `transformCodexPrompt`, `createCodexSseStream`, `parseCodexSseResponse`, ...) for advanced use.
-
-### 2. `createCodexResponsesProvider` — thin wrapper over `@ai-sdk/openai`
-Delegates SSE parsing to `@ai-sdk/openai`'s `responses()` model. This package only patches `fetch` to handle auth, headers, URL rewriting, and Codex-specific body cleanup (forces `store: false`, moves `system` messages into `instructions`, strips `id`/`previous_response_id`/`max_output_tokens`). Adds a configurable per-chunk watchdog and a header-arrival watchdog.
-
-### 3. `createCodexSseVendorProvider` — Effect-based parser over HTTP SSE
+### 1. `createCodexSseVendorProvider` — Effect-based parser over HTTP SSE
 Builds requests through the shared `LLMRequest` adapter (`./shared/adapter`) and streams via the vendored `@humanlayer/opencode-llm-vendor` `LLMClient` over HTTP SSE (`httpSseRoute`). Reports structured records to `diagnostics.onEvent` when configured.
 
-### 4. `createCodexEffectProvider` — Effect-based parser over WebSocket
-Same adapter/`LLMClient` pipeline as #3, but transports over a WebSocket connection (`webSocketRoute` + `WebSocketExecutor`) instead of HTTP SSE. Lives in `./providers/websockets-vendor-provider`.
+### 2. `createCodexEffectProvider` — Effect-based parser over WebSocket
+Same adapter/`LLMClient` pipeline as #1, but transports over a WebSocket connection (`webSocketRoute` + `WebSocketExecutor`) instead of HTTP SSE. Lives in `./providers/websockets-vendor-provider`.
 
 ```ts
-import { createCodexEffectProvider, createCodexResponsesProvider, createCodexSseVendorProvider } from '@humanlayer/agentlayer-provider-openai-codex'
+import { createCodexEffectProvider, createCodexSseVendorProvider } from '@humanlayer/agentlayer-provider-openai-codex'
 
 const codex = createCodexEffectProvider({ authStore, fastMode: true })
 const model = codex.languageModel('codex-mini-latest')
@@ -64,7 +58,7 @@ interface CodexProviderOptions {
 }
 ```
 
-`createCodexResponsesProvider` additionally accepts `chunkTimeout`/`headerTimeout` (ms; default `120000`/`10000`, pass `false` to disable). The vendor-backed providers (`createCodexSseVendorProvider`, `createCodexEffectProvider`) use fixed internal stream timeouts and don't expose these as options.
+Both providers use fixed internal stream timeouts and don't expose timeout options.
 
 ## Fast mode & service tier
 
@@ -77,21 +71,17 @@ await model.doStream({
 })
 ```
 
-`serviceTier` takes precedence over `fastMode`, and `"fast"` is always normalized to `"priority"` (`normalizeCodexServiceTier`). `createCodexProvider` (legacy) reads options from both `providerOptions.openai` and `providerOptions.codex`; the vendor-backed providers (`createCodexSseVendorProvider`, `createCodexEffectProvider`) only read `providerOptions.openai`.
+`serviceTier` takes precedence over `fastMode`, and `"fast"` is always normalized to `"priority"` (`normalizeCodexServiceTier`). Both providers read options from `providerOptions.openai`.
 
 ## Architecture
 
 ```mermaid
 flowchart LR
   Agent["Agent (agentlayer-core)"] --> Model["languageModel() : LanguageModelV3"]
-  Model --> P1["createCodexProvider\n(hand-rolled SSE)"]
-  Model --> P2["createCodexResponsesProvider\n(@ai-sdk/openai wrapper)"]
-  Model --> P3["createCodexSseVendorProvider\n(Effect + HTTP SSE)"]
-  Model --> P4["createCodexEffectProvider\n(Effect + WebSocket)"]
+  Model --> P1["createCodexSseVendorProvider\n(Effect + HTTP SSE)"]
+  Model --> P2["createCodexEffectProvider\n(Effect + WebSocket)"]
   P1 --> API["chatgpt.com/backend-api/codex/responses"]
   P2 --> API
-  P3 --> API
-  P4 --> API
 ```
 
 ## Other exports

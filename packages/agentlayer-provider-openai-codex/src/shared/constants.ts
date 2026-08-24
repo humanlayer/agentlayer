@@ -4,7 +4,6 @@ export const CODEX_PROVIDER_ID = 'codex'
 export const CODEX_FAST_SERVICE_TIER = 'priority'
 export const CODEX_FLEX_SERVICE_TIER = 'flex'
 export const CODEX_DEFAULT_VERSION = '1.15.7'
-export const DEFAULT_CHUNK_TIMEOUT_MS = 120_000
 export const CODEX_FIRST_EVENT_TIMEOUT_MS = 60_000
 export const CODEX_FIRST_EVENT_TIMEOUT_RETRIES = 5
 export const CODEX_FIRST_EVENT_RETRY_BASE_DELAY_MS = 1_000

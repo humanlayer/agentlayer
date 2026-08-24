@@ -202,7 +202,6 @@ describe('provider resolution', () => {
 		process.env.CODELAYER_CODEX_MODEL = 'azure-coding-deployment'
 		process.env.CODEX_PROVIDER = 'websockets'
 		const sseSpy = spyOn(codexProvider, 'createCodexSseVendorProvider')
-		const responsesSpy = spyOn(codexProvider, 'createCodexResponsesProvider')
 		const websocketSpy = spyOn(codexProvider, 'createCodexEffectProvider')
 
 		const model = await resolveModel('codex', 'gpt-5.6-sol')
@@ -211,14 +210,12 @@ describe('provider resolution', () => {
 		expect((model as { modelId: string }).modelId).toBe('gpt-5.6-sol')
 		expect(providerAuth.ensureFileAuthStore).not.toHaveBeenCalled()
 		expect(sseSpy).not.toHaveBeenCalled()
-		expect(responsesSpy).not.toHaveBeenCalled()
 		expect(websocketSpy).not.toHaveBeenCalled()
 	})
 
 	test('rejects partial custom Codex settings before auth or private provider selection', async () => {
 		process.env.CODELAYER_CODEX_BASE_URL = 'https://example.test/openai/v1'
 		const sseSpy = spyOn(codexProvider, 'createCodexSseVendorProvider')
-		const responsesSpy = spyOn(codexProvider, 'createCodexResponsesProvider')
 		const websocketSpy = spyOn(codexProvider, 'createCodexEffectProvider')
 
 		await expect(resolveModel('codex', 'gpt-5.6-sol')).rejects.toThrow('CODELAYER_CODEX_API_KEY')
@@ -227,22 +224,18 @@ describe('provider resolution', () => {
 		await expect(resolveModel('codex', 'gpt-5.6-sol')).rejects.toThrow('CODELAYER_CODEX_BASE_URL')
 		expect(providerAuth.ensureFileAuthStore).not.toHaveBeenCalled()
 		expect(sseSpy).not.toHaveBeenCalled()
-		expect(responsesSpy).not.toHaveBeenCalled()
 		expect(websocketSpy).not.toHaveBeenCalled()
 	})
 
 	test('keeps every private Codex transport available when the override is absent', async () => {
 		const sseSpy = spyOn(codexProvider, 'createCodexSseVendorProvider')
-		const responsesSpy = spyOn(codexProvider, 'createCodexResponsesProvider')
 		const websocketSpy = spyOn(codexProvider, 'createCodexEffectProvider')
 
 		await resolveModel('codex', 'gpt-5.5', { codexProviderMode: 'sse' })
-		await resolveModel('codex', 'gpt-5.5', { codexProviderMode: 'aisdk_responses' })
 		await resolveModel('codex', 'gpt-5.5', { codexProviderMode: 'websockets' })
 
-		expect(providerAuth.ensureFileAuthStore).toHaveBeenCalledTimes(3)
+		expect(providerAuth.ensureFileAuthStore).toHaveBeenCalledTimes(2)
 		expect(sseSpy).toHaveBeenCalledTimes(1)
-		expect(responsesSpy).toHaveBeenCalledTimes(1)
 		expect(websocketSpy).toHaveBeenCalledTimes(1)
 	})
 
@@ -273,13 +266,17 @@ describe('provider resolution', () => {
 		)
 	})
 
-	test('respects explicit codex provider mode from caller context', async () => {
-		const providerSpy = spyOn(codexProvider, 'createCodexResponsesProvider')
+	test('falls back to the SSE transport when a retired mode is requested', async () => {
+		const sseSpy = spyOn(codexProvider, 'createCodexSseVendorProvider')
 
-		const model = await resolveModel('codex', 'gpt-5.5', { codexProviderMode: 'aisdk_responses' })
+		// 'aisdk_responses' was removed; a daemon still carrying the env var or a
+		// stale context value must degrade to the default transport, not crash.
+		const model = await resolveModel('codex', 'gpt-5.5', {
+			codexProviderMode: 'aisdk_responses' as never,
+		})
 
 		expect(model).toBeDefined()
-		expect(providerSpy).toHaveBeenCalled()
+		expect(sseSpy).toHaveBeenCalled()
 	})
 
 	test('respects CODEX_PROVIDER when caller context does not set a mode', async () => {
