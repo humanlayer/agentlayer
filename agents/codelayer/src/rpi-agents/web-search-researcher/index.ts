@@ -17,7 +17,9 @@ export const WEB_SEARCH_RESEARCHER_PROMPT = `You research up-to-date information
 
 - Prioritize official documentation
 - Prefer concise, relevant findings over broad digressions
-- Call out uncertainty when sources disagree`
+- Call out uncertainty when sources disagree
+
+do not use control-chrome or control-browser or browser related skills unless the user explicitly requests them, stick to the web search/fetch tools`
 
 export function createWebSearchResearcherAgent(opts: SpecialistAgentOptions) {
 	return createSpecialistAgent(WEB_SEARCH_RESEARCHER_PROMPT, opts)
