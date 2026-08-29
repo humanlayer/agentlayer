@@ -7,8 +7,9 @@
 		"biome:check": "biome check .",
 		"build": "bun --filter '*' build",
 		"build:packages": "bun --filter './packages/*' --filter './agents/*' build",
-		"check": "bun --parallel 'typecheck' 'biome' 'test:ci' 'check:release'",
+		"check": "bun --parallel 'typecheck' 'biome' 'test:ci' 'check:release' 'check:zod'",
 		"check:release": "bun run scripts/release/validate-manifest.ts",
+		"check:zod": "bun run scripts/check-zod-version.ts",
 		"dev": "bun --filter '*' dev",
 		"docs:build": "bun --filter '@humanlayer/agentlayer-docs' build",
 		"githooks": "mkdir -p scripts/hooks && cp scripts/hooks/pre-push $(git rev-parse --git-common-dir)/hooks/pre-push && chmod +x $(git rev-parse --git-common-dir)/hooks/pre-push",
@@ -53,7 +54,7 @@
 		"effect": "4.0.0-beta.107",
         "minimatch": "10.1.1",
         "typescript": "5.9.3",
-        "zod": "4.3.6"
+        "zod": "4.5.4"
     },
     "dependencies": {}
 }

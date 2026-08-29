@@ -23,6 +23,7 @@ jobs:
           node-version: 22
           registry-url: https://registry.npmjs.org
       - run: bun install --frozen-lockfile
+      - run: bun run check:zod
       - run: bun run build:packages
       - run: bun run release:prepare --version "${{ inputs.version }}"
       - run: bun run release:publish --version "${{ inputs.version }}" --dry-run

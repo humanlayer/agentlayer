@@ -22,6 +22,7 @@ jobs:
           path: ~/.bun/install/cache
           key: bun-${{ runner.os }}-${{ hashFiles('**/bun.lock') }}
       - run: bun install --frozen-lockfile
+      - run: bun run check:zod
       - run: bun run biome:check
       - run: bun run typecheck
       - run: bun run test:ci

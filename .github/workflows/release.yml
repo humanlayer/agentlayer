@@ -24,6 +24,7 @@ jobs:
         id: version
         run: bun run scripts/release/tag-info.ts
       - run: bun install --frozen-lockfile
+      - run: bun run check:zod
       - run: bun run biome:check
       - run: bun run typecheck
       - run: bun run test:ci
