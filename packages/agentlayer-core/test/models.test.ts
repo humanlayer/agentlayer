@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { CODEX_CONTEXT_WINDOWS, type ModelKey, ModelProvider } from '../src/models'
+import { CODEX_CONTEXT_WINDOWS, CUSTOM_RESPONSES_PROVIDER, type ModelKey, ModelProvider } from '../src/models'
 
 describe('ModelProvider.getModelLimits', () => {
 	const provider = new ModelProvider()
@@ -33,6 +33,19 @@ describe('ModelProvider.getModelLimits', () => {
 
 		expect(limits?.context).toBe(1_050_000)
 		expect(limits?.output).toBe(128_000)
+	})
+
+	test('a custom Responses endpoint is priced as the OpenAI model it serves', () => {
+		// Regression: this key used to miss the catalog entirely, and a pricing miss is
+		// reported as `undefined`, so Azure AI Foundry sessions recorded tokens and no
+		// dollars at all — silently, and unrecoverably, since cost is frozen at ingest.
+		expect(provider.getModelPricing(`${CUSTOM_RESPONSES_PROVIDER}/gpt-5.6-sol`)).toMatchObject({
+			input: 5,
+			output: 30,
+		})
+
+		// The public Responses API, not the private Codex one, so it keeps the public window.
+		expect(provider.getModelLimits(`${CUSTOM_RESPONSES_PROVIDER}/gpt-5.6-sol`)?.context).toBe(1_050_000)
 	})
 
 	test('openai/gpt-5.6 keeps the public OpenAI API context window and pricing', () => {

@@ -55,6 +55,15 @@ export function getCodexContextWindow(modelId: string): number {
 	return CODEX_CONTEXT_WINDOWS[modelId as CodexModel] ?? CODEX_CONTEXT_WINDOWS['gpt-5.5']
 }
 
+/**
+ * Provider name for a user-supplied OpenAI-compatible Responses endpoint (Azure AI
+ * Foundry, or OpenAI direct). The models behind it are OpenAI catalog models, so the
+ * key must resolve to `openai` here — anything else silently costs nothing, because a
+ * pricing miss is reported as `undefined` rather than an error. CodeLayer builds the
+ * model with this exact name; import it from there rather than repeating the literal.
+ */
+export const CUSTOM_RESPONSES_PROVIDER = 'custom-openai-responses'
+
 const PROVIDER_LIMIT_OVERRIDES: Record<string, Partial<ModelLimits>> = {}
 
 function getProviderLimitOverride(modelKey: ModelKey): Partial<ModelLimits> | undefined {
@@ -108,8 +117,11 @@ export class ModelProvider {
 			// AI SDK provider keys include a suffix (e.g. "anthropic.messages", "openai.chat")
 			// but models.dev uses the base provider name (e.g. "anthropic", "openai")
 			const baseKey = rawProviderKey.split('.')[0]!
-			// Codex providers use custom names but their models are OpenAI models
-			const providerKey = baseKey.startsWith('codex') ? 'openai' : baseKey
+			// Codex providers use custom names but their models are OpenAI models. So is the model
+			// behind a custom Responses endpoint: CODELAYER_CODEX_MODEL renames it only on the wire,
+			// so modelId here is still the selected OpenAI catalog id.
+			const providerKey =
+				baseKey.startsWith('codex') || baseKey === CUSTOM_RESPONSES_PROVIDER ? 'openai' : baseKey
 
 			const provider = this.modelsData[providerKey]
 			if (!provider?.models) return undefined

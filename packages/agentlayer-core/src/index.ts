@@ -92,6 +92,7 @@ export {
 	toolResultMessage,
 	userMessage,
 } from './messages'
+export { CUSTOM_RESPONSES_PROVIDER } from './models'
 export { createOutputRenderer, type OutputRenderer, type OutputRendererOptions } from './output-renderer'
 export { getPendingToolCalls } from './pending'
 export * from './prompts'
