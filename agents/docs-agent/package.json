@@ -20,11 +20,12 @@
 		"@humanlayer/agentlayer-filesystem": "workspace:*",
 		"@humanlayer/codelayer": "workspace:*",
 		"@types/bun": "latest",
-		"commander": "catalog:",
-		"zod": "catalog:"
+		"commander": "catalog:"
 	},
 	"peerDependencies": {
 		"typescript": "^5"
 	},
-	"dependencies": {}
+	"dependencies": {
+		"zod": "catalog:"
+	}
 }

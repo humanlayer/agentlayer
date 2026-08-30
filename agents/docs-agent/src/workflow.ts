@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import 'zod/compile'
 import { resolve } from 'node:path'
 import { $ } from 'bun'
 import { Command } from 'commander'

@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import 'zod/compile'
 import readline from 'node:readline/promises'
 import { anthropic } from '@ai-sdk/anthropic'
 import { YjsProvider } from '@durable-streams/y-durable-streams'
