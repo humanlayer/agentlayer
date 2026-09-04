@@ -188,53 +188,47 @@ describe('provider resolution', () => {
 	})
 
 	test('continues to resolve codex and copilot from AgentLayer auth store', async () => {
-		const codexModel = await resolveModel('codex', 'gpt-5.5')
+		const codexModel = await resolveModel('codex', 'gpt-5.5', { authStore })
 		const copilotModel = await resolveModel('copilot', 'gpt-5.4')
 
 		expect(codexModel).toBeDefined()
 		expect(copilotModel).toBeDefined()
-		expect(providerAuth.ensureFileAuthStore).toHaveBeenCalledTimes(2)
+		expect(providerAuth.ensureFileAuthStore).toHaveBeenCalledTimes(1)
 	})
 
-	test('resolves a complete custom Codex override before auth and private provider selection', async () => {
+	test('resolves a complete custom Codex override after checking active connection selection', async () => {
 		process.env.CODELAYER_CODEX_BASE_URL = 'https://example.test/openai/v1'
 		process.env.CODELAYER_CODEX_API_KEY = 'custom-test-key'
 		process.env.CODELAYER_CODEX_MODEL = 'azure-coding-deployment'
 		process.env.CODEX_PROVIDER = 'websockets'
-		const sseSpy = spyOn(codexProvider, 'createCodexSseVendorProvider')
-		const websocketSpy = spyOn(codexProvider, 'createCodexEffectProvider')
 
-		const model = await resolveModel('codex', 'gpt-5.6-sol')
+		const model = await resolveModel('codex', 'gpt-5.6-sol', { authStore })
 
 		expect((model as { provider: string }).provider).toBe('custom-openai-responses')
 		expect((model as { modelId: string }).modelId).toBe('gpt-5.6-sol')
-		expect(providerAuth.ensureFileAuthStore).not.toHaveBeenCalled()
-		expect(sseSpy).not.toHaveBeenCalled()
-		expect(websocketSpy).not.toHaveBeenCalled()
 	})
 
-	test('rejects partial custom Codex settings before auth or private provider selection', async () => {
+	test('rejects partial custom Codex settings after checking active connection selection', async () => {
 		process.env.CODELAYER_CODEX_BASE_URL = 'https://example.test/openai/v1'
-		const sseSpy = spyOn(codexProvider, 'createCodexSseVendorProvider')
-		const websocketSpy = spyOn(codexProvider, 'createCodexEffectProvider')
 
-		await expect(resolveModel('codex', 'gpt-5.6-sol')).rejects.toThrow('CODELAYER_CODEX_API_KEY')
+		await expect(resolveModel('codex', 'gpt-5.6-sol', { authStore })).rejects.toThrow('CODELAYER_CODEX_API_KEY')
 		delete process.env.CODELAYER_CODEX_BASE_URL
 		process.env.CODELAYER_CODEX_API_KEY = 'custom-test-key'
-		await expect(resolveModel('codex', 'gpt-5.6-sol')).rejects.toThrow('CODELAYER_CODEX_BASE_URL')
-		expect(providerAuth.ensureFileAuthStore).not.toHaveBeenCalled()
-		expect(sseSpy).not.toHaveBeenCalled()
-		expect(websocketSpy).not.toHaveBeenCalled()
+		await expect(resolveModel('codex', 'gpt-5.6-sol', { authStore })).rejects.toThrow('CODELAYER_CODEX_BASE_URL')
 	})
 
 	test('keeps every private Codex transport available when the override is absent', async () => {
 		const sseSpy = spyOn(codexProvider, 'createCodexSseVendorProvider')
 		const websocketSpy = spyOn(codexProvider, 'createCodexEffectProvider')
 
-		await resolveModel('codex', 'gpt-5.5', { codexProviderMode: 'sse' })
-		await resolveModel('codex', 'gpt-5.5', { codexProviderMode: 'websockets' })
+		await resolveModel('codex', 'gpt-5.5', {
+			codexProviderMode: 'sse', authStore, codexConnection: { type: 'chatgpt' },
+		})
+		await resolveModel('codex', 'gpt-5.5', {
+			codexProviderMode: 'websockets', authStore, codexConnection: { type: 'chatgpt' },
+		})
 
-		expect(providerAuth.ensureFileAuthStore).toHaveBeenCalledTimes(2)
+		expect(providerAuth.ensureFileAuthStore).not.toHaveBeenCalled()
 		expect(sseSpy).toHaveBeenCalledTimes(1)
 		expect(websocketSpy).toHaveBeenCalledTimes(1)
 	})
@@ -242,7 +236,9 @@ describe('provider resolution', () => {
 	test('defaults codex model resolution to the SSE provider', async () => {
 		const providerSpy = spyOn(codexProvider, 'createCodexSseVendorProvider')
 
-		const model = await resolveModel('codex', 'gpt-5.5')
+		const model = await resolveModel('codex', 'gpt-5.5', {
+			authStore, codexConnection: { type: 'chatgpt' },
+		})
 
 		expect(model).toBeDefined()
 		expect(providerSpy).toHaveBeenCalled()
@@ -255,7 +251,9 @@ describe('provider resolution', () => {
 			onEvent: () => {},
 		}
 
-		const model = await resolveModel('codex', 'gpt-5.5', { codexDiagnostics })
+		const model = await resolveModel('codex', 'gpt-5.5', {
+			codexDiagnostics, authStore, codexConnection: { type: 'chatgpt' },
+		})
 
 		expect(model).toBeDefined()
 		expect(providerSpy).toHaveBeenCalledWith(
@@ -273,6 +271,8 @@ describe('provider resolution', () => {
 		// stale context value must degrade to the default transport, not crash.
 		const model = await resolveModel('codex', 'gpt-5.5', {
 			codexProviderMode: 'aisdk_responses' as never,
+			authStore,
+			codexConnection: { type: 'chatgpt' },
 		})
 
 		expect(model).toBeDefined()
@@ -283,7 +283,9 @@ describe('provider resolution', () => {
 		process.env.CODEX_PROVIDER = 'websockets'
 		const providerSpy = spyOn(codexProvider, 'createCodexEffectProvider')
 
-		const model = await resolveModel('codex', 'gpt-5.5')
+		const model = await resolveModel('codex', 'gpt-5.5', {
+			authStore, codexConnection: { type: 'chatgpt' },
+		})
 
 		expect(model).toBeDefined()
 		expect(providerSpy).toHaveBeenCalled()

@@ -34,6 +34,7 @@ interface ConnectionResult {
 async function resolveHeaders(): Promise<Record<string, string>> {
 	const authStore = await ensureFileAuthStore()
 	const auth = await resolveCodexAuth(authStore, 'codex', globalThis.fetch, Date.now)
+	if (auth.kind === 'aws-profile') throw new Error('AWS profile auth cannot be used with the ChatGPT Codex provider')
 	const token = auth.kind === 'api' ? auth.apiKey : auth.accessToken
 	const headers: Record<string, string> = {
 		authorization: `Bearer ${token}`,

@@ -1,7 +1,7 @@
 import { createAnthropic } from '@ai-sdk/anthropic'
 import { createOpenAI } from '@ai-sdk/openai'
 import type { LanguageModel } from 'ai'
-import { ensureFileAuthStore, type AuthInfo } from '@humanlayer/agentlayer-provider-auth'
+import { ensureFileAuthStore, type AuthInfo, type AuthStore } from '@humanlayer/agentlayer-provider-auth'
 import { createCopilotProvider } from '@humanlayer/agentlayer-provider-github-copilot'
 import {
 	createCodexSseVendorProvider,
@@ -9,6 +9,12 @@ import {
 	type CodexDiagnosticsContext,
 	CODEX_DEFAULT_VERSION,
 } from '@humanlayer/agentlayer-provider-openai-codex'
+import { fetchWithBedrockAuth, makeBedrockAuth, type BedrockAuth } from './codex/bedrock-auth'
+import {
+	parseResponsesURL,
+	resolveCodexConnection,
+	type CodexConnection,
+} from './codex/connection'
 
 export type CodexProviderMode = 'sse' | 'websockets'
 
@@ -23,12 +29,23 @@ export type ProviderType = 'anthropic' | 'openai' | 'codex' | 'copilot' | 'firep
 export interface ResolveModelContext {
 	codexDiagnostics?: CodexDiagnosticsContext
 	codexProviderMode?: CodexProviderMode
+	codexConnection?: CodexConnection
+	codexHome?: string
+	/** Override the default file store, primarily for embedded runtimes and tests. */
+	authStore?: AuthStore
 }
+
+export type CodexResponsesAuth =
+	| { type: 'static'; apiKey: string; header?: string }
+	| { type: 'bedrock'; auth: BedrockAuth }
 
 export interface CodexResponsesOverride {
 	baseURL: string
 	endpointURL: string
-	apiKey: string
+	auth?: CodexResponsesAuth
+	/** @deprecated Use auth: { type: 'static', apiKey, header }. */
+	apiKey?: string
+	/** @deprecated Use auth.header. */
 	apiKeyHeader?: string
 	wireModelId?: string
 }
@@ -173,44 +190,8 @@ function optionalEnvironmentValue(value: string | undefined): string | undefined
 	return value === undefined || value.length === 0 ? undefined : value
 }
 
-function isLoopbackHostname(hostname: string): boolean {
-	const normalized = hostname.toLowerCase()
-	if (normalized === 'localhost' || normalized.endsWith('.localhost') || normalized === '[::1]') return true
-	const match = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(normalized)
-	return match !== null && Number(match[1]) === 127 && match.slice(1).every((part) => Number(part) <= 255)
-}
-
 function parseCodexResponsesURL(rawValue: string): Pick<CodexResponsesOverride, 'baseURL' | 'endpointURL'> {
-	let url: URL
-	try {
-		url = new URL(rawValue)
-	} catch {
-		throw new Error(`${CODEX_OVERRIDE_ENV.baseURL} must be an absolute HTTP or HTTPS URL.`)
-	}
-
-	if (url.username || url.password) {
-		throw new Error(`${CODEX_OVERRIDE_ENV.baseURL} must not contain a username or password.`)
-	}
-	if (url.search || url.hash) {
-		throw new Error(`${CODEX_OVERRIDE_ENV.baseURL} must not contain a query string or fragment.`)
-	}
-	if (url.protocol !== 'https:' && !(url.protocol === 'http:' && isLoopbackHostname(url.hostname))) {
-		throw new Error(`${CODEX_OVERRIDE_ENV.baseURL} must use HTTPS unless it points to a loopback host.`)
-	}
-
-	const normalizedPath = url.pathname.replace(/\/+$/, '')
-	const isFullEndpoint = normalizedPath.endsWith('/responses')
-	const basePath = isFullEndpoint ? normalizedPath.slice(0, -'/responses'.length) : normalizedPath
-	const endpointPath = `${basePath}/responses` || '/responses'
-
-	url.pathname = basePath || '/'
-	const baseURL = url.toString().replace(/\/$/, '')
-	url.pathname = endpointPath
-
-	return {
-		baseURL,
-		endpointURL: url.toString(),
-	}
+	return parseResponsesURL(rawValue, CODEX_OVERRIDE_ENV.baseURL)
 }
 
 function validateHeaderName(headerName: string): void {
@@ -248,6 +229,7 @@ export function readCodexResponsesOverride(
 
 	return {
 		...parseCodexResponsesURL(rawBaseURL),
+		auth: { type: 'static', apiKey, header: apiKeyHeader },
 		apiKey,
 		apiKeyHeader,
 		wireModelId,
@@ -259,11 +241,14 @@ function reportCustomResponsesError(options: {
 	diagnostics?: CodexDiagnosticsContext
 	error: unknown
 	operation: 'generate' | 'resolve' | 'stream'
+	redactErrorMessage?: boolean
 }): void {
 	if (!options.diagnostics) return
 
 	const error = options.error instanceof Error ? options.error : new Error(String(options.error))
-	const safeMessage = options.apiKey ? error.message.replaceAll(options.apiKey, '[REDACTED]') : error.message
+	const safeMessage = options.redactErrorMessage
+		? 'Amazon Bedrock Responses request failed.'
+		: options.apiKey ? error.message.replaceAll(options.apiKey, '[REDACTED]') : error.message
 	const statusCode = 'statusCode' in error && typeof error.statusCode === 'number' ? error.statusCode : undefined
 	try {
 		options.diagnostics.onEvent({
@@ -291,20 +276,31 @@ export function createCustomCodexResponsesModel(options: {
 	diagnostics?: CodexDiagnosticsContext
 }): LanguageModel {
 	const { override, selectedModelId } = options
+	const auth = override.auth ?? (override.apiKey === undefined
+		? undefined
+		: { type: 'static' as const, apiKey: override.apiKey, header: override.apiKeyHeader })
+	if (!auth) throw new Error('Custom Codex Responses authentication is required.')
+	const staticApiKey = auth.type === 'static' ? auth.apiKey : undefined
+	const redactErrorMessage = auth.type === 'bedrock'
 	const createDeploymentModel = (rawUsage: RawCacheUsage) => {
 		const requestFetch = async (input: string | URL | Request, init?: RequestInit) => {
-			const headers = new Headers(init?.headers)
-			if (override.apiKeyHeader !== undefined) {
-				headers.delete('authorization')
-				headers.set(override.apiKeyHeader, override.apiKey)
+			let response: Response
+			if (auth.type === 'bedrock') {
+				response = await fetchWithBedrockAuth(auth.auth, options.fetch ?? globalThis.fetch, input, init)
+			} else {
+				const headers = new Headers(init?.headers)
+				if (auth.header !== undefined) {
+					headers.delete('authorization')
+					headers.set(auth.header, auth.apiKey)
+				}
+				response = await (options.fetch ?? globalThis.fetch)(input, { ...init, headers })
 			}
-			const response = await (options.fetch ?? globalThis.fetch)(input, { ...init, headers })
 			return await captureResponseUsage(response, rawUsage)
 		}
 		return createOpenAI({
 		name: 'custom-openai-responses',
 		baseURL: override.baseURL,
-		apiKey: override.apiKey,
+			apiKey: staticApiKey ?? 'bedrock-auth-placeholder',
 		fetch: requestFetch as typeof globalThis.fetch,
 	}).responses(override.wireModelId ?? selectedModelId)
 	}
@@ -321,10 +317,11 @@ export function createCustomCodexResponsesModel(options: {
 				return patchCacheUsage(await createDeploymentModel(rawUsage).doGenerate(request), rawUsage)
 			} catch (error) {
 				reportCustomResponsesError({
-					apiKey: override.apiKey,
+					apiKey: staticApiKey,
 					diagnostics: options.diagnostics,
 					error,
 					operation: 'generate',
+					redactErrorMessage,
 				})
 				throw error
 			}
@@ -339,10 +336,11 @@ export function createCustomCodexResponsesModel(options: {
 						transform(part, controller) {
 							if (part.type === 'error') {
 								reportCustomResponsesError({
-									apiKey: override.apiKey,
+									apiKey: staticApiKey,
 									diagnostics: options.diagnostics,
 									error: part.error,
 									operation: 'stream',
+									redactErrorMessage,
 								})
 							}
 							controller.enqueue(part.type === 'finish' ? patchCacheUsage(part, rawUsage) : part)
@@ -351,10 +349,11 @@ export function createCustomCodexResponsesModel(options: {
 				}
 			} catch (error) {
 				reportCustomResponsesError({
-					apiKey: override.apiKey,
+					apiKey: staticApiKey,
 					diagnostics: options.diagnostics,
 					error,
 					operation: 'stream',
+					redactErrorMessage,
 				})
 				throw error
 			}
@@ -421,19 +420,47 @@ export async function resolveModel(
 			return fireworks.chat(modelId)
 		}
 		case 'codex': {
-			let override: CodexResponsesOverride | undefined
-			try {
-				override = readCodexResponsesOverride()
-			} catch (error) {
-				reportCustomResponsesError({
-					apiKey: process.env[CODEX_OVERRIDE_ENV.apiKey],
+			const authStore = context?.authStore ?? await ensureFileAuthStore()
+			const hasLegacyOverride = Object.values(CODEX_OVERRIDE_ENV).some((name) =>
+				optionalEnvironmentValue(process.env[name]) !== undefined)
+			const connection = await resolveCodexConnection({
+				explicitConnection: context?.codexConnection,
+				authStore,
+				selectedModelId: modelId,
+				codexHome: context?.codexHome,
+				hasLegacyOverride,
+			})
+			if (connection.type === 'bedrock') {
+				return createCustomCodexResponsesModel({
+					override: {
+						baseURL: connection.baseURL,
+						endpointURL: connection.endpointURL,
+						auth: {
+							type: 'bedrock',
+							auth: makeBedrockAuth({ profile: connection.profile, region: connection.region }),
+						},
+						wireModelId: connection.model,
+					},
+					selectedModelId: modelId,
 					diagnostics: context?.codexDiagnostics,
-					error,
-					operation: 'resolve',
 				})
-				throw error
 			}
-			if (override !== undefined) {
+
+			let override: CodexResponsesOverride | undefined
+			if (connection.type === 'custom-responses') {
+				try {
+					override = readCodexResponsesOverride()
+				} catch (error) {
+					reportCustomResponsesError({
+						apiKey: process.env[CODEX_OVERRIDE_ENV.apiKey],
+						diagnostics: context?.codexDiagnostics,
+						error,
+						operation: 'resolve',
+					})
+					throw error
+				}
+			}
+			if (override) {
 				return createCustomCodexResponsesModel({
 					override,
 					selectedModelId: modelId,
@@ -441,7 +468,6 @@ export async function resolveModel(
 				})
 			}
 
-			const authStore = await ensureFileAuthStore()
 			const requestedRaw = context?.codexProviderMode ?? (process.env.CODEX_PROVIDER as string | undefined)
 			// An empty env value (CODEX_PROVIDER= from a template) means unset, not unknown.
 			const requestedMode = requestedRaw === '' ? undefined : requestedRaw

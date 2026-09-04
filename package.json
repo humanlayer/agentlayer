@@ -41,18 +41,24 @@
 		"agents/*",
 		"examples/*"
 	],
-    "catalog": {
+	"catalog": {
 		"@ai-sdk/anthropic": "3.0.82",
 		"@ai-sdk/openai": "3.0.96",
         "@ai-sdk/provider": "3.0.10",
         "@ai-sdk/provider-utils": "4.0.27",
+		"@aws/bedrock-token-generator": "1.1.0",
+		"@aws-sdk/credential-providers": "3.1126.0",
+		"@smithy/types": "4.18.0",
+		"@smithy/config-resolver": "4.7.2",
+		"@smithy/node-config-provider": "4.6.2",
         "@pulumi/aws": "7.26.0",
         "@pulumi/command": "1.2.1",
         "@pulumi/pulumi": "3.231.0",
 		"ai": "6.0.199",
         "commander": "14.0.3",
 		"effect": "4.0.0-beta.107",
-        "minimatch": "10.1.1",
+		"minimatch": "10.1.1",
+		"smol-toml": "1.8.0",
         "typescript": "5.9.3",
         "zod": "4.5.4"
     },

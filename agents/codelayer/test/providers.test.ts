@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, mock, spyOn, test } from 'bun:test'
 import type { LanguageModelV3 } from '@ai-sdk/provider'
+import { createMemoryAuthStore } from '@humanlayer/agentlayer-provider-auth'
 import { buildProviderOptions } from '../src/agent'
 import {
 	captureResponseUsage,
@@ -327,6 +328,51 @@ describe('readCodexResponsesOverride', () => {
 })
 
 describe('createCustomCodexResponsesModel', () => {
+	test('uses dynamic Bedrock auth, the wire model, and retries auth failure once', async () => {
+		const requests: Array<{ headers: Headers; body: Record<string, unknown> }> = []
+		const tokens = ['expired-bedrock-token', 'fresh-bedrock-token']
+		let invalidations = 0
+		const model = createCustomCodexResponsesModel({
+			override: {
+				baseURL: 'https://bedrock-mantle.us-east-1.api.aws/openai/v1',
+				endpointURL: 'https://bedrock-mantle.us-east-1.api.aws/openai/v1/responses',
+				wireModelId: 'openai.gpt-5.6-sol',
+				auth: {
+					type: 'bedrock',
+					auth: {
+						async getToken() { return tokens.shift()! },
+						invalidate() { invalidations++ },
+					},
+				},
+			},
+			selectedModelId: 'gpt-5.6-sol',
+			fetch: mock(async (input, init) => {
+				const request = input instanceof Request ? input : new Request(input, init)
+				requests.push({
+					headers: request.headers,
+					body: JSON.parse(await request.text()),
+				})
+				return requests.length === 1
+					? new Response('', { status: 401 })
+					: new Response(JSON.stringify({ error: { message: 'captured' } }), {
+						status: 400,
+						headers: { 'content-type': 'application/json' },
+					})
+			}),
+		}) as LanguageModelV3
+
+		await expect(model.doGenerate({
+			prompt: [{ role: 'user', content: [{ type: 'text', text: 'test' }] }],
+		})).rejects.toThrow()
+		expect(requests).toHaveLength(2)
+		expect(requests.map((request) => request.headers.get('authorization'))).toEqual([
+			'Bearer expired-bedrock-token',
+			'Bearer fresh-bedrock-token',
+		])
+		expect(requests[1]!.body.model).toBe('openai.gpt-5.6-sol')
+		expect(invalidations).toBe(1)
+	})
+
 	test('uses bearer auth and the selected model by default', async () => {
 		const { model, request } = await captureGenerateRequest()
 		const headers = new Headers(request.init?.headers)
@@ -482,11 +528,21 @@ describe('createCustomCodexResponsesModel', () => {
 })
 
 describe('custom Codex Responses runtime request', () => {
+	test('selects Bedrock custom Responses before ChatGPT transport resolution', async () => {
+		const model = await resolveModel('codex', 'gpt-5.6-sol', {
+			codexConnection: { type: 'bedrock', region: 'us-east-1' },
+			authStore: createMemoryAuthStore(),
+		}) as LanguageModelV3
+		expect(model.provider).toBe('custom-openai-responses')
+		expect(model.modelId).toBe('gpt-5.6-sol')
+	})
+
 	test('reports invalid setup through the host diagnostics sink', async () => {
 		process.env.CODELAYER_CODEX_MODEL = 'azure-coding-deployment'
 		const records: Array<{ event: string; metadata: Record<string, unknown> }> = []
 
 		await expect(resolveModel('codex', 'gpt-5.6-sol', {
+			authStore: createMemoryAuthStore(),
 			codexDiagnostics: {
 				annotations: { sessionId: 'test-session' },
 				onEvent: (record) => records.push(record),
@@ -514,7 +570,9 @@ describe('custom Codex Responses runtime request', () => {
 			})
 		}) as typeof globalThis.fetch)
 
-		const model = await resolveModel('codex', 'gpt-5.6-sol') as LanguageModelV3
+		const model = await resolveModel('codex', 'gpt-5.6-sol', {
+			authStore: createMemoryAuthStore(),
+		}) as LanguageModelV3
 		const providerOptions = buildProviderOptions(model, {
 			codex: {
 				reasoningEffort: 'high',

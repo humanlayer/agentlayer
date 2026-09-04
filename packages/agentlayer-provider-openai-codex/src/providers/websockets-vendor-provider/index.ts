@@ -249,6 +249,9 @@ export function createCodexEffectProvider(options: CodexEffectProviderOptions = 
 
 	const resolveAuth = async () => {
 		const auth = await resolveCodexAuth(authStore, providerId, fetchFn, now)
+		if (auth.kind === 'aws-profile') {
+			throw new Error('AWS profile auth cannot be used with the ChatGPT Codex provider')
+		}
 		const token = auth.kind === 'api' ? auth.apiKey : auth.accessToken
 		const accountId = auth.kind === 'oauth' ? (auth.accountId ?? undefined) : undefined
 		return { token, accountId }

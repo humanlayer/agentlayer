@@ -46,14 +46,20 @@
 	"dependencies": {
 		"@ai-sdk/anthropic": "catalog:",
 		"@ai-sdk/openai": "catalog:",
+		"@aws/bedrock-token-generator": "catalog:",
+		"@aws-sdk/credential-providers": "catalog:",
 		"@humanlayer/agentlayer-core": "workspace:*",
 		"@humanlayer/agentlayer-filesystem": "workspace:*",
 		"@humanlayer/agentlayer-provider-auth": "workspace:*",
 		"@humanlayer/agentlayer-provider-github-copilot": "workspace:*",
 		"@humanlayer/agentlayer-provider-openai-codex": "workspace:*",
+		"@smithy/types": "catalog:",
+		"@smithy/config-resolver": "catalog:",
+		"@smithy/node-config-provider": "catalog:",
 		"ai": "catalog:",
 		"chalk": "^5.6.2",
 		"commander": "^14.0.3",
+		"smol-toml": "catalog:",
 		"zod": "catalog:"
 	},
 	"devDependencies": {
