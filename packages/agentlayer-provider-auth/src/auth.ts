@@ -20,7 +20,16 @@ export interface ApiAuthInfo {
 	metadata?: Record<string, string>
 }
 
-export type AuthInfo = OAuthAuthInfo | ApiAuthInfo
+export interface AwsProfileAuthInfo {
+	kind: 'aws-profile'
+	active?: boolean
+	profile?: string
+	region?: string
+	model?: string
+	baseUrl?: string
+}
+
+export type AuthInfo = OAuthAuthInfo | ApiAuthInfo | AwsProfileAuthInfo
 export type AuthKind = AuthInfo['kind']
 export type CanonicalAuthProviderId = 'codex' | 'copilot' | 'copilot-enterprise'
 
@@ -52,6 +61,13 @@ export interface FileAuthStoreOptions {
 	agentSdkAuthFilePath?: string
 	openCodeAuthFilePath?: string
 	enableOpenCodeFallback?: boolean
+}
+
+export class InvalidAuthEntryError extends Error {
+	constructor(providerId: string) {
+		super(`Invalid auth entry for provider: ${providerId}`)
+		this.name = 'InvalidAuthEntryError'
+	}
 }
 
 interface ResolvedFileAuthStoreOptions {
@@ -91,12 +107,12 @@ export function createFileAuthStore(options: FileAuthStoreOptions = {}): AuthSto
 	return {
 		async get(providerId) {
 			const key = normalizeProviderId(providerId)
-			const auth = (await readAuthFile(resolved.filePath))[key]
+			const auth = (await readAuthFile(resolved.filePath, key))[key]
 			if (auth) return cloneAuth(auth)
 
 			if (!resolved.enableOpenCodeFallback) return undefined
 
-			const fallbackAuth = (await readAuthFile(resolved.openCodeAuthFilePath))[key]
+			const fallbackAuth = (await readAuthFile(resolved.openCodeAuthFilePath, key))[key]
 			if (!fallbackAuth) return undefined
 
 			const allAuth = await readAuthFile(resolved.filePath)
@@ -224,7 +240,7 @@ function getXdgDataHome(): string {
 	return process.env.XDG_DATA_HOME ?? path.join(os.homedir(), '.local', 'share')
 }
 
-async function readAuthFile(filePath: string): Promise<Record<string, AuthInfo>> {
+async function readAuthFile(filePath: string, requestedProviderId?: string): Promise<Record<string, AuthInfo>> {
 	let text: string
 	try {
 		text = await fs.readFile(filePath, 'utf8')
@@ -238,9 +254,17 @@ async function readAuthFile(filePath: string): Promise<Record<string, AuthInfo>>
 
 	const allAuth: Record<string, AuthInfo> = {}
 	for (const [providerId, value] of Object.entries(parsed)) {
+		const normalizedProviderId = normalizeProviderId(providerId)
 		const auth = decodeAuthInfo(value)
+		if (
+			requestedProviderId === 'codex_bedrock' &&
+			normalizedProviderId === requestedProviderId &&
+			auth?.kind !== 'aws-profile'
+		) {
+			throw new InvalidAuthEntryError(requestedProviderId)
+		}
 		if (!auth) continue
-		allAuth[normalizeProviderId(providerId)] = auth
+		allAuth[normalizedProviderId] = auth
 	}
 	return allAuth
 }
@@ -259,10 +283,26 @@ function decodeAuthInfo(value: unknown): AuthInfo | undefined {
 
 	if (value.kind === 'oauth') return decodeOAuthAuthInfo(value)
 	if (value.kind === 'api') return decodeApiAuthInfo(value)
+	if (value.kind === 'aws-profile') return decodeAwsProfileAuthInfo(value)
 	if (value.type === 'oauth') return decodeOpenCodeOAuthAuthInfo(value)
 	if (value.type === 'api') return decodeOpenCodeApiAuthInfo(value)
 
 	return undefined
+}
+
+function decodeAwsProfileAuthInfo(value: Record<string, unknown>): AwsProfileAuthInfo | undefined {
+	if (value.active !== undefined && typeof value.active !== 'boolean') return undefined
+	for (const key of ['profile', 'region', 'model', 'baseUrl']) {
+		if (value[key] !== undefined && typeof value[key] !== 'string') return undefined
+	}
+	return {
+		kind: 'aws-profile',
+		...(typeof value.active === 'boolean' ? { active: value.active } : {}),
+		...optionalString('profile', value.profile),
+		...optionalString('region', value.region),
+		...optionalString('model', value.model),
+		...optionalString('baseUrl', value.baseUrl),
+	}
 }
 
 function decodeOAuthAuthInfo(value: Record<string, unknown>): OAuthAuthInfo | undefined {

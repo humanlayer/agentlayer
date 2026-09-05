@@ -80,6 +80,93 @@ describe('createFileAuthStore', () => {
 		expect(stat.mode & 0o777).toBe(0o600)
 	})
 
+	test('round-trips codex_bedrock without changing codex or unrelated providers', async () => {
+		const dir = await makeTempDir()
+		const filePath = path.join(dir, 'auth.json')
+		await fs.writeFile(
+			filePath,
+			JSON.stringify({
+				codex: { kind: 'oauth', accessToken: 'access', refreshToken: 'refresh', expiresAt: 123 },
+				other: { kind: 'api', apiKey: 'other-key', metadata: { owner: 'test' } },
+			}),
+		)
+		const store = createFileAuthStore({ filePath })
+
+		await store.set('codex_bedrock', {
+			kind: 'aws-profile',
+			active: true,
+			profile: 'work',
+			region: 'us-east-1',
+			model: 'openai.gpt-5.6-sol',
+			baseUrl: 'https://bedrock.example.test/openai/v1',
+		})
+
+		expect(await store.get('codex_bedrock')).toEqual({
+			kind: 'aws-profile',
+			active: true,
+			profile: 'work',
+			region: 'us-east-1',
+			model: 'openai.gpt-5.6-sol',
+			baseUrl: 'https://bedrock.example.test/openai/v1',
+		})
+		const document = JSON.parse(await fs.readFile(filePath, 'utf8'))
+		expect(document.codex).toEqual({
+			kind: 'oauth',
+			accessToken: 'access',
+			refreshToken: 'refresh',
+			expiresAt: 123,
+		})
+		expect(document.other).toEqual({ kind: 'api', apiKey: 'other-key', metadata: { owner: 'test' } })
+	})
+
+	test('fails closed when codex_bedrock is malformed without affecting unrelated reads or the file', async () => {
+		const dir = await makeTempDir()
+		const filePath = path.join(dir, 'auth.json')
+		const original = JSON.stringify({
+			codex: { kind: 'oauth', accessToken: 'access' },
+			codex_bedrock: { kind: 'aws-profile', active: 'yes', region: 'us-east-1' },
+		})
+		await fs.writeFile(filePath, original)
+
+		const store = createFileAuthStore({ filePath })
+		await expect(store.get('codex_bedrock')).rejects.toThrow('Invalid auth entry for provider: codex_bedrock')
+		expect(await store.get('codex')).toEqual({ kind: 'oauth', accessToken: 'access' })
+		expect(await store.getAll()).toEqual({ codex: { kind: 'oauth', accessToken: 'access' } })
+		expect(await fs.readFile(filePath, 'utf8')).toBe(original)
+	})
+
+	test('rejects a decodable non-AWS auth variant stored as codex_bedrock', async () => {
+		const dir = await makeTempDir()
+		const filePath = path.join(dir, 'auth.json')
+		await fs.writeFile(
+			filePath,
+			JSON.stringify({
+				codex_bedrock: { kind: 'api', apiKey: 'not-a-bedrock-profile' },
+			}),
+		)
+
+		await expect(createFileAuthStore({ filePath }).get('codex_bedrock')).rejects.toThrow(
+			'Invalid auth entry for provider: codex_bedrock',
+		)
+	})
+
+	test('loads a manually configured aws-profile without an active selection marker', async () => {
+		const dir = await makeTempDir()
+		const filePath = path.join(dir, 'auth.json')
+		await fs.writeFile(
+			filePath,
+			JSON.stringify({
+				codex_bedrock: { kind: 'aws-profile', profile: 'work', region: 'us-east-1' },
+			}),
+		)
+
+		expect(await createFileAuthStore({ filePath }).get('codex_bedrock')).toEqual({
+			kind: 'aws-profile',
+			profile: 'work',
+			region: 'us-east-1',
+		})
+	})
+
 	test('supports convenience read, write, remove, and list helpers', async () => {
 		const dir = await makeTempDir()
 		const filePath = path.join(dir, 'auth.json')
