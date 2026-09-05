@@ -37,9 +37,10 @@ export type ModelKey = `${string}/${string}`
  * Effective Codex context window, per model.
  *
  * Codex reserves 5% of the raw backend window for system prompt, tool overhead, and output:
- * gpt-5.4/5.5 use 272,000 raw tokens; gpt-5.6 uses 372,000 raw tokens.
+ * gpt-5.4/5.5 use 272,000 raw tokens; gpt-5.6 uses 372,000; GPT-6 Astra uses 1,050,000.
  */
 export const CODEX_CONTEXT_WINDOWS = {
+	'gpt-6-astra': 997_500,
 	'gpt-5.6-sol': 353_400,
 	'gpt-5.6-terra': 353_400,
 	'gpt-5.6-luna': 353_400,

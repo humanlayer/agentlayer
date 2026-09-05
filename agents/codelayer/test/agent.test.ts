@@ -291,6 +291,10 @@ describe('provider resolution', () => {
 })
 
 describe('createCodelayerAgent', () => {
+	test('uses GPT-6 Astra as the default codex model', () => {
+		expect(DEFAULT_MODELS.codex).toBe('gpt-6-astra')
+	})
+
 	test('uses gpt-5.4 as the default copilot model', () => {
 		expect(DEFAULT_MODELS.copilot).toBe('gpt-5.4')
 	})
@@ -503,6 +507,21 @@ describe('createCodelayerAgent', () => {
 		})
 
 		expect(buildProviderOptions(model, overrides).openai.reasoningEffort).toBe('xhigh')
+	})
+
+	test('applies default reasoning and accepts max thinking for GPT-6 Astra', () => {
+		const model = createMockModel('gpt-6-astra')
+		const overrides = applyCliThinkingOverride({
+			provider: 'codex',
+			modelId: 'gpt-6-astra',
+			thinking: 'max',
+			overrides: {},
+		})
+
+		expect(buildProviderOptions(model)).toMatchObject({
+			openai: { reasoningSummary: 'detailed', reasoningEffort: 'medium' },
+		})
+		expect(buildProviderOptions(model, overrides).openai.reasoningEffort).toBe('max')
 	})
 
 	test('applies explicit CLI thinking for firepass kimi models', () => {
