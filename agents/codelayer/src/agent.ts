@@ -167,7 +167,7 @@ function resolveCodexThinking(model: LanguageModel): Record<string, unknown> {
 	if (modelId.includes('gpt-5.5')) {
 		return { reasoningSummary: 'detailed', reasoningEffort: 'medium' }
 	}
-	if (modelId.includes('gpt-5') && !modelId.includes('gpt-5-pro')) {
+	if ((modelId.includes('gpt-5') || modelId.includes('gpt-6')) && !modelId.includes('-pro')) {
 		return { reasoningSummary: 'detailed', reasoningEffort: 'medium' }
 	}
 	return {}
