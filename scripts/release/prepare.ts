@@ -20,6 +20,10 @@ type PackageManifest = {
     name: string;
     version?: string;
     private?: boolean;
+    repository?: {
+        type: string;
+        url: string;
+    };
     publishConfig?: {
         access?: string;
         [key: string]: unknown;
@@ -36,6 +40,10 @@ type RootManifest = {
 };
 
 const rootManifestPath = join(repoRoot, manifestName);
+const repository = {
+    type: "git",
+    url: "https://github.com/humanlayer/agentlayer",
+};
 
 const dependencyFields = [
     "dependencies",
@@ -170,6 +178,7 @@ function stageManifest(manifest: PackageManifest, version: string, catalog: Reco
     const stagedManifest: PackageManifest = structuredClone(manifest);
     stagedManifest.version = version;
     stagedManifest.private = false;
+    stagedManifest.repository = repository;
     stagedManifest.publishConfig = {
         ...stagedManifest.publishConfig,
         access: "public",
