@@ -15,7 +15,6 @@ describe('ModelProvider.getModelLimits', () => {
 	)
 
 	test.each([
-		['codex/gpt-6-astra', 'gpt-6-astra'],
 		['codex/gpt-5.6-sol', 'gpt-5.6-sol'],
 		['codex.responses/gpt-5.6-terra', 'gpt-5.6-terra'],
 		['codex-sse-vendor/gpt-5.6-luna', 'gpt-5.6-luna'],
@@ -28,6 +27,13 @@ describe('ModelProvider.getModelLimits', () => {
 			expect(limits?.output).toBe(128_000)
 		},
 	)
+
+	test('codex/gpt-6-astra uses the Codex app window instead of the public API window', () => {
+		const limits = provider.getModelLimits('codex/gpt-6-astra')
+
+		expect(limits?.context).toBe(258_400)
+		expect(limits?.output).toBe(128_000)
+	})
 
 	test('openai/gpt-5.5 keeps the public OpenAI API context window', () => {
 		const limits = provider.getModelLimits('openai/gpt-5.5')
