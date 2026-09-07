@@ -1,6 +1,7 @@
 import { createAnthropic } from '@ai-sdk/anthropic'
 import { createOpenAI } from '@ai-sdk/openai'
 import type { LanguageModel } from 'ai'
+import { CUSTOM_RESPONSES_PROVIDER } from '@humanlayer/agentlayer-core'
 import { ensureFileAuthStore, type AuthInfo } from '@humanlayer/agentlayer-provider-auth'
 import { createCopilotProvider } from '@humanlayer/agentlayer-provider-github-copilot'
 import {
@@ -275,7 +276,7 @@ function reportCustomResponsesError(options: {
 				error: safeMessage,
 				errorName: error.name,
 				operation: options.operation,
-				provider: 'custom-openai-responses',
+				provider: CUSTOM_RESPONSES_PROVIDER,
 				statusCode,
 			},
 		})
@@ -302,7 +303,7 @@ export function createCustomCodexResponsesModel(options: {
 			return await captureResponseUsage(response, rawUsage)
 		}
 		return createOpenAI({
-		name: 'custom-openai-responses',
+		name: CUSTOM_RESPONSES_PROVIDER,
 		baseURL: override.baseURL,
 		apiKey: override.apiKey,
 		fetch: requestFetch as typeof globalThis.fetch,
@@ -312,7 +313,7 @@ export function createCustomCodexResponsesModel(options: {
 
 	return {
 		specificationVersion: modelMetadata.specificationVersion,
-		provider: 'custom-openai-responses',
+		provider: CUSTOM_RESPONSES_PROVIDER,
 		modelId: selectedModelId,
 		supportedUrls: modelMetadata.supportedUrls,
 		doGenerate: async (request) => {

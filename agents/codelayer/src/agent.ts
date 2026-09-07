@@ -2,6 +2,7 @@ import type { LanguageModel, JSONValue } from 'ai'
 import { createHash } from 'node:crypto'
 import {
 	Agent,
+	CUSTOM_RESPONSES_PROVIDER,
 	doomLoop,
 	tarsPersona,
 	type AgentConfig,
@@ -218,7 +219,7 @@ export function buildProviderOptions(
 		fastMode: overrides.codex?.fastMode ?? false,
 		...overrides.codex,
 	}
-	const isCustomResponses = (model as { provider?: string }).provider === 'custom-openai-responses'
+	const isCustomResponses = (model as { provider?: string }).provider === CUSTOM_RESPONSES_PROVIDER
 	const openaiOptions = isCustomResponses
 		? (({ fastMode: _fastMode, serviceTier: _serviceTier, ...options }) => ({ ...options, forceReasoning: true }))(codexOptions)
 		: codexOptions
