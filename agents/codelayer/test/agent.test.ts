@@ -33,6 +33,7 @@ const codexOverrideEnvironmentNames = [
 	'CODELAYER_CODEX_API_KEY',
 	'CODELAYER_CODEX_API_KEY_HEADER',
 	'CODELAYER_CODEX_MODEL',
+	'CODELAYER_CODEX_REASONING_SUMMARY',
 ] as const
 const originalCodexOverrideEnvironment = Object.fromEntries(
 	codexOverrideEnvironmentNames.map((name) => [name, process.env[name]]),
@@ -357,10 +358,10 @@ describe('createCodelayerAgent', () => {
 			store: false,
 			include: ['reasoning.encrypted_content'],
 			reasoningEffort: 'high',
-			reasoningSummary: 'detailed',
 			promptCacheKey: 'session-custom',
 			forceReasoning: true,
 		})
+		expect(options.reasoningSummary).toBeUndefined()
 		expect(options).not.toHaveProperty('fastMode')
 		expect(options).not.toHaveProperty('serviceTier')
 	})

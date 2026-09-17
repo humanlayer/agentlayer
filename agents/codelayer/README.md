@@ -37,7 +37,7 @@ An optional wire-model setting supports endpoints whose deployment name differs 
 CODELAYER_CODEX_MODEL=my-azure-deployment
 ```
 
-The selected CodeLayer model still controls prompts, reasoning, context, and cost data. Only the `model` value sent on the wire changes. Custom requests keep reasoning effort and summary, stateless `store: false`, encrypted reasoning content, and prompt caching. They omit fast mode and `service_tier`.
+The selected CodeLayer model still controls prompts, reasoning effort, context, and cost data. Only the `model` value sent on the wire changes. Custom requests omit reasoning summaries by default for compatibility with endpoints such as Amazon Bedrock. To request one from an endpoint and model that supports it, set `CODELAYER_CODEX_REASONING_SUMMARY` to `auto`, `concise`, or `detailed`. Custom requests keep stateless `store: false`, encrypted reasoning content, and prompt caching. They omit fast mode and `service_tier`.
 
 Setting any optional override without both `CODELAYER_CODEX_BASE_URL` and `CODELAYER_CODEX_API_KEY` fails before CodeLayer reads Codex file auth or sends a request. Restart the Riptide daemon after changing any override value. When all override values are absent, CodeLayer keeps its current Codex file auth and `CODEX_PROVIDER=sse|websockets` behavior.
 

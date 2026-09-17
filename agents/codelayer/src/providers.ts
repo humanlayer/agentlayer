@@ -32,6 +32,7 @@ export interface CodexResponsesOverride {
 	apiKey: string
 	apiKeyHeader?: string
 	wireModelId?: string
+	reasoningSummary?: 'auto' | 'concise' | 'detailed'
 }
 
 type CodexResponsesFetch = (
@@ -168,6 +169,7 @@ const CODEX_OVERRIDE_ENV = {
 	apiKey: 'CODELAYER_CODEX_API_KEY',
 	apiKeyHeader: 'CODELAYER_CODEX_API_KEY_HEADER',
 	wireModelId: 'CODELAYER_CODEX_MODEL',
+	reasoningSummary: 'CODELAYER_CODEX_REASONING_SUMMARY',
 } as const
 
 function optionalEnvironmentValue(value: string | undefined): string | undefined {
@@ -222,6 +224,11 @@ function validateHeaderName(headerName: string): void {
 	}
 }
 
+function parseReasoningSummary(value: string | undefined): CodexResponsesOverride['reasoningSummary'] {
+	if (value === undefined || value === 'auto' || value === 'concise' || value === 'detailed') return value
+	throw new Error(`${CODEX_OVERRIDE_ENV.reasoningSummary} must be auto, concise, or detailed.`)
+}
+
 export function readCodexResponsesOverride(
 	env: NodeJS.ProcessEnv = process.env,
 ): CodexResponsesOverride | undefined {
@@ -229,7 +236,8 @@ export function readCodexResponsesOverride(
 	const apiKey = optionalEnvironmentValue(env[CODEX_OVERRIDE_ENV.apiKey])
 	const apiKeyHeader = optionalEnvironmentValue(env[CODEX_OVERRIDE_ENV.apiKeyHeader])
 	const wireModelId = optionalEnvironmentValue(env[CODEX_OVERRIDE_ENV.wireModelId])
-	const hasAnyOverrideSetting = [rawBaseURL, apiKey, apiKeyHeader, wireModelId].some(
+	const rawReasoningSummary = optionalEnvironmentValue(env[CODEX_OVERRIDE_ENV.reasoningSummary])
+	const hasAnyOverrideSetting = [rawBaseURL, apiKey, apiKeyHeader, wireModelId, rawReasoningSummary].some(
 		(value) => value !== undefined,
 	)
 
@@ -252,6 +260,7 @@ export function readCodexResponsesOverride(
 		apiKey,
 		apiKeyHeader,
 		wireModelId,
+		reasoningSummary: parseReasoningSummary(rawReasoningSummary),
 	}
 }
 
@@ -290,7 +299,7 @@ export function createCustomCodexResponsesModel(options: {
 	selectedModelId: string
 	fetch?: CodexResponsesFetch
 	diagnostics?: CodexDiagnosticsContext
-}): LanguageModel {
+}): LanguageModel & { readonly reasoningSummary?: CodexResponsesOverride['reasoningSummary'] } {
 	const { override, selectedModelId } = options
 	const createDeploymentModel = (rawUsage: RawCacheUsage) => {
 		const requestFetch = async (input: string | URL | Request, init?: RequestInit) => {
@@ -315,6 +324,7 @@ export function createCustomCodexResponsesModel(options: {
 		specificationVersion: modelMetadata.specificationVersion,
 		provider: CUSTOM_RESPONSES_PROVIDER,
 		modelId: selectedModelId,
+		reasoningSummary: override.reasoningSummary,
 		supportedUrls: modelMetadata.supportedUrls,
 		doGenerate: async (request) => {
 			const rawUsage: RawCacheUsage = {}
@@ -360,7 +370,7 @@ export function createCustomCodexResponsesModel(options: {
 				throw error
 			}
 		},
-	}
+	} as LanguageModel & { readonly reasoningSummary?: CodexResponsesOverride['reasoningSummary'] }
 }
 
 const FIREWORKS_MODEL_ID = 'accounts/fireworks/routers/kimi-k2p6-turbo'

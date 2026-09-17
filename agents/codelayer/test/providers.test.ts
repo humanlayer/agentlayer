@@ -15,6 +15,7 @@ const overrideEnvironmentNames = [
 	'CODELAYER_CODEX_API_KEY',
 	'CODELAYER_CODEX_API_KEY_HEADER',
 	'CODELAYER_CODEX_MODEL',
+	'CODELAYER_CODEX_REASONING_SUMMARY',
 ] as const
 const originalOverrideEnvironment = Object.fromEntries(
 	overrideEnvironmentNames.map((name) => [name, process.env[name]]),
@@ -204,6 +205,7 @@ describe('readCodexResponsesOverride', () => {
 		for (const env of [
 			{ CODELAYER_CODEX_MODEL: 'wire-model' },
 			{ CODELAYER_CODEX_API_KEY_HEADER: 'api-key' },
+			{ CODELAYER_CODEX_REASONING_SUMMARY: 'auto' },
 		]) {
 			const message = errorMessage(() => readCodexResponsesOverride(env))
 			expect(message).toContain('CODELAYER_CODEX_BASE_URL')
@@ -310,18 +312,32 @@ describe('readCodexResponsesOverride', () => {
 		expect(headerMessage).not.toContain(TEST_KEY)
 	})
 
-	test('keeps custom header and wire model values', () => {
+	test('keeps custom header, wire model, and reasoning summary values', () => {
 		expect(
 			readCodexResponsesOverride({
 				CODELAYER_CODEX_BASE_URL: 'https://example.test/openai/v1',
 				CODELAYER_CODEX_API_KEY: TEST_KEY,
 				CODELAYER_CODEX_API_KEY_HEADER: 'api-key',
 				CODELAYER_CODEX_MODEL: 'azure-coding-deployment',
+				CODELAYER_CODEX_REASONING_SUMMARY: 'concise',
 			}),
 		).toMatchObject({
 			apiKeyHeader: 'api-key',
 			wireModelId: 'azure-coding-deployment',
+			reasoningSummary: 'concise',
 		})
+	})
+
+	test('rejects unsupported reasoning summary values', () => {
+		const message = errorMessage(() =>
+			readCodexResponsesOverride({
+				CODELAYER_CODEX_BASE_URL: 'https://example.test/openai/v1',
+				CODELAYER_CODEX_API_KEY: TEST_KEY,
+				CODELAYER_CODEX_REASONING_SUMMARY: 'unsupported',
+			}),
+		)
+
+		expect(message).toContain('CODELAYER_CODEX_REASONING_SUMMARY')
 	})
 
 })
@@ -385,6 +401,20 @@ describe('createCustomCodexResponsesModel', () => {
 
 		expect(model.specificationVersion).toBe('v3')
 		expect(model.supportedUrls).toBeDefined()
+	})
+
+	test('exposes only explicitly configured reasoning summaries', () => {
+		const withoutSummary = createCustomCodexResponsesModel({
+			override: override(),
+			selectedModelId: 'gpt-5.6-sol',
+		})
+		const withSummary = createCustomCodexResponsesModel({
+			override: override({ reasoningSummary: 'auto' }),
+			selectedModelId: 'gpt-5.6-sol',
+		})
+
+		expect(buildProviderOptions(withoutSummary).openai.reasoningSummary).toBeUndefined()
+		expect(buildProviderOptions(withSummary).openai.reasoningSummary).toBe('auto')
 	})
 
 	test('restores cache writes and uncached input from non-streaming JSON', async () => {
@@ -551,8 +581,9 @@ describe('custom Codex Responses runtime request', () => {
 			store: false,
 			include: ['reasoning.encrypted_content'],
 			prompt_cache_key: 'session-custom',
-			reasoning: { effort: 'high', summary: 'detailed' },
+			reasoning: { effort: 'high' },
 		})
+		expect(body.reasoning).not.toHaveProperty('summary')
 		expect(body).not.toHaveProperty('service_tier')
 	})
 })
