@@ -220,9 +220,18 @@ export function buildProviderOptions(
 		...overrides.codex,
 	}
 	const isCustomResponses = (model as { provider?: string }).provider === CUSTOM_RESPONSES_PROVIDER
-	const openaiOptions = isCustomResponses
-		? (({ fastMode: _fastMode, serviceTier: _serviceTier, ...options }) => ({ ...options, forceReasoning: true }))(codexOptions)
-		: codexOptions
+	let openaiOptions: Omit<CodelayerProviderOptions['openai'], 'store' | 'include'> = codexOptions
+	if (isCustomResponses) {
+		const {
+			fastMode: _fastMode,
+			serviceTier: _serviceTier,
+			reasoningSummary: _reasoningSummary,
+			...customOptions
+		} = codexOptions
+		const configuredSummary = (model as { reasoningSummary?: ReasoningSummary }).reasoningSummary
+		openaiOptions = { ...customOptions, forceReasoning: true }
+		if (configuredSummary !== undefined) openaiOptions.reasoningSummary = configuredSummary
+	}
 	const copilotOptions = overrides.copilot ?? {}
 
 	return {
