@@ -57,8 +57,8 @@ describe('ModelProvider.getModelLimits', () => {
 		// reported as `undefined`, so Azure AI Foundry sessions recorded tokens and no
 		// dollars at all — silently, and unrecoverably, since cost is frozen at ingest.
 		expect(provider.getModelPricing(`${CUSTOM_RESPONSES_PROVIDER}/gpt-5.6-sol`)).toMatchObject({
-			input: 4,
-			output: 20,
+			input: 5,
+			output: 30,
 		})
 
 		// The public Responses API, not the private Codex one, so it keeps the public window.
@@ -70,9 +70,9 @@ describe('ModelProvider.getModelLimits', () => {
 
 		expect(limits?.context).toBe(1_050_000)
 		expect(limits?.output).toBe(128_000)
-		expect(provider.getModelPricing('openai/gpt-5.6-sol')).toMatchObject({ input: 4, output: 20 })
-		expect(provider.getModelPricing('openai/gpt-5.6-terra')).toMatchObject({ input: 2, output: 12 })
-		expect(provider.getModelPricing('openai/gpt-5.6-luna')).toMatchObject({ input: 0.2, output: 1.2 })
+		expect(provider.getModelPricing('openai/gpt-5.6-sol')).toMatchObject({ input: 5, output: 30 })
+		expect(provider.getModelPricing('openai/gpt-5.6-terra')).toMatchObject({ input: 2.5, output: 15 })
+		expect(provider.getModelPricing('openai/gpt-5.6-luna')).toMatchObject({ input: 1, output: 6 })
 	})
 
 	test('openai/gpt-6-astra keeps the public OpenAI API context window and pricing', () => {
