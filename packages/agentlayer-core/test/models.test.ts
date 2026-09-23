@@ -35,6 +35,16 @@ describe('ModelProvider.getModelLimits', () => {
 		expect(limits?.output).toBe(128_000)
 	})
 
+	test.each(['gpt-6-sol', 'gpt-6-luna'] as const)(
+		'codex/%s uses the effective Codex window while retaining public output metadata',
+		(modelId) => {
+			const limits = provider.getModelLimits(`codex/${modelId}`)
+
+			expect(limits?.context).toBe(258_400)
+			expect(limits?.output).toBe(128_000)
+		},
+	)
+
 	test('openai/gpt-5.5 keeps the public OpenAI API context window', () => {
 		const limits = provider.getModelLimits('openai/gpt-5.5')
 
@@ -71,5 +81,25 @@ describe('ModelProvider.getModelLimits', () => {
 		expect(limits?.context).toBe(1_050_000)
 		expect(limits?.output).toBe(128_000)
 		expect(provider.getModelPricing('openai/gpt-6-astra')).toMatchObject({ input: 10, output: 50 })
+	})
+
+	test.each([
+		['gpt-6-sol', 2, 10],
+		['gpt-6-luna', 0.1, 0.5],
+	] as const)('%s keeps its public OpenAI limits and pricing', (modelId, input, output) => {
+		expect(provider.getModelLimits(`openai/${modelId}`)).toMatchObject({
+			context: 1_050_000,
+			input: 922_000,
+			output: 128_000,
+		})
+		expect(provider.getModelPricing(`openai/${modelId}`)).toMatchObject({ input, output })
+	})
+
+	test('claude-opus-5-5 exposes public Anthropic limits and pricing', () => {
+		expect(provider.getModelLimits('anthropic/claude-opus-5-5')).toMatchObject({
+			context: 1_000_000,
+			output: 128_000,
+		})
+		expect(provider.getModelPricing('anthropic/claude-opus-5-5')).toMatchObject({ input: 4, output: 20 })
 	})
 })

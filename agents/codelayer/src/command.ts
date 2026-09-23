@@ -74,7 +74,7 @@ function assertThinkingValue(args: { provider: ProviderType; modelId: string; th
 		}
 	}
 
-	if (args.provider === 'codex' && (modelId.includes('gpt-6-astra') || modelId.includes('gpt-5.6'))) {
+	if (args.provider === 'codex' && (modelId.includes('gpt-6-') || modelId.includes('gpt-5.6'))) {
 		// These models also advertise ultra, but it assumes Codex CLI spawn-agent tools we do not expose yet.
 		supported(['low', 'medium', 'high', 'xhigh', 'max'])
 		return
@@ -88,6 +88,8 @@ function assertThinkingValue(args: { provider: ProviderType; modelId: string; th
 	if (args.provider !== 'anthropic') return
 
 	if (modelId.includes('fable-5')) {
+		supported(['low', 'medium', 'high', 'xhigh', 'max'])
+	} else if (modelId.includes('opus') && (modelId.includes('5-5') || modelId.includes('5.5'))) {
 		supported(['low', 'medium', 'high', 'xhigh', 'max'])
 	} else if (modelId.includes('opus') && (modelId.includes('4-8') || modelId.includes('4.8'))) {
 		supported(['low', 'medium', 'high', 'xhigh', 'max'])

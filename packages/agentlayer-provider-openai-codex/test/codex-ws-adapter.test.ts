@@ -33,8 +33,10 @@ function makeOptions(overrides?: Partial<LanguageModelV3CallOptions>): LanguageM
 	}
 }
 
-describe('GPT-5.6 max reasoning', () => {
-	test.each(['gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna'])('%s accepts max effort', (modelId) => {
+describe('model-specific max reasoning', () => {
+	const maxReasoningModels = ['gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna', 'gpt-6-sol', 'gpt-6-luna']
+
+	test.each(maxReasoningModels)('%s accepts max effort', (modelId) => {
 		expect(isReasoningEffortForModel(modelId, 'max')).toBe(true)
 	})
 
@@ -42,45 +44,42 @@ describe('GPT-5.6 max reasoning', () => {
 		expect(isReasoningEffortForModel('gpt-5.4', 'max')).toBe(false)
 	})
 
-	test.each(['gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna'])(
-		'%s uses the regular Responses request shape',
-		async (modelId) => {
-			const request = convertCallOptionsToLLMRequest(
-				modelId,
-				makeOptions({
-					prompt: [
-						{ role: 'system', content: 'Use the repository tools.' },
-						{ role: 'user', content: [{ type: 'text', text: 'Locate the implementation.' }] },
-					],
-					tools: [
-						{
-							type: 'function',
-							name: 'search',
-							description: 'Search the repository',
-							inputSchema: { type: 'object', properties: { query: { type: 'string' } } },
-						},
-					],
-					toolChoice: { type: 'auto' },
-					providerOptions: {
-						openai: { reasoningEffort: 'max', promptCacheKey: 'cache-key' },
+	test.each(maxReasoningModels)('%s uses the regular Responses request shape', async (modelId) => {
+		const request = convertCallOptionsToLLMRequest(
+			modelId,
+			makeOptions({
+				prompt: [
+					{ role: 'system', content: 'Use the repository tools.' },
+					{ role: 'user', content: [{ type: 'text', text: 'Locate the implementation.' }] },
+				],
+				tools: [
+					{
+						type: 'function',
+						name: 'search',
+						description: 'Search the repository',
+						inputSchema: { type: 'object', properties: { query: { type: 'string' } } },
 					},
-				}),
-				makeConfig(),
-			)
+				],
+				toolChoice: { type: 'auto' },
+				providerOptions: {
+					openai: { reasoningEffort: 'max', promptCacheKey: 'cache-key' },
+				},
+			}),
+			makeConfig(),
+		)
 
-			const body = await Effect.runPromise(webSocketRoute.body.from(request))
+		const body = await Effect.runPromise(webSocketRoute.body.from(request))
 
-			expect(body.instructions).toBe('Use the repository tools.')
-			expect(body.tools).toHaveLength(1)
-			expect(body.tool_choice).toBe('auto')
-			expect(body.prompt_cache_key).toBe('cache-key')
-			expect(body.reasoning).toEqual({ effort: 'max', summary: 'detailed' })
-			expect(body.parallel_tool_calls).toBeUndefined()
-			expect(body.input).toEqual([
-				{ role: 'user', content: [{ type: 'input_text', text: 'Locate the implementation.' }] },
-			])
-		},
-	)
+		expect(body.instructions).toBe('Use the repository tools.')
+		expect(body.tools).toHaveLength(1)
+		expect(body.tool_choice).toBe('auto')
+		expect(body.prompt_cache_key).toBe('cache-key')
+		expect(body.reasoning).toEqual({ effort: 'max', summary: 'detailed' })
+		expect(body.parallel_tool_calls).toBeUndefined()
+		expect(body.input).toEqual([
+			{ role: 'user', content: [{ type: 'input_text', text: 'Locate the implementation.' }] },
+		])
+	})
 })
 
 // ---------------------------------------------------------------------------

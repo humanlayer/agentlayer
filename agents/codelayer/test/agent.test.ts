@@ -525,6 +525,18 @@ describe('createCodelayerAgent', () => {
 		expect(buildProviderOptions(model, overrides).openai.reasoningEffort).toBe('max')
 	})
 
+	test.each(['gpt-6-sol', 'gpt-6-luna'])('%s accepts every exposed CLI effort', (modelId) => {
+		const model = createMockModel(modelId)
+
+		for (const thinking of ['low', 'medium', 'high', 'xhigh', 'max']) {
+			const overrides = applyCliThinkingOverride({ provider: 'codex', modelId, thinking, overrides: {} })
+			expect(buildProviderOptions(model, overrides).openai.reasoningEffort).toBe(thinking)
+		}
+		expect(() =>
+			applyCliThinkingOverride({ provider: 'codex', modelId, thinking: 'extreme', overrides: {} }),
+		).toThrow('Unsupported --thinking value "extreme"')
+	})
+
 	test('applies explicit CLI thinking for firepass kimi models', () => {
 		const model = createMockModel(DEFAULT_MODELS.firepass)
 		const overrides = applyCliThinkingOverride({
@@ -578,6 +590,43 @@ describe('createCodelayerAgent', () => {
 			effort: 'medium',
 			cacheControl: { type: 'ephemeral' },
 		})
+	})
+
+	test('uses summarized adaptive thinking and all exposed efforts for opus 5.5', () => {
+		const modelId = 'claude-opus-5-5'
+		const model = createMockModel(modelId)
+
+		expect(buildProviderOptions(model).anthropic).toEqual({
+			thinking: { type: 'adaptive', display: 'summarized' },
+			effort: 'medium',
+			cacheControl: { type: 'ephemeral' },
+		})
+		for (const thinking of ['low', 'medium', 'high', 'xhigh', 'max']) {
+			const overrides = applyCliThinkingOverride({ provider: 'anthropic', modelId, thinking, overrides: {} })
+			expect(buildProviderOptions(model, overrides).anthropic).toMatchObject({
+				thinking: { type: 'adaptive', display: 'summarized' },
+				effort: thinking,
+			})
+		}
+		expect(() =>
+			applyCliThinkingOverride({ provider: 'anthropic', modelId, thinking: 'extreme', overrides: {} }),
+		).toThrow('Unsupported --thinking value "extreme"')
+	})
+
+	test('does not disable or downgrade opus 5.5 adaptive thinking through overrides', () => {
+		const model = createMockModel('claude-opus-5-5')
+
+		for (const thinking of ['off', 'enabled'] as const) {
+			expect(
+				buildProviderOptions(model, {
+					anthropic: { thinking, budgetTokens: 10_000, effort: 'high' },
+				}).anthropic,
+			).toEqual({
+				thinking: { type: 'adaptive', display: 'summarized' },
+				effort: 'high',
+				cacheControl: { type: 'ephemeral' },
+			})
+		}
 	})
 
 	test('uses summarized adaptive thinking with explicit xhigh CLI effort for opus 4.8', () => {
@@ -1132,6 +1181,47 @@ describe('subagentThinkingOverrides', () => {
 		}
 	})
 
+	test.each(['gpt-6-sol', 'gpt-6-luna'])('%s preserves the root, child, research, and outline matrix', async (modelId) => {
+		const rootModel = createMockModel(modelId, 'codex')
+		const researchModel = createMockModel('gpt-5.6-terra', 'codex')
+		const agent = await createCodelayerAgent({
+			model: rootModel,
+			researchModel,
+			cwd: '/tmp',
+			context7ApiKey: 'context7-test-key',
+			providerOptionOverrides: { codex: { reasoningEffort: 'max', fastMode: true } },
+		})
+		const rootConfig = getAgentConfig(agent)
+		const rootOptions = (rootConfig.providerOptions as unknown as (ctx: { runId: string }) => Record<string, any>)({
+			runId: 'root',
+		})
+		const researchNames = new Set([
+			'rpi:codebase-locator',
+			'rpi:codebase-analyzer',
+			'rpi:codebase-pattern-finder',
+			'web-search-researcher',
+		])
+
+		expect(rootConfig.model).toBe(rootModel)
+		expect(rootOptions.openai).toMatchObject({ reasoningEffort: 'max', fastMode: true })
+		for (const subagent of getSubagents(rootConfig.tools?.agent)) {
+			const config = getAgentConfig(subagent.agent)
+			const options = (config.providerOptions as unknown as (ctx: { runId: string }) => Record<string, any>)({
+				runId: subagent.name,
+			})
+			if (researchNames.has(subagent.name)) {
+				expect(config.model, subagent.name).toBe(researchModel)
+				expect(options.openai.reasoningEffort, subagent.name).toBe('xhigh')
+			} else {
+				expect(config.model, subagent.name).toBe(rootModel)
+				expect(options.openai.reasoningEffort, subagent.name).toBe(
+					subagent.name === 'rpi:outline-implementer-agent' ? 'max' : 'low',
+				)
+			}
+			expect(options.openai.fastMode, subagent.name).toBe(true)
+		}
+	})
+
 	test('lets the outline implementer use parent anthropic effort while other sub-agents stay throttled', async () => {
 		const agent = await createCodelayerAgent({
 			model: createMockModel('claude-opus-4-8'),
@@ -1156,6 +1246,35 @@ describe('subagentThinkingOverrides', () => {
 
 		expect(generalProviderOptions({ runId: 'general' }).anthropic.effort).toBe('low')
 		expect(outlineProviderOptions({ runId: 'outline' }).anthropic.effort).toBe('max')
+	})
+
+	test('keeps opus 5.5 adaptive across root and child roles while reducing ordinary children', async () => {
+		const model = createMockModel('claude-opus-5-5', 'anthropic')
+		const agent = await createCodelayerAgent({
+			model,
+			cwd: '/tmp',
+			providerOptionOverrides: { anthropic: { effort: 'max' } },
+		})
+		const rootConfig = getAgentConfig(agent)
+		const rootOptions = (rootConfig.providerOptions as unknown as (ctx: { runId: string }) => Record<string, any>)({
+			runId: 'root',
+		})
+
+		expect(rootOptions.anthropic).toMatchObject({
+			thinking: { type: 'adaptive', display: 'summarized' },
+			effort: 'max',
+		})
+		for (const subagent of getSubagents(rootConfig.tools?.agent)) {
+			const config = getAgentConfig(subagent.agent)
+			const options = (config.providerOptions as unknown as (ctx: { runId: string }) => Record<string, any>)({
+				runId: subagent.name,
+			})
+			expect(config.model, subagent.name).toBe(model)
+			expect(options.anthropic.thinking, subagent.name).toEqual({ type: 'adaptive', display: 'summarized' })
+			expect(options.anthropic.effort, subagent.name).toBe(
+				subagent.name === 'rpi:outline-implementer-agent' ? 'max' : 'low',
+			)
+		}
 	})
 })
 
