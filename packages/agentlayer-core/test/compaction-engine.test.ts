@@ -13,12 +13,20 @@ import {
 	serializeConversation,
 } from '../src/compaction'
 import { assistantMessage, toolCall, toolResult, userMessage } from '../src/messages'
+import { getCodexContextWindow } from '../src/models'
 
 describe('compaction policy', () => {
 	test('uses Fold-compatible budget arithmetic', () => {
 		expect(compactionUsableTokens({ contextWindow: 200_000 })).toBe(151_616)
 		expect(compactionUsableTokens({ contextWindow: 100, reserveTokens: 50 })).toBe(63)
 		expect(compactionUsableTokens({ contextWindow: 1 })).toBe(1)
+	})
+
+	test.each(['gpt-6-sol', 'gpt-6-luna'])('%s reserves output and summary headroom', (modelId) => {
+		const contextWindow = getCodexContextWindow(modelId)
+
+		expect(contextWindow).toBe(258_400)
+		expect(compactionUsableTokens({ contextWindow })).toBe(210_016)
 	})
 
 	test('caps history and turn-prefix summary output against reserved and model budgets', () => {

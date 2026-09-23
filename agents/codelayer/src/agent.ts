@@ -135,6 +135,12 @@ function resolveAnthropicThinking(model: LanguageModel, effort?: string): Record
 			effort: resolvedEffort,
 		}
 	}
+	if (modelId.includes('opus') && (modelId.includes('5-5') || modelId.includes('5.5'))) {
+		return {
+			thinking: { type: 'adaptive', display: 'summarized' },
+			effort: resolvedEffort,
+		}
+	}
 	if (modelId.includes('opus') && (modelId.includes('4-8') || modelId.includes('4.8'))) {
 		return {
 			thinking: { type: 'adaptive', display: 'summarized' },
@@ -200,8 +206,13 @@ export function buildProviderOptions(
 	model: LanguageModel,
 	overrides: CodelayerProviderOptionOverrides = {},
 ): CodelayerProviderOptions {
+	const modelId = ((model as { modelId?: string }).modelId ?? '').toLowerCase()
+	const requiresAdaptiveThinking =
+		modelId.includes('opus') && (modelId.includes('5-5') || modelId.includes('5.5'))
 	const anthropicThinking =
-		overrides.anthropic?.thinking === 'off'
+		requiresAdaptiveThinking
+			? resolveAnthropicThinking(model, overrides.anthropic?.effort)
+			: overrides.anthropic?.thinking === 'off'
 			? {}
 			: overrides.anthropic?.thinking === 'adaptive'
 				? {
@@ -292,6 +303,7 @@ const EFFORT_RANK: Record<string, number> = {
 	medium: 1,
 	high: 2,
 	xhigh: 3,
+	max: 4,
 }
 
 /**
@@ -302,7 +314,7 @@ const EFFORT_RANK: Record<string, number> = {
  * - codex / firepass / copilot → `reasoningEffort = level`
  * - anthropic `4-5`/`4.5` (extended thinking, no adaptive support) →
  *   `{ thinking: 'enabled', budgetTokens: LOW_ANTHROPIC_BUDGET }`
- * - anthropic adaptive (`4.6`+/`4.7`/`4.8`, and any other model) →
+ * - anthropic adaptive (`4.6`+/`4.7`/`4.8`/`5.5`, and any other model) →
  *   `effort = level`
  *
  * Guards (respect an explicitly-throttled parent — sub-agents never think
