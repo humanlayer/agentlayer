@@ -437,7 +437,14 @@ const lowerOptions = Effect.fn('OpenAIResponses.lowerOptions')(function* (reques
 	}
 })
 
-const MAX_REASONING_MODELS = new Set(['gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna', 'gpt-6-sol', 'gpt-6-luna'])
+const MAX_REASONING_MODELS = new Set([
+	'gpt-5.6-sol',
+	'gpt-5.6-terra',
+	'gpt-5.6-luna',
+	'gpt-6-sol',
+	'gpt-6-luna',
+	'gpt-6.1-sol',
+])
 
 export const isReasoningEffortForModel = (modelId: string, effort: ReasoningEffort): boolean =>
 	OpenAIOptions.isReasoningEffort(effort) || (effort === 'max' && MAX_REASONING_MODELS.has(modelId))
