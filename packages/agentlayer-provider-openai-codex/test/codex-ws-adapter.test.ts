@@ -34,7 +34,14 @@ function makeOptions(overrides?: Partial<LanguageModelV3CallOptions>): LanguageM
 }
 
 describe('model-specific max reasoning', () => {
-	const maxReasoningModels = ['gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna', 'gpt-6-sol', 'gpt-6-luna']
+	const maxReasoningModels = [
+		'gpt-5.6-sol',
+		'gpt-5.6-terra',
+		'gpt-5.6-luna',
+		'gpt-6-sol',
+		'gpt-6-luna',
+		'gpt-6.1-sol',
+	]
 
 	test.each(maxReasoningModels)('%s accepts max effort', (modelId) => {
 		expect(isReasoningEffortForModel(modelId, 'max')).toBe(true)

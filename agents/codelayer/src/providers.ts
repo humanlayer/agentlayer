@@ -378,7 +378,7 @@ const FIREWORKS_MODEL_ID = 'accounts/fireworks/routers/kimi-k2p6-turbo'
 export const DEFAULT_MODELS: Record<ProviderType, string> = {
 	anthropic: 'claude-opus-4-5',
 	openai: 'gpt-5.5',
-	codex: 'gpt-6-astra',
+	codex: 'gpt-6.1-sol',
 	copilot: 'gpt-5.4',
 	firepass: FIREWORKS_MODEL_ID,
 }

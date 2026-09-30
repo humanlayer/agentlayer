@@ -292,8 +292,8 @@ describe('provider resolution', () => {
 })
 
 describe('createCodelayerAgent', () => {
-	test('uses GPT-6 Astra as the default codex model', () => {
-		expect(DEFAULT_MODELS.codex).toBe('gpt-6-astra')
+	test('uses GPT-6.1 Sol as the default codex model', () => {
+		expect(DEFAULT_MODELS.codex).toBe('gpt-6.1-sol')
 	})
 
 	test('uses gpt-5.4 as the default copilot model', () => {
@@ -525,7 +525,7 @@ describe('createCodelayerAgent', () => {
 		expect(buildProviderOptions(model, overrides).openai.reasoningEffort).toBe('max')
 	})
 
-	test.each(['gpt-6-sol', 'gpt-6-luna'])('%s accepts every exposed CLI effort', (modelId) => {
+	test.each(['gpt-6.1-sol', 'gpt-6-sol', 'gpt-6-luna'])('%s accepts every exposed CLI effort', (modelId) => {
 		const model = createMockModel(modelId)
 
 		for (const thinking of ['low', 'medium', 'high', 'xhigh', 'max']) {
@@ -1181,7 +1181,7 @@ describe('subagentThinkingOverrides', () => {
 		}
 	})
 
-	test.each(['gpt-6-sol', 'gpt-6-luna'])('%s preserves the root, child, research, and outline matrix', async (modelId) => {
+	test.each(['gpt-6.1-sol', 'gpt-6-sol', 'gpt-6-luna'])('%s preserves the root, child, research, and outline matrix', async (modelId) => {
 		const rootModel = createMockModel(modelId, 'codex')
 		const researchModel = createMockModel('gpt-5.6-terra', 'codex')
 		const agent = await createCodelayerAgent({

@@ -22,7 +22,7 @@ describe('compaction policy', () => {
 		expect(compactionUsableTokens({ contextWindow: 1 })).toBe(1)
 	})
 
-	test.each(['gpt-6-sol', 'gpt-6-luna'])('%s reserves output and summary headroom', (modelId) => {
+	test.each(['gpt-6.1-sol', 'gpt-6-sol', 'gpt-6-luna'])('%s reserves output and summary headroom', (modelId) => {
 		const contextWindow = getCodexContextWindow(modelId)
 
 		expect(contextWindow).toBe(258_400)
