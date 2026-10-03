@@ -1,5 +1,4 @@
 import { Schema } from 'effect'
-import { extend } from '../utils/extend'
 import { ContentBlockID, FinishReason, ProtocolID, ProviderMetadata, RouteID, ToolCallID } from './ids'
 import { ToolResultValue } from './messages'
 import { ModelSchema } from './options'
@@ -236,7 +235,7 @@ const toolCallID = (value: ToolCallID | string) => ToolCallID.make(value)
  * Lets consumers write `events.filter(LLMEvent.is.toolCall)` instead of
  * `events.filter(LLMEvent.guards["tool-call"])`.
  */
-export const LLMEvent = extend(llmEventTagged, {
+export const LLMEvent = Object.assign(llmEventTagged, {
 	stepStart: StepStart.make,
 	textStart: (input: WithID<TextStart, ContentBlockID>) => TextStart.make({ ...input, id: contentBlockID(input.id) }),
 	textDelta: (input: WithID<TextDelta, ContentBlockID>) => TextDelta.make({ ...input, id: contentBlockID(input.id) }),
