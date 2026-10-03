@@ -1,5 +1,6 @@
 // @ts-nocheck — vendored from opencode, tested upstream under different tsconfig
 import { Schema } from 'effect'
+import { extend } from '../utils/extend'
 import { isRecord } from '../utils/record'
 import { JsonSchema, MessageRole, ProviderMetadata } from './ids'
 import {
@@ -22,7 +23,7 @@ export type SystemPart = Schema.Schema.Type<typeof systemPartSchema>
 
 const makeSystemPart = (text: string): SystemPart => ({ type: 'text', text })
 
-export const SystemPart = Object.assign(systemPartSchema, {
+export const SystemPart = extend(systemPartSchema, {
 	make: makeSystemPart,
 	content: (input?: string | SystemPart | ReadonlyArray<SystemPart>) => {
 		if (input === undefined) return []
@@ -65,7 +66,7 @@ const isToolResultValue = (value: unknown): value is ToolResultValue =>
 	(value.type === 'text' || value.type === 'json' || value.type === 'error' || value.type === 'content') &&
 	'value' in value
 
-export const ToolResultValue = Object.assign(
+export const ToolResultValue = extend(
 	Schema.Union([
 		Schema.Struct({
 			type: Schema.Literal('json'),
@@ -95,7 +96,7 @@ export const ToolResultValue = Object.assign(
 )
 export type ToolResultValue = Schema.Schema.Type<typeof ToolResultValue>
 
-export const ToolCallPart = Object.assign(
+export const ToolCallPart = extend(
 	Schema.Struct({
 		type: Schema.Literal('tool-call'),
 		id: Schema.String,
@@ -111,7 +112,7 @@ export const ToolCallPart = Object.assign(
 )
 export type ToolCallPart = Schema.Schema.Type<typeof ToolCallPart>
 
-export const ToolResultPart = Object.assign(
+export const ToolResultPart = extend(
 	Schema.Struct({
 		type: Schema.Literal('tool-result'),
 		id: Schema.String,

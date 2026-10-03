@@ -1,7 +1,7 @@
 // @ts-nocheck — vendored from opencode, tested upstream under different tsconfig
 import { Cause, Context, Duration, Effect, Layer, Queue, Schedule, Stream } from 'effect'
+import type { Headers } from 'effect/http'
 import * as Option from 'effect/Option'
-import type { Headers } from 'effect/unstable/http'
 import { LLMError, TransportReason } from '../../schema'
 import { LLMDiagnostics, llmErrorMetadata, noopDiagnostics } from '../diagnostics'
 import * as HttpTransport from './http'
