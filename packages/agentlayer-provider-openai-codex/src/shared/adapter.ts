@@ -114,7 +114,7 @@ export function convertPromptMessages(prompt: LanguageModelV3Prompt): {
 	for (const message of prompt) {
 		switch (message.role) {
 			case 'system': {
-				systemParts.push(SystemPart.make(message.content))
+				systemParts.push(SystemPart.text(message.content))
 				break
 			}
 

@@ -1,6 +1,5 @@
 // @ts-nocheck — vendored from opencode, tested upstream under different tsconfig
 import { Cause, Context, Effect, Layer, Random } from 'effect'
-import * as Option from 'effect/Option'
 import {
 	FetchHttpClient,
 	Headers,
@@ -8,7 +7,8 @@ import {
 	HttpClientError,
 	type HttpClientRequest,
 	type HttpClientResponse,
-} from 'effect/unstable/http'
+} from 'effect/http'
+import * as Option from 'effect/Option'
 import {
 	AuthenticationReason,
 	ContentPolicyReason,

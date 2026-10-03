@@ -200,7 +200,7 @@ const accumulate = (state: StepState, event: LLMEvent) => {
 	}
 	if (event.type === 'tool-result' && event.providerExecuted) {
 		state.assistantContent.push(
-			ToolResultPart.make({
+			ToolResultPart.from({
 				id: event.id,
 				name: event.name,
 				result: event.result,

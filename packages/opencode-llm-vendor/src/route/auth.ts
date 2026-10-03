@@ -1,7 +1,7 @@
 // @ts-nocheck — vendored from opencode, tested upstream under different tsconfig
 import { Config, Effect, Redacted } from 'effect'
+import { Headers } from 'effect/http'
 import * as Option from 'effect/Option'
-import { Headers } from 'effect/unstable/http'
 import { AuthenticationReason, InvalidRequestReason, LLMError, type LLMRequest } from '../schema'
 import { type Interface as DiagnosticsInterface, LLMDiagnostics, noopDiagnostics } from './diagnostics'
 

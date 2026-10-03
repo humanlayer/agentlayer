@@ -1,5 +1,5 @@
 import { Effect, Stream } from 'effect'
-import { Headers, type HttpClientRequest } from 'effect/unstable/http'
+import { Headers, type HttpClientRequest } from 'effect/http'
 import * as ProviderShared from '../../protocols/shared'
 import type { LLMRequest } from '../../schema'
 import { LLMError, mergeJsonRecords, TransportReason } from '../../schema'
